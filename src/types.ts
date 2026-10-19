@@ -3,6 +3,7 @@ import type { CompletionReview } from "./completion-review";
 import type { RunOutcome } from "./completion-notification";
 import type { ProjectGuidanceDocument } from "./project-guidance";
 import type { RunEvidenceSnapshot } from "./run-evidence";
+import type { GoalRecord } from "./goal-state";
 
 export type RunMode = "review" | "execute" | "plan";
 export type AgentRuntime = "standard" | "deep";
@@ -89,6 +90,7 @@ export type ContextSnapshot = {
 };
 
 export type AgentUiEvent =
+  | { type: "goal"; goal: GoalRecord }
   | {
       type: "thread";
       threadId: string;

@@ -153,6 +153,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private draftCache: Record<string, string> | undefined;
   private connectionSettingsRequested = false;
   private sendPending = false;
+  private readonly resumedGoals = new Set<string>();
   private readonly disposables: vscode.Disposable[] = [];
 
   public constructor(
@@ -378,9 +379,28 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           mcpConnections: mcpConnectionState(mcpConnections)
         });
         if (this.connectionSettingsRequested) await this.postConnectionSettings();
+        void this.resumePendingGoals();
         break;
       case "send":
         await this.send(message.text, parseRunMode(message.mode), Boolean(message.replacePending));
+        break;
+      case "createGoal":
+        await this.createGoal(message.text, parseRunMode(message.mode), message.runtime, message.finalReview);
+        break;
+      case "activateGoal":
+        await this.updateGoal(message.id, "active");
+        break;
+      case "resumeGoal":
+        await this.resumeGoal(message.id);
+        break;
+      case "pauseGoal":
+        await this.updateGoal(message.id, "paused");
+        break;
+      case "cancelGoal":
+        await this.updateGoal(message.id, "cancelled");
+        break;
+      case "openGoal":
+        await this.agent.openGoal(message.id);
         break;
       case "retry":
         await this.retry(parseRunMode(message.mode));
@@ -1740,7 +1760,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     return { connection, modelsEndpoint, modelProfiles };
   }
 
-  private async send(text: string, mode: RunMode, replacePending = false): Promise<void> {
+  private async send(text: string, mode: RunMode, replacePending = false, goalId?: string): Promise<void> {
     const clean = text.trim();
     if (!clean) {
       return;
@@ -1817,7 +1837,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           if (event.type === "done") outcome = event.outcome;
           void this.forwardAgentEvent(event);
         },
-        { replacePendingUser: replacePending }
+        { replacePendingUser: replacePending, ...(goalId ? { goalId } : {}) }
       );
       if (requestAccepted && outcome) void this.notifyRunCompletion(outcome);
     } catch (error) {
@@ -1837,6 +1857,43 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         this.sendPending = false;
       }
     }
+  }
+
+  private async createGoal(text: string, mode: RunMode, runtime: AgentRuntime, finalReview: "off" | "changes" | "always"): Promise<void> {
+    const snapshot = await this.agent.threadSnapshot();
+    const goal = await this.agent.createGoal({ objective: text.trim(), threadId: snapshot.activeThreadId, runtime, autonomyMode: mode, finalReview });
+    this.post({ type: "goal", goal });
+    this.post({ type: "toast", message: "Goal draft created. Review the criteria in .local-agent/goals and activate it when ready." });
+    this.post({ type: "threadsUpdated", ...await this.threadPayload() });
+  }
+
+  private async updateGoal(id: string, status: "active" | "paused" | "cancelled"): Promise<void> {
+    const goal = await this.agent.setGoalStatus(id, status);
+    this.post({ type: "goal", goal });
+    this.post({ type: "threadsUpdated", ...await this.threadPayload() });
+  }
+
+  private async resumeGoal(id: string): Promise<void> {
+    const goal = await this.agent.activateGoal(id);
+    this.post({ type: "goal", goal });
+    const mode = goal.policy.autonomyMode;
+    await this.send(`Continue the persistent goal: ${goal.objective}\nCurrent next action: ${goal.nextAction ?? "inspect the workspace and proceed"}`, mode, false, id);
+  }
+
+  private async resumePendingGoals(): Promise<void> {
+    if (this.sendPending || this.agent.running) return;
+    let snapshot = await this.agent.threadSnapshot();
+    const goals = await this.agent.listGoals();
+    const goal = goals.find((item) => item.status === "active" && item.policy.autoResume);
+    if (!goal || this.resumedGoals.has(goal.id)) return;
+    if (goal.threadId !== snapshot.activeThreadId) {
+      await this.agent.selectThread(goal.threadId);
+      snapshot = await this.agent.threadSnapshot();
+      this.post({ type: "threadsUpdated", ...await this.threadPayload() });
+    }
+    this.resumedGoals.add(goal.id);
+    this.post({ type: "activity", kind: "goal", title: `Resuming goal · iteration ${goal.iteration + 1}` });
+    try { await this.resumeGoal(goal.id); } catch (error) { this.post({ type: "error", message: await this.safeError(error), recoverable: true }); }
   }
 
   private async notifyRunCompletion(outcome: RunOutcome): Promise<void> {
@@ -2193,9 +2250,10 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   private async threadPayload() {
-    const [snapshot, externalRunActive] = await Promise.all([
+    const [snapshot, externalRunActive, goals] = await Promise.all([
       this.agent.threadSnapshot(),
-      this.agent.externalRunActive()
+      this.agent.externalRunActive(),
+      this.agent.listGoals()
     ]);
     const validThreadIds = new Set(snapshot.threads.map((thread) => thread.id));
     const drafts = this.drafts();
@@ -2215,7 +2273,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       recovery: snapshot.recovery,
       remoteRunActive: externalRunActive || (
         !this.agent.running && snapshot.threads.some((thread) => thread.recoveryStatus === "running")
-      )
+      ),
+      goals
     };
   }
 
@@ -2609,6 +2668,11 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     </div>
 
     <div class="conversation-stage">
+      <section class="goal-strip hidden" id="goal-strip" aria-live="polite">
+        <span class="signal" aria-hidden="true"></span><span id="goal-strip-text"></span>
+        <button type="button" id="goal-open">Open</button>
+        <button type="button" id="goal-resume" class="hidden">Resume</button>
+      </section>
       <section class="timeline" id="timeline" aria-label="Conversation">
         <div class="welcome" id="welcome">
           <div class="monogram">C</div>
@@ -2726,6 +2790,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             </div>
           </details>
           <button class="cancel hidden" id="cancel" type="button">Cancel run</button>
+          <button class="goal-button" id="goal" type="button" aria-label="Set message as a persistent goal">Goal</button>
           <button class="send" id="send" type="button" aria-label="Send message">↑</button>
         </div>
       </div>
@@ -3060,6 +3125,11 @@ textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; res
 .cancel { cursor: pointer; }
 .cancel:disabled { cursor: progress; opacity: .62; }
 .send { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 7px; background: var(--accent); color: #111; cursor: pointer; font-size: 17px; font-weight: 700; transition: transform .12s, opacity .12s; }
+.goal-button { border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; color: var(--vscode-descriptionForeground); background: transparent; cursor: pointer; }
+.goal-button:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
+.goal-strip { display: flex; align-items: center; gap: 8px; padding: 6px 18px; border-bottom: 1px solid var(--line); color: var(--vscode-descriptionForeground); font-size: 11px; }
+.goal-strip .signal { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.goal-strip button { margin-left: auto; border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 5px; padding: 2px 7px; cursor: pointer; }
 .send:hover { transform: translateY(-1px); }
 .send:disabled { opacity: .35; cursor: default; transform: none; }
 .hint { padding: 5px 5px 0; color: var(--muted); text-align: center; font-size: 9px; }
@@ -3085,6 +3155,11 @@ const welcomeMarkup = timeline.innerHTML;
 const prompt = document.getElementById('prompt');
 const composerHint = document.getElementById('composer-hint');
 const send = document.getElementById('send');
+const goalButton = document.getElementById('goal');
+const goalStrip = document.getElementById('goal-strip');
+const goalStripText = document.getElementById('goal-strip-text');
+const goalResume = document.getElementById('goal-resume');
+const goalOpen = document.getElementById('goal-open');
 const cancel = document.getElementById('cancel');
 const status = document.getElementById('status');
 const signal = document.getElementById('signal');
@@ -4152,6 +4227,21 @@ function renderThreads(data) {
   });
   persistWebviewState();
   renderThreadList();
+  renderGoals(data.goals || []);
+}
+
+let activeGoalId = '';
+let activeGoalStatus = '';
+function renderGoals(goals) {
+  const goal = (goals || []).find(item => item.threadId === activeThreadId && ['active','awaiting-criteria','paused'].includes(item.status));
+  if (!goal) { goalStrip.classList.add('hidden'); activeGoalId = ''; activeGoalStatus = ''; return; }
+  activeGoalId = goal.id;
+  activeGoalStatus = goal.status;
+  goalStrip.classList.remove('hidden');
+  const verified = (goal.criteria || []).filter(item => item.status === 'verified').length;
+  goalStripText.textContent = goal.status + ' · ' + verified + '/' + (goal.criteria || []).length + ' criteria · ' + (goal.nextAction || goal.title);
+  goalResume.classList.toggle('hidden', goal.status === 'completed' || goal.status === 'cancelled');
+  goalResume.textContent = goal.status === 'awaiting-criteria' ? 'Activate' : 'Resume';
 }
 
 function renderThreadList() {
@@ -4311,6 +4401,14 @@ function submit() {
   resizePrompt();
   updatePromptTokenEstimate();
   persistDraftNow();
+}
+
+function setAsGoal() {
+  const text = prompt.value.trim();
+  if (!text || busy) return;
+  vscode.postMessage({ type: 'createGoal', text, mode: autonomyMode.value, runtime: agentRuntime.value, finalReview: finalReviewMode.value });
+  prompt.value = '';
+  resizePrompt();
 }
 
 function setupStepComplete(step) {
@@ -4778,6 +4876,12 @@ function resetConversation(context, history, threads, draft = '') {
 }
 
 send.addEventListener('click', submit);
+goalButton.addEventListener('click', setAsGoal);
+goalResume.addEventListener('click', () => {
+  if (!activeGoalId) return;
+  vscode.postMessage({ type: activeGoalStatus === 'awaiting-criteria' ? 'activateGoal' : 'resumeGoal', id: activeGoalId });
+});
+goalOpen.addEventListener('click', () => { if (activeGoalId) vscode.postMessage({ type: 'openGoal', id: activeGoalId }); });
 cancel.addEventListener('click', () => {
   if (!busy || cancellationPending) return;
   setCancellationPending(true);
@@ -5442,6 +5546,7 @@ window.addEventListener('message', ({ data }) => {
       renderActivityOverview();
       break;
     case 'activity': appendActivity(data.kind, data.title, data.detail); break;
+    case 'goal': renderGoals([data.goal]); break;
     case 'changes':
       currentRunSummary.files = new Map((data.items || []).map(item => [item.path, item]));
       currentRunSummary.omittedChanges = Number(data.omitted || 0);

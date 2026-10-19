@@ -39,6 +39,12 @@ const liteLlmFields = {
 export const incomingMessageSchema = z.discriminatedUnion("type", [
   noPayload("ready"),
   z.object({ type: z.literal("send"), text: messageText, mode: runMode, replacePending: z.boolean().optional() }).strict(),
+  z.object({ type: z.literal("createGoal"), text: messageText, mode: runMode, runtime, finalReview: finalReviewMode }).strict(),
+  z.object({ type: z.literal("activateGoal"), id: identifier }).strict(),
+  z.object({ type: z.literal("resumeGoal"), id: identifier }).strict(),
+  z.object({ type: z.literal("pauseGoal"), id: identifier }).strict(),
+  z.object({ type: z.literal("cancelGoal"), id: identifier }).strict(),
+  z.object({ type: z.literal("openGoal"), id: identifier }).strict(),
   z.object({ type: z.literal("retry"), mode: runMode }).strict(),
   z.object({ type: z.literal("discardRecovery"), threadId: identifier, messageId: identifier }).strict(),
   noPayload("refreshRunState"),

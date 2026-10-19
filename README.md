@@ -4,6 +4,10 @@
 
 Uma extensão de Visual Studio Code com dois runtimes de agente construídos exclusivamente sobre primitivas do **LangChain**, executados localmente. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
 
+### Objetivos persistentes
+
+Use o botão **Goal** no compositor para transformar uma solicitação em um objetivo de longo prazo. O objetivo fica ligado à thread atual e é salvo sem conversa ou credenciais em `.local-agent/goals/<goal-id>.json`. O arquivo mantém critérios, marcos, evidências, próximo passo e um histórico resumido. Depois de ativar o rascunho, objetivos ativos com retomada automática podem continuar após reiniciar o VS Code; cada iteração usa o runtime e o modo de autonomia salvos e passa por uma avaliação estruturada antes de marcar critérios como concluídos. Sem evidência suficiente, o objetivo continua; após duas iterações sem progresso ou 20 iterações, ele é pausado com diagnóstico.
+
 O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), estado (`MemorySaver`), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As únicas chamadas externas feitas pela extensão são:
 
 ```text

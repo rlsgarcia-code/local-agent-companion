@@ -2,6 +2,8 @@
 
 ## 0.11.0
 
+- Added persistent workspace goals under `.local-agent/goals/`: create a goal from the composer, keep criteria/milestones/evidence and bounded progress history, resume active goals after restart, and evaluate completion through a structured evidence-only LangChain call. Goals pause after repeated stagnation or the 20-iteration safety limit and preserve the selected runtime, autonomy mode, approvals, and final-review policy.
+
 - Optional provider packages now open on their named provider until the user explicitly selects another available provider.
 - Added local Ollama model discovery in the setup form through the loopback `/api/tags` endpoint, equivalent to `ollama list` without shell execution.
 - Added explicit Ollama and OpenAI VSIX variants while keeping the default package LiteLLM-only; provider allowlists are build-bound, Ollama is restricted to loopback without a key, OpenAI is fixed to `api.openai.com`, and all model traffic retains exact-route Chat Completions guards.
