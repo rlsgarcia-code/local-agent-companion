@@ -635,8 +635,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         await clearImportedGatewayCa(this.extensionContext);
         await this.agent.reloadProviderConfiguration();
         this.post({
-          type: "liteLlmSettings",
-          liteLlm: await this.liteLlmSettingsSnapshot(),
+          type: "gatewayCaUpdated",
           message: "Imported corporate CA removed; system trust is active"
         });
         return;
@@ -653,8 +652,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       await importGatewayCa(this.extensionContext, selected[0]);
       await this.agent.reloadProviderConfiguration();
       this.post({
-        type: "liteLlmSettings",
-        liteLlm: await this.liteLlmSettingsSnapshot(),
+        type: "gatewayCaUpdated",
         message: hasCertificate ? "Corporate CA replaced" : "Corporate CA imported"
       });
     } catch (error) {
@@ -5260,6 +5258,12 @@ window.addEventListener('message', ({ data }) => {
     case 'gatewayCaError':
       liteLlmSettingsError.textContent = data.message;
       liteLlmSettingsError.classList.remove('hidden');
+      openLiteLlmSettings();
+      break;
+    case 'gatewayCaUpdated':
+      liteLlmSettingsError.classList.add('hidden');
+      status.textContent = data.message || 'Gateway certificate updated';
+      announce(data.message || 'Gateway certificate updated');
       openLiteLlmSettings();
       break;
     case 'modelsLoaded':
