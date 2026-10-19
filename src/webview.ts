@@ -4233,6 +4233,16 @@ let activeGoalStatus = '';
 function renderGoals(goals) {
   const goal = (goals || []).find(item => item.threadId === activeThreadId && ['active','awaiting-criteria','paused'].includes(item.status));
   if (!goal) { goalStrip.classList.add('hidden'); activeGoalId = ''; activeGoalStatus = ''; return; }
+  renderGoal(goal);
+}
+
+function renderGoal(goal) {
+  if (!goal || !['active','awaiting-criteria','paused'].includes(goal.status)) {
+    goalStrip.classList.add('hidden');
+    activeGoalId = '';
+    activeGoalStatus = '';
+    return;
+  }
   activeGoalId = goal.id;
   activeGoalStatus = goal.status;
   goalStrip.classList.remove('hidden');
@@ -5550,7 +5560,7 @@ window.addEventListener('message', ({ data }) => {
       renderActivityOverview();
       break;
     case 'activity': appendActivity(data.kind, data.title, data.detail); break;
-    case 'goal': renderGoals([data.goal]); break;
+    case 'goal': renderGoal(data.goal); break;
     case 'changes':
       currentRunSummary.files = new Map((data.items || []).map(item => [item.path, item]));
       currentRunSummary.omittedChanges = Number(data.omitted || 0);
