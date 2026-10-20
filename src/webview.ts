@@ -501,6 +501,12 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "openProblems":
         await vscode.commands.executeCommand("workbench.actions.view.problems");
         break;
+      case "openTerminalCommand": {
+        const terminal = vscode.window.createTerminal({ name: "Local Agent verification" });
+        terminal.show(true);
+        terminal.sendText(message.command, false);
+        break;
+      }
       case "openChangeDiff":
         await this.openChangeDiff(message.id);
         break;
@@ -4016,7 +4022,7 @@ function renderRunReview(summary) {
     ? '<section class="run-review-section"><div class="section-label">COMMANDS & CHECKS</div><ul class="run-review-list">' +
       summary.commands.map(command => '<li class="run-review-row' + (command.exitCode === 0 ? '' : ' failed') + '" data-evidence-type="' + (command.verification ? 'test' : 'command') + '">' +
         '<span class="run-review-row-copy"><strong>' + (command.verification ? 'CHECK' : 'COMMAND') + '</strong> · ' +
-        escapeHtml(command.title) + '</span><span>exit ' + command.exitCode + '</span>' +
+        escapeHtml(command.title) + '</span><span>exit ' + command.exitCode + (command.verification ? ' <button type="button" data-open-terminal-command="' + escapeHtml(command.title) + '">Open in terminal</button>' : '') + '</span>' +
         (command.output ? '<details class="run-review-output"><summary>Output</summary><pre>' + escapeHtml(command.output) + '</pre></details>' : '') +
         '</li>').join('') + '</ul></section>'
     : '';
@@ -4374,17 +4380,17 @@ function renderGoals(goals) {
     const verified = (goal.criteria || []).filter(item => item.status === 'verified').length;
     const title = escapeHtml(goal.title || goal.objective || 'Untitled goal');
     const status = escapeHtml(goal.status);
-    const action = ['active', 'awaiting-criteria'].includes(goal.status) ? 'Open' : goal.status === 'paused' ? 'Resume' : 'View';
+    const action = ['active', 'awaiting-criteria'].includes(goal.status) ? 'Open' : goal.status === 'paused' ? 'Resume' : goal.status === 'blocked' ? 'Review blocker' : 'View';
     return '<button type="button" class="goal-list-item ' + (goal.threadId === activeThreadId ? 'active' : '') + '" data-goal-thread="' + escapeHtml(goal.threadId) + '"><span class="goal-list-dot ' + status + '"></span><span class="goal-list-copy"><span class="goal-list-title">' + title + '</span><span class="goal-list-meta">' + status + ' · ' + verified + '/' + (goal.criteria || []).length + ' criteria · iteration ' + Number(goal.iteration || 0) + '</span></span><span class="goal-list-action">' + action + '</span></button>';
   }).join('') : '<div class="goal-list-empty">Nenhum goal persistente neste workspace.</div>';
   goalList.querySelectorAll('[data-goal-thread]').forEach(button => button.addEventListener('click', () => vscode.postMessage({ type: 'selectThread', id: button.getAttribute('data-goal-thread') || '' })));
-  const goal = (goals || []).find(item => item.threadId === activeThreadId && ['active','awaiting-criteria','paused'].includes(item.status));
+  const goal = (goals || []).find(item => item.threadId === activeThreadId && ['active','awaiting-criteria','paused','blocked'].includes(item.status));
   if (!goal) { goalStrip.classList.add('hidden'); goalPanel.classList.add('hidden'); activeGoalId = ''; activeGoalStatus = ''; return; }
   renderGoal(goal);
 }
 
 function renderGoal(goal) {
-  if (!goal || !['active','awaiting-criteria','paused'].includes(goal.status)) {
+  if (!goal || !['active','awaiting-criteria','paused','blocked'].includes(goal.status)) {
     goalStrip.classList.add('hidden');
     goalPanel.classList.add('hidden');
     activeGoalId = '';
@@ -5178,6 +5184,11 @@ timeline.addEventListener('click', event => {
 });
 runReviewPanel.addEventListener('click', event => {
   const target = event.target instanceof Element ? event.target : null;
+  const openTerminalCommand = target?.closest('[data-open-terminal-command]');
+  if (openTerminalCommand) {
+    vscode.postMessage({ type: 'openTerminalCommand', command: openTerminalCommand.getAttribute('data-open-terminal-command') || '' });
+    return;
+  }
   const reviewChange = target?.closest('[data-review-change]');
   if (reviewChange) {
     vscode.postMessage({ type: 'openChangeDiff', id: reviewChange.dataset.reviewChange });

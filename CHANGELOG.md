@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.8
+
+- Added **Open in terminal** for verification commands; commands are inserted without execution so the user retains the final approval.
+- Exposed blocked goals in the active goal panel with an explicit “Review blocker” state.
+
 ## 0.11.7
 
 - Made the pre-send plan state visible before the first tool action.
