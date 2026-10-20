@@ -3252,6 +3252,10 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .message.assistant .message-body { line-height: 1.62; }
 .message.assistant.streaming .message-body { min-height: 1.62em; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message.assistant.streaming.tool-turn .message-body { color: var(--muted); }
+.message.assistant.streaming.tool-turn { margin: 2px 0; padding: 10px 11px; border: 1px solid color-mix(in srgb, var(--line) 78%, var(--accent)); border-left: 3px solid var(--accent); border-radius: 6px; background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, var(--accent)); }
+.message.assistant.streaming.tool-turn .message-role { margin-bottom: 5px; color: var(--accent); letter-spacing: .1em; }
+.message.assistant.streaming.tool-turn .message-role::after { content: ' · ACTIVITY'; color: var(--muted); font-size: 8px; letter-spacing: .08em; }
+.message.assistant.streaming.tool-turn .message-body { font-size: 11px; line-height: 1.48; }
 .message.assistant.streaming .message-body::after { display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: var(--accent); content: ""; vertical-align: -.12em; animation: stream-cursor .85s steps(1, end) infinite; }
 .message.assistant.interrupted, .message.assistant.failed, .message.assistant.cancelled { padding-left: 10px; border-left: 2px solid var(--line); }
 .message-body p { margin: 0 0 9px; }
