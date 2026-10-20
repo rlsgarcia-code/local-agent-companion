@@ -1162,8 +1162,9 @@ export class DevelopmentAgent implements vscode.Disposable {
   }
 
   public async newThread(): Promise<void> {
-    if (this.isRunning) throw new Error("Cancel the current run before starting a new thread.");
-    const collection = await this.threadCollection();
+    const collection = this.isRunning && this.activeRunCollection
+      ? this.activeRunCollection
+      : await this.threadCollection();
     const thread = createLocalThread(crypto.randomUUID(), Date.now());
     collection.threads.unshift(thread);
     collection.activeThreadId = thread.id;
@@ -1172,8 +1173,9 @@ export class DevelopmentAgent implements vscode.Disposable {
   }
 
   public async selectThread(threadId: string): Promise<void> {
-    if (this.isRunning) throw new Error("Wait for the current run to finish before switching threads.");
-    const collection = await this.threadCollection();
+    const collection = this.isRunning && this.activeRunCollection
+      ? this.activeRunCollection
+      : await this.threadCollection();
     if (!collection.threads.some((thread) => thread.id === threadId)) {
       throw new Error("The selected local thread no longer exists.");
     }

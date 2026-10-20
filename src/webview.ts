@@ -261,7 +261,6 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   public async newThread(): Promise<void> {
-    await this.assertThreadEditable();
     await this.agent.newThread();
     const [context, payload] = await Promise.all([this.contextState(), this.threadPayload()]);
     this.post({ type: "reset", context, ...payload });
@@ -269,7 +268,6 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private async selectThread(threadId: string): Promise<void> {
     try {
-      await this.assertThreadEditable();
       await this.agent.selectThread(threadId);
       const [context, payload] = await Promise.all([this.contextState(), this.threadPayload()]);
       this.post({ type: "reset", context, ...payload });
@@ -2842,6 +2840,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <span class="activity-meta" id="activity-meta"></span>
         <span class="activity-chevron" aria-hidden="true">⌃</span>
       </button>
+      <button class="activity-cancel hidden" id="activity-cancel" type="button">Cancel run</button>
       <div class="plan" id="plan-panel" role="region" aria-labelledby="plan-title" aria-hidden="true">
         <div class="plan-heading">
           <div class="section-label" id="plan-title">RUN PROGRESS</div>
@@ -2969,7 +2968,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .browser-control[aria-pressed="true"] { color: var(--accent); opacity: 1; background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .browser-control[aria-pressed="true"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--vscode-sideBar-background); }
 .browser-control.pending { opacity: .45; }
-.activity-dock { min-height: 43px; border-top: 1px solid var(--line); background: var(--vscode-sideBar-background); }
+.activity-dock { min-height: 43px; border-top: 1px solid var(--line); background: var(--vscode-sideBar-background); position: relative; }
 .presence { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto 12px; align-items: center; gap: 9px; width: 100%; min-height: 42px; padding: 7px 18px; border: 0; color: var(--muted); background: transparent; text-align: left; font-size: 11px; }
 .activity-dock.has-plan .presence { cursor: pointer; }
 .activity-dock.has-plan .presence:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
@@ -2986,6 +2985,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .activity-dock.expanded .activity-chevron { transform: rotate(180deg); }
 .plan { max-height: 0; overflow: hidden; padding: 0 18px; opacity: 0; background: color-mix(in srgb, var(--vscode-sideBar-background) 90%, var(--accent)); transition: max-height .2s ease, padding .2s ease, opacity .14s ease; }
 .activity-dock.expanded .plan { max-height: min(38vh, 360px); overflow-y: auto; padding: 11px 18px 12px; opacity: 1; border-top: 1px solid var(--line); }
+.activity-cancel { position: absolute; right: 34px; top: 8px; z-index: 2; border: 1px solid var(--vscode-editorWarning-foreground); border-radius: 4px; padding: 3px 7px; color: var(--vscode-editorWarning-foreground); background: transparent; cursor: pointer; font-size: 10px; }.activity-cancel:hover { background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 12%, transparent); }.activity-cancel:disabled { opacity: .55; cursor: progress; }
 .plan-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .plan-heading > span { overflow: hidden; color: var(--muted); font: 9px var(--vscode-editor-font-family); text-overflow: ellipsis; white-space: nowrap; }
 .plan ol { list-style: none; margin: 9px 0 0; padding: 0; display: grid; gap: 7px; }
@@ -3000,6 +3000,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .plan-latest li.approval { border-left: 2px solid var(--vscode-editorWarning-foreground); padding-left: 7px; }.plan-latest li.approval strong { color: var(--vscode-editorWarning-foreground); }
 .plan-latest strong { color: var(--vscode-foreground); font: 650 8px/1.55 var(--vscode-font-family); letter-spacing: .07em; }
 .plan-latest span { min-width: 0; overflow-wrap: anywhere; }
+.execution-event { margin: 6px 14px; padding: 6px 9px; border-left: 2px solid var(--line); color: var(--muted); font-size: 10px; animation: reveal .14s ease-out; }.execution-event-heading { display: flex; align-items: baseline; gap: 6px; }.execution-event-heading strong { color: var(--vscode-descriptionForeground); font: 650 8px var(--vscode-font-family); letter-spacing: .06em; }.execution-event-heading span { overflow-wrap: anywhere; }.execution-event-signal { width: 5px; height: 5px; flex: 0 0 auto; margin-top: 3px; border-radius: 50%; background: var(--accent); }.execution-event-detail { margin: 3px 0 0 11px; white-space: pre-wrap; overflow-wrap: anywhere; }.execution-event-detail a { color: var(--vscode-textLink-foreground); text-decoration: underline; }.execution-event-browser { border-left-color: var(--accent); }.execution-event-tool, .execution-event-command { border-left-color: var(--vscode-descriptionForeground); }
 .top-drawers { min-height: 0; }
 .top-drawers.panel-open > .setup-callout { display: none; }
 .setup-callout { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--vscode-sideBar-background) 96%, var(--accent)); }
@@ -3344,6 +3345,7 @@ const signal = document.getElementById('signal');
 const activityDock = document.getElementById('activity-dock');
 const activityToggle = document.getElementById('activity-toggle');
 const activityMeta = document.getElementById('activity-meta');
+const activityCancel = document.getElementById('activity-cancel');
 const planItems = document.getElementById('plan-items');
 const planSummary = document.getElementById('plan-summary');
 const planLatest = document.getElementById('plan-latest');
@@ -3476,6 +3478,8 @@ const assistantStreamStates = new Map();
 const runReviews = new Map();
 let activeRunReviewId = '';
 let activeThreadId = '';
+let liveRunThreadId = '';
+let suppressLiveRunEvents = false;
 let currentThreadSummaries = [];
 let pendingRequestText = '';
 let pendingRequestId = '';
@@ -3966,7 +3970,22 @@ function appendActivity(kind, title, detail) {
   const state = ensureRunActivity();
   state.events.push({ kind: String(kind).toUpperCase(), title, detail: detail || '' });
   if (state.events.length > 100) state.events.splice(0, state.events.length - 100);
+  appendExecutionTimelineEvent(kind, title, detail);
   renderActivityOverview();
+}
+
+function localLinkify(value) {
+  return escapeHtml(String(value || '')).replace(/(https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?[^\s<]*)/g, '<a class="local-activity-link" href="$1" target="_blank" rel="noreferrer">$1</a>');
+}
+
+function appendExecutionTimelineEvent(kind, title, detail = '') {
+  document.getElementById('welcome')?.remove();
+  const element = document.createElement('article');
+  element.className = 'execution-event execution-event-' + escapeHtml(String(kind || 'activity').toLowerCase());
+  element.innerHTML = '<div class="execution-event-heading"><span class="execution-event-signal" aria-hidden="true"></span><strong>' + escapeHtml(String(kind || 'activity').toUpperCase()) + '</strong><span>' + escapeHtml(String(title || '')) + '</span></div>' +
+    (detail ? '<div class="execution-event-detail">' + localLinkify(detail) + '</div>' : '');
+  timeline.appendChild(element);
+  scrollConversationToBottom();
 }
 
 function runSummaryStats(summary) {
@@ -4163,6 +4182,8 @@ function setBusy(value) {
   const locked = value || remoteRunActive;
   send.disabled = locked;
   cancel.classList.toggle('hidden', !value);
+  activityCancel.classList.toggle('hidden', !value);
+  activityCancel.disabled = !value || cancellationPending;
   signal.classList.toggle('busy', locked);
   agentRuntime.disabled = locked;
   autonomyMode.disabled = locked;
@@ -4171,10 +4192,10 @@ function setBusy(value) {
   runControls.querySelector('summary').setAttribute('aria-disabled', String(locked));
   runControls.querySelector('summary').tabIndex = locked ? -1 : 0;
   if (locked) runControls.open = false;
-  newThreadButton.disabled = locked;
+  newThreadButton.disabled = false;
   mcpConnections.disabled = locked || mcpConnectionsPending;
   browserControl.disabled = locked || browserControlPending;
-  threadsToggle.disabled = value;
+  threadsToggle.disabled = false;
   briefToggle.disabled = locked;
   contextAddFile.disabled = locked;
   contextClear.disabled = locked || !(currentContextState.pinned || []).length;
@@ -4234,6 +4255,8 @@ function setCancellationPending(value) {
   cancel.textContent = cancellationPending ? 'Stopping…' : 'Cancel run';
   cancel.setAttribute('aria-label', cancellationPending ? 'Stopping current run' : 'Cancel current run');
   cancel.setAttribute('aria-busy', String(cancellationPending));
+  activityCancel.disabled = !busy || cancellationPending;
+  activityCancel.textContent = cancellationPending ? 'Stopping…' : 'Cancel run';
 }
 
 function setRemoteRunActive(value) {
@@ -4517,14 +4540,15 @@ function renderThreadList() {
     const metadata = relativeThreadTime(thread.updatedAt) + ' · ' + thread.messageCount + ' message' +
       (thread.messageCount === 1 ? '' : 's') + (thread.pinned ? ' · pinned' : '') +
       (recoveryLabel ? ' · ' + recoveryLabel : '');
-    const disabled = locked ? ' disabled' : '';
+    const selectDisabled = '';
+    const actionDisabled = locked ? ' disabled' : '';
     return '<div class="thread-item' + (active ? ' active' : '') + '">' +
-      '<button class="thread-select" type="button" data-select-thread="' + escapeHtml(thread.id) + '"' + (active ? ' aria-current="true"' : '') + disabled + '>' +
+      '<button class="thread-select" type="button" data-select-thread="' + escapeHtml(thread.id) + '"' + (active ? ' aria-current="true"' : '') + selectDisabled + '>' +
       '<strong>' + escapeHtml(thread.title) + '</strong><small>' + escapeHtml(metadata) + '</small></button>' +
       '<span class="thread-actions">' +
-      '<button type="button" class="' + (thread.pinned ? 'pinned' : '') + '" data-pin-thread="' + escapeHtml(thread.id) + '" aria-pressed="' + String(Boolean(thread.pinned)) + '" aria-label="' + (thread.pinned ? 'Unpin ' : 'Pin ') + escapeHtml(thread.title) + '"' + disabled + '>' + (thread.pinned ? '★' : '☆') + '</button>' +
-      '<button type="button" data-rename-thread="' + escapeHtml(thread.id) + '" aria-label="Rename ' + escapeHtml(thread.title) + '"' + disabled + '>✎</button>' +
-      '<button type="button" data-delete-thread="' + escapeHtml(thread.id) + '" aria-label="Delete ' + escapeHtml(thread.title) + '"' + disabled + '>×</button>' +
+      '<button type="button" class="' + (thread.pinned ? 'pinned' : '') + '" data-pin-thread="' + escapeHtml(thread.id) + '" aria-pressed="' + String(Boolean(thread.pinned)) + '" aria-label="' + (thread.pinned ? 'Unpin ' : 'Pin ') + escapeHtml(thread.title) + '"' + actionDisabled + '>' + (thread.pinned ? '★' : '☆') + '</button>' +
+      '<button type="button" data-rename-thread="' + escapeHtml(thread.id) + '" aria-label="Rename ' + escapeHtml(thread.title) + '"' + actionDisabled + '>✎</button>' +
+      '<button type="button" data-delete-thread="' + escapeHtml(thread.id) + '" aria-label="Delete ' + escapeHtml(thread.title) + '"' + actionDisabled + '>×</button>' +
       '</span></div>';
   }).join('') : '<div class="thread-empty" role="status">No conversations match this search.</div>';
   const total = currentThreadSummaries.length;
@@ -4648,6 +4672,8 @@ function submit() {
   updateRunActivityStatus('Preparing plan before the first action');
   setActivityExpanded(true);
   pendingRequestText = text;
+  liveRunThreadId = activeThreadId;
+  suppressLiveRunEvents = false;
   replacePendingOnSubmit = false;
   vscode.postMessage({
     type: goalModeEnabled ? 'createGoalAndRun' : 'send',
@@ -5189,6 +5215,7 @@ cancel.addEventListener('click', () => {
   announce('Stop requested. Waiting for the current operation to finish cancelling.');
   vscode.postMessage({ type: 'cancel' });
 });
+activityCancel.addEventListener('click', () => cancel.click());
 timeline.addEventListener('click', event => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest('[data-show-earlier]')) {
@@ -5354,6 +5381,7 @@ threadList.addEventListener('click', event => {
     if (select.dataset.selectThread === activeThreadId) setThreadPanelOpen(false);
     else {
       persistDraftNow();
+      suppressLiveRunEvents = Boolean(liveRunThreadId && select.dataset.selectThread !== liveRunThreadId);
       vscode.postMessage({ type: 'selectThread', id: select.dataset.selectThread });
     }
   } else if (pin) {
@@ -5539,6 +5567,7 @@ document.addEventListener('click', event => {
 });
 
 window.addEventListener('message', ({ data }) => {
+  if (suppressLiveRunEvents && ['status', 'plan', 'contextReceipt', 'evidence', 'verification', 'activity', 'goal', 'changes', 'usage', 'error', 'assistantStart', 'assistantDelta', 'assistantReset', 'assistant'].includes(data.type)) return;
   switch (data.type) {
     case 'protocolError':
       if (!data.active) setBusy(false);
@@ -5860,6 +5889,7 @@ window.addEventListener('message', ({ data }) => {
     case 'status':
       status.textContent = data.label;
       updateRunActivityStatus(data.label);
+      if (busy) appendExecutionTimelineEvent('status', data.label);
       renderActivityOverview();
       break;
     case 'plan':
@@ -5909,7 +5939,10 @@ window.addEventListener('message', ({ data }) => {
       if (data.outcome !== 'completed') markAssistantStreamsInterrupted(data.outcome);
       renderRunSummary();
       break;
-    case 'reset': resetConversation(data.context, data.history, data, data.draft); break;
+    case 'reset':
+      suppressLiveRunEvents = Boolean(liveRunThreadId && data.activeThreadId && data.activeThreadId !== liveRunThreadId);
+      resetConversation(data.context, data.history, data, data.draft);
+      break;
     case 'threadsUpdated':
       renderThreads(data);
       setRemoteRunActive(data.remoteRunActive);
