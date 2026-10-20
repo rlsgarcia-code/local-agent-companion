@@ -198,6 +198,11 @@
           "default": "",
           "description": "Exact model or gateway alias used by the selected provider."
         },
+        "localAgentCompanion.visionModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional LiteLLM alias used when an image or browser screenshot is sent. Choose a model with Chat Completions vision/OCR support."
+        },
         "localAgentCompanion.liteLlmModelsEndpoint": {
           "type": "string",
           "default": "",

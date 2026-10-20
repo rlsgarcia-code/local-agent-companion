@@ -111,7 +111,8 @@ import type {
   AgentUiEvent,
   ConnectionDiagnostic,
   RunMode,
-  RunPreflightResult
+  RunPreflightResult,
+  ImageAttachment
 } from "./types";
 import { acquireWorkspaceRunLease, workspaceRunLeaseOwner } from "./workspace-run-lease";
 import type { WorkspaceRunLease } from "./workspace-run-lease";
@@ -558,7 +559,7 @@ export class DevelopmentAgent implements vscode.Disposable {
     request: string,
     mode: RunMode,
     onEvent: (event: AgentUiEvent) => void,
-    options: { replacePendingUser?: boolean; goalId?: string } = {}
+    options: { replacePendingUser?: boolean; goalId?: string; images?: ImageAttachment[] } = {}
   ): Promise<void> {
     if (this.isRunning) {
       throw new Error("The agent is already working. Cancel the current run first.");
@@ -595,6 +596,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
       const runtime = parseAgentRuntime(configuration.get("agentRuntime"));
       const responseLanguage = parseResponseLanguage(configuration.get("responseLanguage"));
+      const images = (options.images || []).slice(0, 4);
       const maxContextCharacters = configuration.get<number>("maxContextCharacters", 24_000);
       const maxConversationCharacters = configuration.get<number>("maxConversationCharacters", 48_000);
       const autoContext = configuration.get<boolean>("autoContext", true);
@@ -608,7 +610,9 @@ export class DevelopmentAgent implements vscode.Disposable {
         endpoint: providerWasExplicitlySelected
           ? configuration.get<string>("liteLlmEndpoint", "")
           : modelProviderDefaultEndpoint(provider),
-        model: providerWasExplicitlySelected ? configuration.get<string>("liteLlmModel", "") : "",
+        model: providerWasExplicitlySelected
+          ? (images.length ? configuration.get<string>("visionModel", "").trim() || configuration.get<string>("liteLlmModel", "") : configuration.get<string>("liteLlmModel", ""))
+          : "",
         apiKey: apiKey ?? "",
         authHeader: modelProviderAuthHeader(provider, configuration.get("liteLlmAuthHeader"))
       });
@@ -848,12 +852,15 @@ export class DevelopmentAgent implements vscode.Disposable {
       });
 
       const firstInvocation = !this.hydratedThreads.has(threadId);
+      const userMessage = images.length
+        ? new HumanMessage({ content: [{ type: "text" as const, text: request }, ...images.map((image) => ({ type: "image_url" as const, image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))] })
+        : new HumanMessage(request);
       const messages = !goalRun && firstInvocation && priorMessages.length
         ? [
             ...this.compactPersistedConversation(priorMessages, maxConversationCharacters),
-            new HumanMessage(request)
+            userMessage
           ]
-        : [new HumanMessage(request)];
+        : [userMessage];
       const systemPrompt = this.systemPrompt(
         mode,
         projectMemory,

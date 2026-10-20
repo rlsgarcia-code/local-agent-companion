@@ -12,6 +12,7 @@ import {
   parseCompletionNotificationMode
 } from "./completion-notification";
 import type { RunOutcome } from "./completion-notification";
+import type { ImageAttachment } from "./types";
 import {
   createConnectionProfile,
   parseConnectionProfile,
@@ -119,6 +120,7 @@ type LiteLlmFormFields = {
   topP: string;
   semanticMemoryEnabled: boolean;
   embeddingModel: string;
+  visionModel: string;
 };
 
 type LiteLlmSettingsSnapshot = {
@@ -146,6 +148,7 @@ type LiteLlmSettingsSnapshot = {
   topP?: number;
   semanticMemoryEnabled: boolean;
   embeddingModel: string;
+  visionModel: string;
   finalReviewMode: "off" | "changes" | "always";
 };
 
@@ -384,7 +387,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.checkEnvironment();
         break;
       case "send":
-        await this.send(message.text, parseRunMode(message.mode), Boolean(message.replacePending));
+        await this.send(message.text, parseRunMode(message.mode), Boolean(message.replacePending), undefined, message.images);
         break;
       case "createGoal":
         await this.createGoal(message.text, parseRunMode(message.mode), message.runtime, message.finalReview);
@@ -622,6 +625,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       topP: profile.topP,
       semanticMemoryEnabled: configuration.get<boolean>("semanticMemoryEnabled", true),
       embeddingModel: configuration.get<string>("embeddingModel", ""),
+      visionModel: configuration.get<string>("visionModel", ""),
       finalReviewMode: parseFinalReviewMode(configuration.get("finalReviewMode"))
     };
   }
@@ -1679,6 +1683,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         configuration.update("liteLlmModelProfiles", modelProfiles, vscode.ConfigurationTarget.Global),
         configuration.update("semanticMemoryEnabled", message.semanticMemoryEnabled, vscode.ConfigurationTarget.Global),
         configuration.update("embeddingModel", message.embeddingModel.trim(), vscode.ConfigurationTarget.Global),
+        configuration.update("visionModel", message.visionModel.trim(), vscode.ConfigurationTarget.Global),
         ...(secretName && message.apiKey.trim()
           ? [this.extensionContext.secrets.store(secretName, message.apiKey.trim())]
           : [])
@@ -1785,7 +1790,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     return { connection, modelsEndpoint, modelProfiles };
   }
 
-  private async send(text: string, mode: RunMode, replacePending = false, goalId?: string): Promise<void> {
+  private async send(text: string, mode: RunMode, replacePending = false, goalId?: string, images: ImageAttachment[] = []): Promise<void> {
     const clean = text.trim();
     if (!clean) {
       return;
@@ -1862,7 +1867,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           if (event.type === "done") outcome = event.outcome;
           void this.forwardAgentEvent(event);
         },
-        { replacePendingUser: replacePending, ...(goalId ? { goalId } : {}) }
+        { replacePendingUser: replacePending, ...(goalId ? { goalId } : {}), ...(images.length ? { images } : {}) }
       );
       if (requestAccepted && outcome) void this.notifyRunCompletion(outcome);
     } catch (error) {
@@ -2691,6 +2696,11 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <input id="litellm-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="company-coding-model" />
           <datalist id="litellm-model-aliases"></datalist>
         </label>
+        <label class="field">
+          <span>Vision / OCR Model <small>optional</small></span>
+          <input id="vision-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="Use chat model for images" />
+          <small>Use an alias with Chat Completions image/OCR support for pasted images and browser screenshots.</small>
+        </label>
         <div class="model-compatibility hidden" id="model-compatibility" role="status" aria-live="polite" aria-atomic="true">
           <span class="model-compatibility-signal" aria-hidden="true"></span>
           <span class="model-compatibility-copy"><strong id="model-compatibility-title"></strong><small id="model-compatibility-detail"></small></span>
@@ -2892,6 +2902,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <span class="utility-links"><button class="memory-link" id="brief" type="button" aria-expanded="false" aria-controls="brief-panel">Brief</button><button class="memory-link" id="litellm" type="button" aria-expanded="false" aria-controls="litellm-settings">LiteLLM</button><button class="memory-link" id="memory" type="button" aria-expanded="false" aria-controls="memory-panel">Memory</button></span>
       </div>
       <div class="composer">
+        <div class="image-attachments hidden" id="image-attachments" aria-label="Attached images"></div>
         <textarea id="prompt" rows="3" aria-label="Message to the workspace agent" aria-describedby="composer-hint" placeholder="Ask about the code, request a change, or explore an idea…"></textarea>
         <div class="composer-actions">
           <details class="run-controls" id="run-controls">
@@ -3253,6 +3264,12 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .utility-links { display: flex; align-items: center; gap: 2px; }
 .composer { border: 1px solid color-mix(in srgb, var(--vscode-foreground) 22%, transparent); border-radius: 9px; background: var(--vscode-input-background); box-shadow: 0 10px 30px color-mix(in srgb, #000 18%, transparent); transition: border-color .15s, transform .15s; }
 .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 62%, transparent); transform: translateY(-1px); }
+.image-attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 7px 9px 0; }
+.image-attachment { display: inline-flex; align-items: center; gap: 5px; max-width: 170px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font-size: 9px; }
+.image-attachment img { width: 26px; height: 26px; object-fit: cover; border-radius: 3px; }
+.image-attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-attachment button { border: 0; padding: 0 2px; color: var(--muted); background: transparent; cursor: pointer; font-size: 14px; line-height: 1; }
+.image-attachment button:hover { color: var(--vscode-errorForeground); }
 textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; resize: none; overflow-y: auto; padding: 11px 12px 2px; color: var(--vscode-input-foreground); background: transparent; border: 0; outline: 0; }
 .composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; padding: 5px 7px 7px; }
 .run-controls { position: relative; margin-right: auto; }
@@ -3320,6 +3337,7 @@ const jumpLatest = document.getElementById('jump-latest');
 const topDrawers = document.getElementById('top-drawers');
 const welcomeMarkup = timeline.innerHTML;
 const prompt = document.getElementById('prompt');
+const imageAttachments = document.getElementById('image-attachments');
 const composerHint = document.getElementById('composer-hint');
 const send = document.getElementById('send');
 const goalButton = document.getElementById('goal');
@@ -3392,6 +3410,7 @@ const embeddingProviderNote = document.getElementById('embedding-provider-note')
 const liteLlmEndpoint = document.getElementById('litellm-endpoint');
 const liteLlmModelsEndpoint = document.getElementById('litellm-models-endpoint');
 const liteLlmModel = document.getElementById('litellm-model');
+const visionModel = document.getElementById('vision-model');
 const liteLlmModelAliases = document.getElementById('litellm-model-aliases');
 const modelCompatibility = document.getElementById('model-compatibility');
 const modelCompatibilityTitle = document.getElementById('model-compatibility-title');
@@ -3487,6 +3506,7 @@ let liveRunThreadId = '';
 let suppressLiveRunEvents = false;
 let currentThreadSummaries = [];
 let pendingRequestText = '';
+let imageAttachmentDrafts = [];
 let pendingRequestId = '';
 let replacePendingOnSubmit = false;
 let activePanelTrigger = null;
@@ -4661,10 +4681,43 @@ function renderContextState(context) {
   updatePromptTokenEstimate();
 }
 
+function renderImageAttachments() {
+  imageAttachments.classList.toggle('hidden', imageAttachmentDrafts.length === 0);
+  imageAttachments.innerHTML = imageAttachmentDrafts.map((image, index) => '<span class="image-attachment"><img src="data:' + image.mimeType + ';base64,' + image.data + '" alt="' + escapeHtml(image.name || 'Attached image') + '" /><span>' + escapeHtml(image.name || 'Image') + '</span><button type="button" data-remove-image="' + index + '" aria-label="Remove image">×</button></span>').join('');
+}
+
+function addImageAttachment(file) {
+  if (!file || !/^image\/(png|jpeg|webp|gif)$/.test(file.type) || imageAttachmentDrafts.length >= 4 || file.size > 6_000_000) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const match = String(reader.result || '').match(/^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/);
+    if (!match) return;
+    imageAttachmentDrafts.push({ mimeType: match[1], data: match[2], name: file.name || 'pasted-image' });
+    renderImageAttachments();
+    announce('Image attached. It will be sent to the selected vision model.');
+  };
+  reader.readAsDataURL(file);
+}
+
+imageAttachments.addEventListener('click', event => {
+  const button = event.target instanceof Element ? event.target.closest('[data-remove-image]') : null;
+  if (!button) return;
+  imageAttachmentDrafts.splice(Number(button.dataset.removeImage), 1);
+  renderImageAttachments();
+});
+prompt.addEventListener('paste', event => {
+  const items = [...(event.clipboardData?.items || [])];
+  const image = items.find(item => item.kind === 'file' && item.type.startsWith('image/'));
+  if (!image) return;
+  const file = image.getAsFile();
+  if (file) { event.preventDefault(); addImageAttachment(file); }
+});
+
 function submit() {
-  const text = prompt.value.trim();
-  if (!text || busy) return;
-  if (handleQuickCommand(text)) {
+  const typedText = prompt.value.trim();
+  if ((!typedText && imageAttachmentDrafts.length === 0) || busy) return;
+  const text = typedText || 'Analyze the attached image(s) and describe the relevant details.';
+  if (typedText && handleQuickCommand(typedText)) {
     prompt.value = '';
     resizePrompt();
     updatePromptTokenEstimate();
@@ -4684,13 +4737,16 @@ function submit() {
   suppressLiveRunEvents = false;
   replacePendingOnSubmit = false;
   vscode.postMessage({
-    type: goalModeEnabled ? 'createGoalAndRun' : 'send',
+    type: goalModeEnabled && imageAttachmentDrafts.length === 0 ? 'createGoalAndRun' : 'send',
     text,
     mode: autonomyMode.value,
     replacePending,
-    ...(goalModeEnabled ? { runtime: agentRuntime.value, finalReview: finalReviewMode.value } : {})
+    ...(goalModeEnabled && imageAttachmentDrafts.length === 0 ? { runtime: agentRuntime.value, finalReview: finalReviewMode.value } : {}),
+    ...(imageAttachmentDrafts.length ? { images: imageAttachmentDrafts } : {})
   });
   setGoalMode(false);
+  imageAttachmentDrafts = [];
+  renderImageAttachments();
   prompt.value = '';
   resizePrompt();
   updatePromptTokenEstimate();
@@ -4811,6 +4867,7 @@ function fillLiteLlmSettings(liteLlm) {
   liteLlmEndpoint.value = liteLlm.endpoint || '';
   liteLlmModelsEndpoint.value = liteLlm.modelsEndpoint || '';
   liteLlmModel.value = liteLlm.model || '';
+  visionModel.value = liteLlm.visionModel || '';
   const knownModels = [...new Set([...loadedModelCatalog, ...Object.keys(liteLlmModelProfiles)])].sort();
   const chatModels = knownModels.filter(model => !isEmbeddingModel(model));
   liteLlmModelAliases.innerHTML = chatModels
@@ -5096,7 +5153,8 @@ function liteLlmFormMessage(type) {
     temperature: liteLlmTemperature.value,
     topP: liteLlmTopP.value,
     semanticMemoryEnabled: semanticMemoryEnabled.checked,
-    embeddingModel: embeddingModel.value
+    embeddingModel: embeddingModel.value,
+    visionModel: visionModel.value
   };
 }
 
@@ -5445,6 +5503,7 @@ modelProvider.addEventListener('change', () => {
     endpoint: liteLlmEndpoint.value,
     modelsEndpoint: liteLlmModelsEndpoint.value,
     model: liteLlmModel.value,
+    visionModel: visionModel.value,
     embeddingModel: embeddingModel.value
   };
   activeProvider = modelProvider.value;
@@ -5456,6 +5515,7 @@ modelProvider.addEventListener('change', () => {
       : '');
   liteLlmModelsEndpoint.value = draft.modelsEndpoint || '';
   liteLlmModel.value = draft.model || '';
+  visionModel.value = draft.visionModel || '';
   liteLlmApiKey.value = '';
   hasStoredLiteLlmKey = Boolean(providerKeyStates[activeProvider]);
   fillEmbeddingModelOptions([], draft.embeddingModel || '');
@@ -5502,6 +5562,7 @@ liteLlmTopP.addEventListener('input', () => {
   liteLlmEndpoint,
   liteLlmModelsEndpoint,
   liteLlmModel,
+  visionModel,
   liteLlmApiKey,
   liteLlmAuthHeader,
   liteLlmModelPreset,

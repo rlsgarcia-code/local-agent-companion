@@ -6,6 +6,7 @@ const draftText = z.string().max(50_000);
 const shortText = z.string().max(512);
 const urlText = z.string().max(4_096);
 const secretText = z.string().max(16_384);
+const imageAttachment = z.object({ mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), data: z.string().max(8_000_000), name: z.string().max(128).optional() }).strict();
 const runMode = z.enum(["review", "execute", "plan"]);
 const runtime = z.enum(["standard", "deep"]);
 const finalReviewMode = z.enum(["off", "changes", "always"]);
@@ -34,13 +35,14 @@ const liteLlmFields = {
   temperature: z.string().max(64),
   topP: z.string().max(64),
   semanticMemoryEnabled: z.boolean(),
-  embeddingModel: shortText
+  embeddingModel: shortText,
+  visionModel: shortText.default("")
 } as const;
 
 export const incomingMessageSchema = z.discriminatedUnion("type", [
   noPayload("ready"),
   noPayload("environmentCheck"),
-  z.object({ type: z.literal("send"), text: messageText, mode: runMode, replacePending: z.boolean().optional() }).strict(),
+  z.object({ type: z.literal("send"), text: messageText, mode: runMode, replacePending: z.boolean().optional(), images: z.array(imageAttachment).max(4).optional() }).strict(),
   z.object({ type: z.literal("createGoal"), text: messageText, mode: runMode, runtime, finalReview: finalReviewMode }).strict(),
   z.object({ type: z.literal("createGoalAndRun"), text: messageText, mode: runMode, runtime, finalReview: finalReviewMode, replacePending: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("activateGoal"), id: identifier }).strict(),

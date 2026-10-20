@@ -8,6 +8,7 @@ import type { ResponseLanguage } from "./response-language";
 
 export type RunMode = "review" | "execute" | "plan";
 export type AgentRuntime = "standard" | "deep";
+export type ImageAttachment = { mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; data: string; name?: string };
 export type { ResponseLanguage };
 
 export type RunPreflightResult =
