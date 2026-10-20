@@ -3227,6 +3227,7 @@ textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; res
 .goal-panel-actions { margin-top: 8px; }.goal-panel-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
 .goal-editor { margin-top: 8px; }.goal-editor label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 10px; }.goal-editor textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: 11px var(--vscode-font-family); }.goal-editor-actions { display: flex; gap: 6px; margin-top: 5px; }.goal-editor-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
 .goal-workspace { margin: 0 18px 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }.goal-workspace .goal-panel-heading { color: var(--muted); font-size: 10px; }.goal-workspace .goal-panel-heading span { margin-left: auto; font-size: 9px; }.goal-list { display: grid; gap: 4px; margin-top: 6px; }.goal-list-empty { color: var(--muted); font-size: 10px; }.goal-list-item { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; gap: 6px; align-items: center; width: 100%; padding: 5px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }.goal-list-item:hover, .goal-list-item.active { border-color: var(--line); background: var(--vscode-list-hoverBackground); }.goal-list-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--vscode-disabledForeground); }.goal-list-dot.active { background: var(--accent); }.goal-list-dot.completed { background: #6ddc72; }.goal-list-dot.blocked, .goal-list-dot.paused { background: var(--vscode-editorWarning-foreground); }.goal-list-copy { min-width: 0; }.goal-list-title, .goal-list-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.goal-list-title { font-size: 10px; }.goal-list-meta { color: var(--muted); font-size: 9px; }.goal-list-action { color: var(--muted); font-size: 9px; }
+.evidence-filter-label { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 7px; color: var(--muted); font-size: 10px; }.evidence-filter-label select { border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); font-size: 10px; }
 .send:hover { transform: translateY(-1px); }
 .send:disabled { opacity: .35; cursor: default; transform: none; }
 .hint { padding: 5px 5px 0; color: var(--muted); text-align: center; font-size: 9px; }
@@ -3992,13 +3993,13 @@ function renderRunReview(summary) {
           '<button type="button" data-restore-change="' + escapeHtml(file.id) + '" aria-label="Restore ' + safePath + '"' + (file.restored ? ' disabled' : '') + '>' +
           (file.restored ? 'Restored' : 'Restore') + '</button></span>'
         : '';
-        return '<li class="run-review-row" data-change-item="' + escapeHtml(file.id || '') + '">' +
+        return '<li class="run-review-row" data-evidence-type="diff" data-change-item="' + escapeHtml(file.id || '') + '">' +
           '<span class="run-review-row-copy"><strong>' + escapeHtml(label) + '</strong> · ' + safePath + '</span>' + actions + '</li>';
       }).join('') + '</ul></section>'
     : '';
   const commands = summary.commands.length
     ? '<section class="run-review-section"><div class="section-label">COMMANDS & CHECKS</div><ul class="run-review-list">' +
-      summary.commands.map(command => '<li class="run-review-row' + (command.exitCode === 0 ? '' : ' failed') + '">' +
+      summary.commands.map(command => '<li class="run-review-row' + (command.exitCode === 0 ? '' : ' failed') + '" data-evidence-type="' + (command.verification ? 'test' : 'command') + '">' +
         '<span class="run-review-row-copy"><strong>' + (command.verification ? 'CHECK' : 'COMMAND') + '</strong> · ' +
         escapeHtml(command.title) + '</span><span>exit ' + command.exitCode + '</span>' +
         (command.output ? '<details class="run-review-output"><summary>Output</summary><pre>' + escapeHtml(command.output) + '</pre></details>' : '') +
@@ -4022,13 +4023,15 @@ function renderRunReview(summary) {
     ? summary.evidence.browser.filter(item => item.detail).map(item => String(item.action || 'visual check') + ': ' + item.detail)
     : [];
   const evidence = summary.evidence
-    ? '<section class="run-review-section"><div class="section-label">LOCAL EVIDENCE</div><ul class="run-review-list">' +
-      '<li class="run-review-row"><span class="run-review-row-copy"><strong>PROBLEMS</strong> · ' + summary.evidence.diagnostics.length + ' inspection' + (summary.evidence.diagnostics.length === 1 ? '' : 's') + '</span></li>' +
-      '<li class="run-review-row"><span class="run-review-row-copy"><strong>BROWSER</strong> · ' + summary.evidence.browser.length + ' check' + (summary.evidence.browser.length === 1 ? '' : 's') +
+    ? '<section class="run-review-section"><div class="section-label">LOCAL EVIDENCE</div><label class="evidence-filter-label">Filter <select data-evidence-filter aria-label="Filter evidence by type"><option value="all">All evidence</option><option value="test">Tests</option><option value="diagnostic">Diagnostics</option><option value="diff">Diffs</option><option value="visual">Visual/browser</option><option value="command">Commands</option><option value="mcp">MCP tools</option></select></label><ul class="run-review-list">' +
+      '<li class="run-review-row" data-evidence-type="diagnostic"><span class="run-review-row-copy"><strong>PROBLEMS</strong> · ' + summary.evidence.diagnostics.length + ' inspection' + (summary.evidence.diagnostics.length === 1 ? '' : 's') + '</span></li>' +
+      '<li class="run-review-row" data-evidence-type="visual"><span class="run-review-row-copy"><strong>BROWSER</strong> · ' + summary.evidence.browser.length + ' check' + (summary.evidence.browser.length === 1 ? '' : 's') +
       '<small>' + summary.evidence.browser.reduce((sum, item) => sum + item.pageErrors + item.consoleErrors, 0) + ' page/console errors observed · ' +
       summary.evidence.browser.filter(item => item.analyzed).length + ' visual analyses</small></span></li>' +
-      '<li class="run-review-row"><span class="run-review-row-copy"><strong>LOCAL PROCESSES</strong> · ' + summary.evidence.processes.length + ' observed action' + (summary.evidence.processes.length === 1 ? '' : 's') + '</span></li>' +
-      '<li class="run-review-row"><span class="run-review-row-copy"><strong>PROJECT MAP</strong> · ' + (summary.evidence.projectIndexInspected ? 'inspected' : 'not used') +
+      '<li class="run-review-row" data-evidence-type="command"><span class="run-review-row-copy"><strong>LOCAL PROCESSES</strong> · ' + summary.evidence.processes.length + ' observed action' + (summary.evidence.processes.length === 1 ? '' : 's') + '</span></li>' +
+      '<li class="run-review-row" data-evidence-type="mcp"><span class="run-review-row-copy"><strong>MCP TOOLS</strong> · ' + ((summary.evidence.mcp || []).length ? (summary.evidence.mcp || []).map(item => escapeHtml(item.tool)).join(', ') : 'none invoked') + '</span></li>' +
+      '<li class="run-review-row" data-evidence-type="diff"><span class="run-review-row-copy"><strong>DIFFS</strong> · ' + ((summary.evidence.diffs || []).length || summary.files.length) + ' tracked file change' + (((summary.evidence.diffs || []).length || summary.files.length) === 1 ? '' : 's') + '</span></li>' +
+      '<li class="run-review-row" data-evidence-type="command"><span class="run-review-row-copy"><strong>PROJECT MAP</strong> · ' + (summary.evidence.projectIndexInspected ? 'inspected' : 'not used') +
       '<small>' + summary.evidence.playbooksRead.length + ' playbook' + (summary.evidence.playbooksRead.length === 1 ? '' : 's') + ' used</small></span></li>' +
       '</ul>' + evidenceList('Visual observations', browserObservations) + '</section>'
     : '';
@@ -4531,6 +4534,12 @@ function renderContextState(context) {
 function submit() {
   const text = prompt.value.trim();
   if (!text || busy) return;
+  if (handleQuickCommand(text)) {
+    prompt.value = '';
+    resizePrompt();
+    updatePromptTokenEstimate();
+    return;
+  }
   const replacePending = replacePendingOnSubmit;
   setBusy(true);
   status.textContent = 'Checking local readiness';
@@ -4549,6 +4558,36 @@ function submit() {
   resizePrompt();
   updatePromptTokenEstimate();
   persistDraftNow();
+}
+
+function handleQuickCommand(text) {
+  const command = text.trim().toLowerCase();
+  if (!['/status', '/resume', '/pause', '/evidence'].includes(command)) return false;
+  if (command === '/status') {
+    const goal = activeGoalRecord;
+    const message = goal
+      ? 'Goal ' + goal.status + ' · iteration ' + Number(goal.iteration || 0) + ' · ' + (goal.criteria || []).filter(item => item.status === 'verified').length + '/' + (goal.criteria || []).length + ' criteria verified'
+      : 'No persistent goal is selected for this thread.';
+    status.textContent = message;
+    announce(message);
+    goalPanel.classList.toggle('hidden', !goal);
+    return true;
+  }
+  if (command === '/resume' || command === '/pause') {
+    if (!activeGoalId) { status.textContent = 'No goal is selected for this thread.'; announce(status.textContent); return true; }
+    vscode.postMessage({ type: command === '/resume' ? 'resumeGoal' : 'pauseGoal', id: activeGoalId });
+    return true;
+  }
+  if (command === '/evidence') {
+    if (activeRunReviewId && runReviews.has(activeRunReviewId)) {
+      openRunReview(activeRunReviewId, null);
+    } else {
+      status.textContent = 'No run evidence is available yet.';
+      announce(status.textContent);
+    }
+    return true;
+  }
+  return false;
 }
 
 function setAsGoal() {
@@ -5138,6 +5177,13 @@ runReviewPanel.addEventListener('click', event => {
     return;
   }
   if (target?.closest('[data-open-changes]')) vscode.postMessage({ type: 'openChanges' });
+});
+runReviewPanel.addEventListener('change', event => {
+  const target = event.target instanceof HTMLSelectElement ? event.target : null;
+  if (!target?.matches('[data-evidence-filter]')) return;
+  runReviewPanel.querySelectorAll('[data-evidence-type]').forEach(row => {
+    row.classList.toggle('hidden', target.value !== 'all' && row.getAttribute('data-evidence-type') !== target.value);
+  });
 });
 newThreadButton.addEventListener('click', () => {
   if (newThreadButton.disabled) return;

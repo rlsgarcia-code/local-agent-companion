@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.4
+
+- Added evidence-type filtering in Review run and grouped diff, test, command, diagnostic, browser, and MCP evidence for faster verification.
+- Added quick commands `/status`, `/resume`, `/pause`, and `/evidence` in the composer.
+
 ## 0.11.3
 
 - Added a workspace-wide Goals center in the sidebar with status, criteria progress, iteration count, and one-click navigation to each goal thread.

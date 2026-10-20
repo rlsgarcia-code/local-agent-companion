@@ -2,7 +2,7 @@
   "name": "local-agent-companion",
   "displayName": "Local Agent Companion",
   "description": "A local LangChain agent foundation for VS Code with user-configured LiteLLM and approval-gated corporate MCP connections.",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/rlsgarcia-code/local-agent-companion#readme",
