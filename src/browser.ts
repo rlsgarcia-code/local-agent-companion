@@ -20,6 +20,7 @@ export type LocalBrowserSessionOptions = {
   channel: LocalBrowserChannel;
   executablePath?: string;
   openPreview: boolean;
+  liveMode: boolean;
   onEvent: (event: AgentUiEvent) => void;
   sanitizeText?: (value: string) => string;
 };
@@ -102,7 +103,7 @@ export class LocalBrowserSession implements vscode.Disposable {
     this.resetEvidence();
     await abortable(page.goto(normalizedUrl, { waitUntil: "domcontentloaded", timeout: 20_000 }), signal);
     if (this.options.openPreview) {
-      await vscode.env.openExternal(vscode.Uri.parse(normalizedUrl));
+        await vscode.env.openExternal(vscode.Uri.parse(normalizedUrl));
     }
     this.onEvent({ type: "activity", kind: "browser", title: `Opened ${displayLocalUrl(normalizedUrl)}` });
     return this.snapshot(signal);
@@ -302,7 +303,7 @@ export class LocalBrowserSession implements vscode.Disposable {
       signal.throwIfAborted();
       try {
         const browser = await abortable(chromium.launch({
-          headless: true,
+          headless: !this.options.liveMode,
           chromiumSandbox: true,
           ...attempt.options
         }), signal);

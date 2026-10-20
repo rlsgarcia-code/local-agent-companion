@@ -1339,6 +1339,13 @@ export class DevelopmentAgent implements vscode.Disposable {
     await browserSession?.close();
   }
 
+  public async setLocalBrowserLiveMode(_enabled: boolean): Promise<void> {
+    const browserSession = this.browserSession;
+    this.browserSession = undefined;
+    this.browserSessionKey = undefined;
+    await browserSession?.close();
+  }
+
   public dispose(): void {
     this.cancel();
     this.stopRunHeartbeat();
@@ -1635,7 +1642,8 @@ ${goalGuidance}`;
     const channel = parseLocalBrowserChannel(configuration.get("localBrowserChannel"));
     const executablePath = configuration.get<string>("localBrowserExecutablePath", "").trim();
     const openPreview = configuration.get<boolean>("localBrowserOpenPreview", true);
-    const sessionKey = JSON.stringify({ workspaceRoot, channel, executablePath, openPreview });
+    const liveMode = configuration.get<boolean>("localBrowserLiveMode", false);
+    const sessionKey = JSON.stringify({ workspaceRoot, channel, executablePath, openPreview, liveMode });
     if (this.browserSession && this.browserSessionKey === sessionKey) {
       this.browserSession.setEventSink(onEvent);
       this.browserSession.setSanitizer((value) => redactSensitiveText(value, sensitiveValues));
@@ -1647,7 +1655,8 @@ ${goalGuidance}`;
       storageRoot: path.join(this.extensionContext.globalStorageUri.fsPath, "browser", workspaceHash),
       channel,
       ...(executablePath ? { executablePath } : {}),
-      openPreview,
+      openPreview: liveMode ? false : openPreview,
+      liveMode,
       onEvent,
       sanitizeText: (value) => redactSensitiveText(value, sensitiveValues)
     });

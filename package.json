@@ -368,6 +368,12 @@
           "default": true,
           "scope": "resource",
           "description": "Ask VS Code to open the same localhost URL for the user when the agent starts an isolated validation session. VS Code 1.109+ opens localhost links in the integrated browser by default."
+        },
+        "localAgentCompanion.localBrowserLiveMode": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Launch the approval-gated local browser visibly so the user can watch and interact with the same Playwright session used by the agent."
         }
       }
     }

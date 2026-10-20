@@ -94,6 +94,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("selectFinalReview"), mode: finalReviewMode }).strict(),
   z.object({ type: z.literal("selectResponseLanguage"), language: responseLanguage }).strict(),
   z.object({ type: z.literal("setLocalBrowserToolsEnabled"), enabled: z.boolean() }).strict(),
+  z.object({ type: z.literal("setLocalBrowserLiveMode"), enabled: z.boolean() }).strict(),
   z.object({ type: z.literal("testLiteLlm"), ...liteLlmFields }).strict(),
   z.object({ type: z.literal("saveLiteLlm"), ...liteLlmFields }).strict()
 ]);

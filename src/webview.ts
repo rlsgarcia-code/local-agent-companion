@@ -178,6 +178,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (event.affectsConfiguration("localAgentCompanion.localBrowserToolsEnabled")) {
           this.postBrowserControlState();
         }
+        if (event.affectsConfiguration("localAgentCompanion.localBrowserLiveMode")) {
+          this.postBrowserControlState();
+        }
         if (event.affectsConfiguration("localAgentCompanion.finalReviewMode")) {
           this.post({
             type: "finalReviewChanged",
@@ -378,6 +381,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           context,
           liteLlm,
           browserControlEnabled: this.localBrowserToolsEnabled(),
+          browserLiveMode: this.localBrowserLiveMode(),
           mcpConnections: mcpConnectionState(mcpConnections)
         });
         if (this.connectionSettingsRequested) await this.postConnectionSettings();
@@ -571,6 +575,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         break;
       case "setLocalBrowserToolsEnabled":
         await this.setLocalBrowserToolsEnabled(message.enabled);
+        break;
+      case "setLocalBrowserLiveMode":
+        await this.setLocalBrowserLiveMode(message.enabled);
         break;
       case "testLiteLlm":
         await this.testLiteLlmSettings(message);
@@ -1643,6 +1650,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       this.post({
         type: "browserControlChanged",
         enabled,
+        liveMode: this.localBrowserLiveMode(),
         message: enabled
           ? "Local browser control enabled for this workspace"
           : "Local browser control disabled and its session closed"
@@ -1662,10 +1670,40 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       .get<boolean>("localBrowserToolsEnabled", false);
   }
 
+  private localBrowserLiveMode(): boolean {
+    return vscode.workspace
+      .getConfiguration("localAgentCompanion")
+      .get<boolean>("localBrowserLiveMode", false);
+  }
+
+  private async setLocalBrowserLiveMode(enabled: boolean): Promise<void> {
+    try {
+      await this.assertProviderConfigurationEditable();
+      const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+      await configuration.update("localBrowserLiveMode", enabled, vscode.ConfigurationTarget.Workspace);
+      await this.agent.setLocalBrowserLiveMode(enabled);
+      this.post({
+        type: "browserControlChanged",
+        enabled: this.localBrowserToolsEnabled(),
+        liveMode: enabled,
+        message: enabled
+          ? "Live browser enabled · the next local browser run opens visibly"
+          : "Live browser disabled · local validation returns to headless mode"
+      });
+    } catch (error) {
+      this.post({
+        type: "browserControlError",
+        enabled: this.localBrowserToolsEnabled(),
+        liveMode: this.localBrowserLiveMode(),
+        message: await this.safeError(error)
+      });
+    }
+  }
+
   private postBrowserControlState(): void {
     const enabled = this.localBrowserToolsEnabled();
     if (!enabled) void this.agent.setLocalBrowserToolsEnabled(false);
-    this.post({ type: "browserControlChanged", enabled });
+    this.post({ type: "browserControlChanged", enabled, liveMode: this.localBrowserLiveMode() });
   }
 
   private async saveLiteLlmSettings(message: Extract<IncomingMessage, { type: "saveLiteLlm" }>): Promise<void> {
@@ -2541,6 +2579,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <button class="icon-button browser-control" id="browser-control" type="button" title="Browser control off — click to enable access to localhost apps" aria-label="Enable local browser control" aria-pressed="false">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2"></rect><path d="M3 7.25h14"></path><circle cx="5.25" cy="5.55" r=".65"></circle><circle cx="7.35" cy="5.55" r=".65"></circle></svg>
         </button>
+        <button class="icon-button browser-live-control" id="browser-live-control" type="button" title="Live browser off" aria-label="Enable live browser" aria-pressed="false">◉</button>
         <button class="icon-button" id="threads-toggle" title="Local threads" aria-label="Local threads" aria-expanded="false" aria-controls="thread-panel">☷</button>
         <button class="icon-button" id="new-thread" title="New thread" aria-label="New thread">＋</button>
       </div>
@@ -2981,6 +3020,8 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .mcp-control[aria-pressed="true"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--vscode-sideBar-background); }
 .mcp-control.attention::after { background: var(--vscode-editorWarning-foreground); }
 .browser-control[aria-pressed="true"] { color: var(--accent); opacity: 1; background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.browser-live-control[aria-pressed="true"] { color: var(--accent); opacity: 1; background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.browser-live-control { font-size: 13px; }
 .browser-control[aria-pressed="true"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--vscode-sideBar-background); }
 .browser-control.pending { opacity: .45; }
 .activity-dock { min-height: 43px; border-top: 1px solid var(--line); background: var(--vscode-sideBar-background); position: relative; }
@@ -3456,6 +3497,7 @@ const embeddingModelAliases = document.getElementById('embedding-model-aliases')
 const newThreadButton = document.getElementById('new-thread');
 const mcpConnections = document.getElementById('mcp-connections');
 const browserControl = document.getElementById('browser-control');
+const browserLiveControl = document.getElementById('browser-live-control');
 const agentRuntime = document.getElementById('runtime');
 const autonomyMode = document.getElementById('mode');
 const finalReviewMode = document.getElementById('final-review-mode');
@@ -3485,6 +3527,7 @@ let providerKeyStates = { litellm: false, ollama: false, openai: false };
 const providerDrafts = {};
 let browserControlEnabled = false;
 let browserControlPending = false;
+let browserLiveMode = false;
 let mcpConnectionCount = 0;
 let mcpConnectionsPending = false;
 let currentContextState = { activeFile: '', autoContext: true, pinned: [] };
@@ -4258,6 +4301,21 @@ function setBrowserControl(enabled, pending = false) {
     : 'Browser control off — click to enable access to localhost apps';
   browserControl.classList.toggle('pending', browserControlPending);
   browserControl.disabled = busy || remoteRunActive || browserControlPending;
+  browserLiveControl.disabled = busy || remoteRunActive || browserControlPending;
+  browserLiveControl.setAttribute('aria-pressed', String(browserLiveMode));
+  browserLiveControl.setAttribute('aria-label', browserLiveMode ? 'Disable live browser' : 'Enable live browser');
+  browserLiveControl.title = browserLiveMode
+    ? 'Live browser on — next local validation is visible and interactive'
+    : 'Live browser off — click to watch the agent in a visible browser window';
+}
+
+function setBrowserLiveMode(enabled) {
+  browserLiveMode = Boolean(enabled);
+  browserLiveControl.setAttribute('aria-pressed', String(browserLiveMode));
+  browserLiveControl.setAttribute('aria-label', browserLiveMode ? 'Disable live browser' : 'Enable live browser');
+  browserLiveControl.title = browserLiveMode
+    ? 'Live browser on — next local validation is visible and interactive'
+    : 'Live browser off — click to watch the agent in a visible browser window';
 }
 
 function setMcpConnectionState(state = {}, pending = false) {
@@ -5403,6 +5461,11 @@ browserControl.addEventListener('click', () => {
   setBrowserControl(browserControlEnabled, true);
   vscode.postMessage({ type: 'setLocalBrowserToolsEnabled', enabled: !browserControlEnabled });
 });
+browserLiveControl.addEventListener('click', () => {
+  if (browserLiveControl.disabled) return;
+  setBrowserLiveMode(!browserLiveMode);
+  vscode.postMessage({ type: 'setLocalBrowserLiveMode', enabled: browserLiveMode });
+});
 mcpConnections.addEventListener('click', () => {
   if (mcpConnections.disabled) return;
   setMcpConnectionState({ count: mcpConnectionCount, enabled: mcpConnections.getAttribute('aria-pressed') === 'true' ? 1 : 0 }, true);
@@ -5648,6 +5711,7 @@ window.addEventListener('message', ({ data }) => {
     case 'hydrate':
       document.getElementById('workspace').textContent = data.workspace;
       responseLanguage.value = data.responseLanguage === 'en' ? 'en' : 'pt-BR';
+      setBrowserLiveMode(Boolean(data.browserLiveMode));
       setBrowserControl(Boolean(data.browserControlEnabled));
       setMcpConnectionState(data.mcpConnections || {});
       fillLiteLlmSettings(data.liteLlm || {});
@@ -5808,6 +5872,7 @@ window.addEventListener('message', ({ data }) => {
       timeline.appendChild(runtimeError);
       break;
     case 'browserControlChanged':
+      setBrowserLiveMode(Boolean(data.liveMode));
       setBrowserControl(Boolean(data.enabled));
       if (data.message) {
         status.textContent = data.message;
@@ -5815,6 +5880,7 @@ window.addEventListener('message', ({ data }) => {
       }
       break;
     case 'browserControlError':
+      setBrowserLiveMode(Boolean(data.liveMode));
       setBrowserControl(Boolean(data.enabled));
       status.textContent = 'Could not change browser control';
       appendRecovery(data.message || 'The browser-control setting could not be changed.', true, false);
