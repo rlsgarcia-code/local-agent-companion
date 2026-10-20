@@ -62,6 +62,7 @@ export class LocalBrowserSession implements vscode.Disposable {
   private readonly pageErrors: string[] = [];
   private readonly blockedRequests = new Set<string>();
   private readonly registeredAbortSignals = new WeakSet<AbortSignal>();
+  private manualControl = false;
   private readonly artifactDirectory: string;
   private onEvent: (event: AgentUiEvent) => void;
   private sanitizeText: (value: string) => string;
@@ -179,6 +180,7 @@ export class LocalBrowserSession implements vscode.Disposable {
 
   public async interact(input: BrowserInteraction, signal: AbortSignal): Promise<BrowserSnapshot> {
     this.bindCancellation(signal);
+    await this.waitForAgentControl(signal);
     const page = this.requirePage();
     signal.throwIfAborted();
     switch (input.action) {
@@ -214,6 +216,15 @@ export class LocalBrowserSession implements vscode.Disposable {
     await page.waitForTimeout(250);
     this.onEvent({ type: "activity", kind: "browser", title: browserInteractionTitle(input) });
     return this.snapshot(signal);
+  }
+
+  public setManualControl(enabled: boolean): void {
+    this.manualControl = enabled;
+    this.onEvent({
+      type: "activity",
+      kind: "browser",
+      title: enabled ? "Browser control handed to user" : "Browser control returned to agent"
+    });
   }
 
   public async screenshot(signal: AbortSignal): Promise<{ bytes: Buffer; mimeType: "image/jpeg" }> {
@@ -336,6 +347,20 @@ export class LocalBrowserSession implements vscode.Disposable {
   private requirePage(): Page {
     if (!this.page || this.page.isClosed()) throw new Error("Open a localhost page with browser_open before using this tool.");
     return this.page;
+  }
+
+  private async waitForAgentControl(signal: AbortSignal): Promise<void> {
+    while (this.manualControl) {
+      signal.throwIfAborted();
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 250);
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(signal.reason instanceof Error ? signal.reason : new Error("Browser action was cancelled."));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+    }
   }
 
   private resetEvidence(): void {

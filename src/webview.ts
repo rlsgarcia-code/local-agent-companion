@@ -579,6 +579,10 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "setLocalBrowserLiveMode":
         await this.setLocalBrowserLiveMode(message.enabled);
         break;
+      case "setLocalBrowserManualControl":
+        this.agent.setLocalBrowserManualControl(message.enabled);
+        this.post({ type: "browserManualControlChanged", enabled: message.enabled });
+        break;
       case "testLiteLlm":
         await this.testLiteLlmSettings(message);
         break;
@@ -2894,6 +2898,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <span class="activity-chevron" aria-hidden="true">⌃</span>
       </button>
       <button class="activity-cancel hidden" id="activity-cancel" type="button">Cancel run</button>
+      <button class="browser-take-control hidden" id="browser-take-control" type="button" aria-pressed="false">Take control</button>
       <div class="plan" id="plan-panel" role="region" aria-labelledby="plan-title" aria-hidden="true">
         <div class="plan-heading">
           <div class="section-label" id="plan-title">RUN PROGRESS</div>
@@ -3042,6 +3047,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .plan { max-height: 0; overflow: hidden; padding: 0 18px; opacity: 0; background: color-mix(in srgb, var(--vscode-sideBar-background) 90%, var(--accent)); transition: max-height .2s ease, padding .2s ease, opacity .14s ease; }
 .activity-dock.expanded .plan { max-height: min(38vh, 360px); overflow-y: auto; padding: 11px 18px 12px; opacity: 1; border-top: 1px solid var(--line); }
 .activity-cancel { position: absolute; right: 34px; top: 8px; z-index: 2; border: 1px solid var(--vscode-editorWarning-foreground); border-radius: 4px; padding: 3px 7px; color: var(--vscode-editorWarning-foreground); background: transparent; cursor: pointer; font-size: 10px; }.activity-cancel:hover { background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 12%, transparent); }.activity-cancel:disabled { opacity: .55; cursor: progress; }
+.browser-take-control { position: absolute; right: 112px; top: 8px; z-index: 2; border: 1px solid var(--vscode-textLink-foreground); border-radius: 4px; padding: 3px 7px; color: var(--vscode-textLink-foreground); background: transparent; cursor: pointer; font-size: 10px; }.browser-take-control:hover { background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent); }
 .plan-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .plan-heading > span { overflow: hidden; color: var(--muted); font: 9px var(--vscode-editor-font-family); text-overflow: ellipsis; white-space: nowrap; }
 .plan ol { list-style: none; margin: 9px 0 0; padding: 0; display: grid; gap: 7px; }
@@ -3410,6 +3416,7 @@ const activityDock = document.getElementById('activity-dock');
 const activityToggle = document.getElementById('activity-toggle');
 const activityMeta = document.getElementById('activity-meta');
 const activityCancel = document.getElementById('activity-cancel');
+const browserTakeControl = document.getElementById('browser-take-control');
 const planItems = document.getElementById('plan-items');
 const planSummary = document.getElementById('plan-summary');
 const planLatest = document.getElementById('plan-latest');
@@ -3528,6 +3535,7 @@ const providerDrafts = {};
 let browserControlEnabled = false;
 let browserControlPending = false;
 let browserLiveMode = false;
+let browserManualControl = false;
 let mcpConnectionCount = 0;
 let mcpConnectionsPending = false;
 let currentContextState = { activeFile: '', autoContext: true, pinned: [] };
@@ -4302,6 +4310,10 @@ function setBrowserControl(enabled, pending = false) {
   browserControl.classList.toggle('pending', browserControlPending);
   browserControl.disabled = busy || remoteRunActive || browserControlPending;
   browserLiveControl.disabled = busy || remoteRunActive || browserControlPending;
+  browserTakeControl.classList.toggle('hidden', !browserLiveMode || !busy);
+  browserTakeControl.setAttribute('aria-pressed', String(browserManualControl));
+  browserTakeControl.textContent = browserManualControl ? 'Return control' : 'Take control';
+  browserTakeControl.disabled = !browserLiveMode || !busy || browserControlPending;
   browserLiveControl.setAttribute('aria-pressed', String(browserLiveMode));
   browserLiveControl.setAttribute('aria-label', browserLiveMode ? 'Disable live browser' : 'Enable live browser');
   browserLiveControl.title = browserLiveMode
@@ -4316,6 +4328,13 @@ function setBrowserLiveMode(enabled) {
   browserLiveControl.title = browserLiveMode
     ? 'Live browser on — next local validation is visible and interactive'
     : 'Live browser off — click to watch the agent in a visible browser window';
+}
+
+function setBrowserManualControl(enabled) {
+  browserManualControl = Boolean(enabled);
+  browserTakeControl.classList.toggle('hidden', !browserLiveMode || !busy);
+  browserTakeControl.setAttribute('aria-pressed', String(browserManualControl));
+  browserTakeControl.textContent = browserManualControl ? 'Return control' : 'Take control';
 }
 
 function setMcpConnectionState(state = {}, pending = false) {
@@ -5341,6 +5360,12 @@ cancel.addEventListener('click', () => {
   vscode.postMessage({ type: 'cancel' });
 });
 activityCancel.addEventListener('click', () => cancel.click());
+browserTakeControl.addEventListener('click', () => {
+  if (!browserLiveMode || !busy) return;
+  setBrowserManualControl(!browserManualControl);
+  vscode.postMessage({ type: 'setLocalBrowserManualControl', enabled: browserManualControl });
+  announce(browserManualControl ? 'Browser control handed to you.' : 'Browser control returned to the agent.');
+});
 timeline.addEventListener('click', event => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest('[data-show-earlier]')) {
@@ -5712,6 +5737,7 @@ window.addEventListener('message', ({ data }) => {
       document.getElementById('workspace').textContent = data.workspace;
       responseLanguage.value = data.responseLanguage === 'en' ? 'en' : 'pt-BR';
       setBrowserLiveMode(Boolean(data.browserLiveMode));
+      setBrowserManualControl(false);
       setBrowserControl(Boolean(data.browserControlEnabled));
       setMcpConnectionState(data.mcpConnections || {});
       fillLiteLlmSettings(data.liteLlm || {});
@@ -5885,6 +5911,9 @@ window.addEventListener('message', ({ data }) => {
       status.textContent = 'Could not change browser control';
       appendRecovery(data.message || 'The browser-control setting could not be changed.', true, false);
       announce(status.textContent + '. ' + (data.message || ''));
+      break;
+    case 'browserManualControlChanged':
+      setBrowserManualControl(Boolean(data.enabled));
       break;
     case 'autonomyChanged':
       setAutonomyMode(data.mode || 'review');

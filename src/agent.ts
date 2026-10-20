@@ -1346,6 +1346,10 @@ export class DevelopmentAgent implements vscode.Disposable {
     await browserSession?.close();
   }
 
+  public setLocalBrowserManualControl(enabled: boolean): void {
+    this.browserSession?.setManualControl(enabled);
+  }
+
   public dispose(): void {
     this.cancel();
     this.stopRunHeartbeat();
