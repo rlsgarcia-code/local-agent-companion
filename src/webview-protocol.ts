@@ -65,6 +65,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("editMemoryEntry"), id: identifier }).strict(),
   z.object({ type: z.literal("deleteMemoryEntry"), id: identifier }).strict(),
   noPayload("openChanges"),
+  noPayload("openProblems"),
   z.object({ type: z.literal("openChangeDiff"), id: identifier }).strict(),
   z.object({ type: z.literal("restoreChange"), id: identifier }).strict(),
   z.object({

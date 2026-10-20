@@ -498,6 +498,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "openChanges":
         await vscode.commands.executeCommand("workbench.view.scm");
         break;
+      case "openProblems":
+        await vscode.commands.executeCommand("workbench.actions.view.problems");
+        break;
       case "openChangeDiff":
         await this.openChangeDiff(message.id);
         break;
@@ -4036,7 +4039,7 @@ function renderRunReview(summary) {
     : [];
   const evidence = summary.evidence
     ? '<section class="run-review-section"><div class="section-label">LOCAL EVIDENCE</div><label class="evidence-filter-label">Filter <select data-evidence-filter aria-label="Filter evidence by type"><option value="all">All evidence</option><option value="test">Tests</option><option value="diagnostic">Diagnostics</option><option value="diff">Diffs</option><option value="visual">Visual/browser</option><option value="command">Commands</option><option value="mcp">MCP tools</option></select></label><ul class="run-review-list">' +
-      '<li class="run-review-row" data-evidence-type="diagnostic"><span class="run-review-row-copy"><strong>PROBLEMS</strong> · ' + summary.evidence.diagnostics.length + ' inspection' + (summary.evidence.diagnostics.length === 1 ? '' : 's') + '</span></li>' +
+      '<li class="run-review-row" data-evidence-type="diagnostic"><span class="run-review-row-copy"><strong>PROBLEMS</strong> · ' + summary.evidence.diagnostics.length + ' inspection' + (summary.evidence.diagnostics.length === 1 ? '' : 's') + '</span><button type="button" data-open-problems>Open diagnostics</button></li>' +
       '<li class="run-review-row" data-evidence-type="visual"><span class="run-review-row-copy"><strong>BROWSER</strong> · ' + summary.evidence.browser.length + ' check' + (summary.evidence.browser.length === 1 ? '' : 's') +
       '<small>' + summary.evidence.browser.reduce((sum, item) => sum + item.pageErrors + item.consoleErrors, 0) + ' page/console errors observed · ' +
       summary.evidence.browser.filter(item => item.analyzed).length + ' visual analyses</small></span></li>' +
@@ -5195,6 +5198,7 @@ runReviewPanel.addEventListener('click', event => {
     return;
   }
   if (target?.closest('[data-open-changes]')) vscode.postMessage({ type: 'openChanges' });
+  if (target?.closest('[data-open-problems]')) vscode.postMessage({ type: 'openProblems' });
 });
 runReviewPanel.addEventListener('change', event => {
   const target = event.target instanceof HTMLSelectElement ? event.target : null;

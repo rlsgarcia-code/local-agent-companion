@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.6
+
+- Added a direct **Open diagnostics** action to Review run so Problems evidence opens in VS Code without manual navigation.
+
 ## 0.11.5
 
 - Added `/env` quick command for a read-only local environment check with actionable preflight feedback.
