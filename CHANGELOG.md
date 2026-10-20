@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.9
+
+- Added accessible live plan status and approval counts, with approvals visually grouped in the activity timeline.
+
 ## 0.11.8
 
 - Added **Open in terminal** for verification commands; commands are inserted without execution so the user retains the final approval.

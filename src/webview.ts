@@ -2816,7 +2816,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       <div class="plan" id="plan-panel" role="region" aria-labelledby="plan-title" aria-hidden="true">
         <div class="plan-heading">
           <div class="section-label" id="plan-title">RUN PROGRESS</div>
-          <span id="plan-summary">Waiting for plan updates</span>
+          <span id="plan-summary" aria-live="polite">Waiting for plan updates</span>
         </div>
         <ol id="plan-items"></ol>
         <div class="plan-latest hidden" id="plan-latest">
@@ -2960,6 +2960,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .plan-latest ol { gap: 0; margin-top: 5px; }
 .plan-latest li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 62%, transparent); font: 9px/1.4 var(--vscode-editor-font-family); }
 .plan-latest li::before { display: none; }
+.plan-latest li.approval { border-left: 2px solid var(--vscode-editorWarning-foreground); padding-left: 7px; }.plan-latest li.approval strong { color: var(--vscode-editorWarning-foreground); }
 .plan-latest strong { color: var(--vscode-foreground); font: 650 8px/1.55 var(--vscode-font-family); letter-spacing: .07em; }
 .plan-latest span { min-width: 0; overflow-wrap: anywhere; }
 .top-drawers { min-height: 0; }
@@ -3801,12 +3802,13 @@ function renderActivityOverview() {
   const stats = [
     total ? completed + '/' + total + ' complete' : '',
     currentRunSummary.files.size ? currentRunSummary.files.size + ' file' + (currentRunSummary.files.size === 1 ? '' : 's') : '',
-    currentRunSummary.commands.length ? currentRunSummary.commands.length + ' command' + (currentRunSummary.commands.length === 1 ? '' : 's') : ''
+    currentRunSummary.commands.length ? currentRunSummary.commands.length + ' command' + (currentRunSummary.commands.length === 1 ? '' : 's') : '',
+    events.filter(event => event.kind === 'APPROVAL').length ? events.filter(event => event.kind === 'APPROVAL').length + ' approval' + (events.filter(event => event.kind === 'APPROVAL').length === 1 ? '' : 's') + ' shown' : ''
   ].filter(Boolean);
   planSummary.textContent = stats.length ? stats.join(' · ') : 'Waiting for plan updates';
   planLatest.classList.toggle('hidden', !events.length);
   planActivityItems.innerHTML = events.map(event =>
-    '<li><strong>' + escapeHtml(event.kind) + '</strong><span>' + escapeHtml(event.title) + '</span></li>'
+    '<li class="' + (event.kind === 'APPROVAL' ? 'approval' : '') + '"><strong>' + escapeHtml(event.kind) + '</strong><span>' + escapeHtml(event.title) + '</span></li>'
   ).join('');
   const canExpand = total > 0 || events.length > 0;
   activityDock.classList.toggle('has-plan', canExpand);
