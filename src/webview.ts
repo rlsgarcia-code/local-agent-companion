@@ -2753,6 +2753,10 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <p class="goal-next" id="goal-next"></p>
         <div class="goal-panel-actions"><button type="button" id="goal-pause">Pause</button><button type="button" id="goal-cancel">Cancel</button></div>
       </section>
+      <section class="goal-workspace" id="goal-workspace" aria-labelledby="goal-workspace-title">
+        <div class="goal-panel-heading"><strong id="goal-workspace-title">Goals do workspace</strong><span id="goal-workspace-count"></span></div>
+        <div class="goal-list" id="goal-list"></div>
+      </section>
       <section class="timeline" id="timeline" aria-label="Conversation">
         <div class="welcome" id="welcome">
           <div class="monogram">C</div>
@@ -3222,6 +3226,7 @@ textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; res
 .goal-criterion-dot.verified { background: #6ddc72; }.goal-criterion-dot.failed { background: var(--vscode-errorForeground); }
 .goal-panel-actions { margin-top: 8px; }.goal-panel-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
 .goal-editor { margin-top: 8px; }.goal-editor label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 10px; }.goal-editor textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: 11px var(--vscode-font-family); }.goal-editor-actions { display: flex; gap: 6px; margin-top: 5px; }.goal-editor-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
+.goal-workspace { margin: 0 18px 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }.goal-workspace .goal-panel-heading { color: var(--muted); font-size: 10px; }.goal-workspace .goal-panel-heading span { margin-left: auto; font-size: 9px; }.goal-list { display: grid; gap: 4px; margin-top: 6px; }.goal-list-empty { color: var(--muted); font-size: 10px; }.goal-list-item { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; gap: 6px; align-items: center; width: 100%; padding: 5px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }.goal-list-item:hover, .goal-list-item.active { border-color: var(--line); background: var(--vscode-list-hoverBackground); }.goal-list-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--vscode-disabledForeground); }.goal-list-dot.active { background: var(--accent); }.goal-list-dot.completed { background: #6ddc72; }.goal-list-dot.blocked, .goal-list-dot.paused { background: var(--vscode-editorWarning-foreground); }.goal-list-copy { min-width: 0; }.goal-list-title, .goal-list-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.goal-list-title { font-size: 10px; }.goal-list-meta { color: var(--muted); font-size: 9px; }.goal-list-action { color: var(--muted); font-size: 9px; }
 .send:hover { transform: translateY(-1px); }
 .send:disabled { opacity: .35; cursor: default; transform: none; }
 .hint { padding: 5px 5px 0; color: var(--muted); text-align: center; font-size: 9px; }
@@ -3260,6 +3265,9 @@ const goalEditor = document.getElementById('goal-editor');
 const goalCriteriaInput = document.getElementById('goal-criteria-input');
 const goalSaveCriteria = document.getElementById('goal-save-criteria');
 const goalCancelCriteria = document.getElementById('goal-cancel-criteria');
+const goalWorkspace = document.getElementById('goal-workspace');
+const goalWorkspaceCount = document.getElementById('goal-workspace-count');
+const goalList = document.getElementById('goal-list');
 const goalNext = document.getElementById('goal-next');
 const goalPause = document.getElementById('goal-pause');
 const goalCancel = document.getElementById('goal-cancel');
@@ -4342,6 +4350,16 @@ let activeGoalId = '';
 let activeGoalStatus = '';
 let activeGoalRecord = undefined;
 function renderGoals(goals) {
+  const allGoals = goals || [];
+  goalWorkspaceCount.textContent = String(allGoals.length);
+  goalList.innerHTML = allGoals.length ? allGoals.map(goal => {
+    const verified = (goal.criteria || []).filter(item => item.status === 'verified').length;
+    const title = escapeHtml(goal.title || goal.objective || 'Untitled goal');
+    const status = escapeHtml(goal.status);
+    const action = ['active', 'awaiting-criteria'].includes(goal.status) ? 'Open' : goal.status === 'paused' ? 'Resume' : 'View';
+    return '<button type="button" class="goal-list-item ' + (goal.threadId === activeThreadId ? 'active' : '') + '" data-goal-thread="' + escapeHtml(goal.threadId) + '"><span class="goal-list-dot ' + status + '"></span><span class="goal-list-copy"><span class="goal-list-title">' + title + '</span><span class="goal-list-meta">' + status + ' · ' + verified + '/' + (goal.criteria || []).length + ' criteria · iteration ' + Number(goal.iteration || 0) + '</span></span><span class="goal-list-action">' + action + '</span></button>';
+  }).join('') : '<div class="goal-list-empty">Nenhum goal persistente neste workspace.</div>';
+  goalList.querySelectorAll('[data-goal-thread]').forEach(button => button.addEventListener('click', () => vscode.postMessage({ type: 'selectThread', id: button.getAttribute('data-goal-thread') || '' })));
   const goal = (goals || []).find(item => item.threadId === activeThreadId && ['active','awaiting-criteria','paused'].includes(item.status));
   if (!goal) { goalStrip.classList.add('hidden'); goalPanel.classList.add('hidden'); activeGoalId = ''; activeGoalStatus = ''; return; }
   renderGoal(goal);

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.3
+
+- Added a workspace-wide Goals center in the sidebar with status, criteria progress, iteration count, and one-click navigation to each goal thread.
+
 ## 0.11.2
 
 - Hardened packaged-VSIX verification on Windows when the VS Code CLI exits after successfully installing the isolated extension copy.
