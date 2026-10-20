@@ -388,7 +388,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.createGoal(message.text, parseRunMode(message.mode), message.runtime, message.finalReview);
         break;
       case "activateGoal":
-        await this.updateGoal(message.id, "active");
+        await this.resumeGoal(message.id);
         break;
       case "resumeGoal":
         await this.resumeGoal(message.id);
@@ -401,6 +401,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         break;
       case "openGoal":
         await this.agent.openGoal(message.id);
+        break;
+      case "editGoal":
+        await this.editGoal(message.id);
         break;
       case "retry":
         await this.retry(parseRunMode(message.mode));
@@ -1801,7 +1804,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     this.post({ type: "busy", value: true });
-    let requestAccepted = false;
+    let requestAccepted = Boolean(goalId);
     let outcome: RunOutcome | undefined;
     try {
       const snapshot = await this.agent.threadSnapshot();
@@ -1868,6 +1871,40 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private async updateGoal(id: string, status: "active" | "paused" | "cancelled"): Promise<void> {
     const goal = await this.agent.setGoalStatus(id, status);
     this.post({ type: "goal", goal });
+    this.post({ type: "threadsUpdated", ...await this.threadPayload() });
+  }
+
+  private async editGoal(id: string): Promise<void> {
+    const goal = await this.agent.getGoal(id);
+    if (!goal) throw new Error("Goal not found.");
+    const value = await vscode.window.showInputBox({
+      title: "Edit goal acceptance criteria",
+      prompt: "Enter one criterion per line. Evidence is required before completion.",
+      value: goal.criteria.map((criterion) => criterion.text).join("\n"),
+      ignoreFocusOut: true,
+      validateInput: (input) => {
+        const count = input.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+        return count > 0 && count <= 20 ? undefined : "Provide between 1 and 20 criteria, one per line.";
+      }
+    });
+    if (value === undefined) return;
+    const texts = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 20);
+    const criteria = texts.map((text, index) => {
+      const existing = goal.criteria[index];
+      return {
+        id: existing?.id ?? `${goal.id}-criterion-${index + 1}`,
+        text: text.slice(0, 4_000),
+        status: existing?.status === "verified" && existing.text === text ? "verified" as const : "pending" as const,
+        evidence: existing?.text === text ? existing.evidence : []
+      };
+    });
+    const milestones = goal.milestones.map((milestone) => ({
+      ...milestone,
+      criteriaIds: criteria.map((criterion) => criterion.id),
+      status: milestone.status === "completed" ? "active" as const : milestone.status
+    }));
+    const updated = await this.agent.updateGoal({ ...goal, criteria, milestones, status: "awaiting-criteria", nextAction: "Review the updated criteria and activate the next iteration.", updatedAt: Date.now() });
+    this.post({ type: "goal", goal: updated });
     this.post({ type: "threadsUpdated", ...await this.threadPayload() });
   }
 
@@ -2668,6 +2705,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div class="conversation-stage">
       <section class="goal-strip hidden" id="goal-strip" aria-live="polite">
         <span class="signal" aria-hidden="true"></span><span id="goal-strip-text"></span>
+        <button type="button" id="goal-edit">Edit</button>
         <button type="button" id="goal-open">Open</button>
         <button type="button" id="goal-resume" class="hidden">Resume</button>
       </section>
@@ -3158,6 +3196,7 @@ const goalStrip = document.getElementById('goal-strip');
 const goalStripText = document.getElementById('goal-strip-text');
 const goalResume = document.getElementById('goal-resume');
 const goalOpen = document.getElementById('goal-open');
+const goalEdit = document.getElementById('goal-edit');
 const cancel = document.getElementById('cancel');
 const status = document.getElementById('status');
 const signal = document.getElementById('signal');
@@ -4890,6 +4929,7 @@ goalResume.addEventListener('click', () => {
   vscode.postMessage({ type: activeGoalStatus === 'awaiting-criteria' ? 'activateGoal' : 'resumeGoal', id: activeGoalId });
 });
 goalOpen.addEventListener('click', () => { if (activeGoalId) vscode.postMessage({ type: 'openGoal', id: activeGoalId }); });
+goalEdit.addEventListener('click', () => { if (activeGoalId) vscode.postMessage({ type: 'editGoal', id: activeGoalId }); });
 cancel.addEventListener('click', () => {
   if (!busy || cancellationPending) return;
   setCancellationPending(true);

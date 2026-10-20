@@ -624,7 +624,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       activeConversation = conversation;
       const threadId = conversation.id;
       activeThreadId = threadId;
-      const goal = options.goalId ? await this.goals.get(options.goalId) : undefined;
+      let goal = options.goalId ? await this.goals.get(options.goalId) : undefined;
       if (options.goalId && (!goal || goal.threadId !== threadId)) throw new Error("The selected goal is not linked to the active thread.");
       if (collection.threads.some((thread) => thread.recovery?.status === "running")) {
         throw new Error("This workspace already has an active agent run in another VS Code window. Wait for it to finish, then refresh the thread.");
@@ -632,20 +632,26 @@ export class DevelopmentAgent implements vscode.Disposable {
       if (goal) {
         const started = startGoalIteration(goal, crypto.randomUUID());
         await this.goals.save(started);
+        goal = started;
         onEvent({ type: "goal", goal: started });
       }
       changeTracker = this.changeReview.startRun(workspace.uri.fsPath);
-      const requestTime = Date.now();
-      const priorMessages = stageThreadRequest(conversation, request, {
-        now: requestTime,
-        replacePendingUser: options.replacePendingUser
-      });
-      const stagedUserMessage = conversation.messages.at(-1);
-      if (!stagedUserMessage || stagedUserMessage.role !== "user") {
-        throw new Error("The request could not be staged in the active conversation.");
-      }
-      if (!priorMessages.some((message) => message.role === "user")) {
-        conversation.title = titleFromRequest(request);
+      const goalRun = Boolean(goal);
+      let priorMessages: ThreadMessage[] = [];
+      let stagedUserMessage: ThreadMessage | undefined;
+      if (!goalRun) {
+        const requestTime = Date.now();
+        priorMessages = stageThreadRequest(conversation, request, {
+          now: requestTime,
+          replacePendingUser: options.replacePendingUser
+        });
+        stagedUserMessage = conversation.messages.at(-1);
+        if (!stagedUserMessage || stagedUserMessage.role !== "user") {
+          throw new Error("The request could not be staged in the active conversation.");
+        }
+        if (!priorMessages.some((message) => message.role === "user")) {
+          conversation.title = titleFromRequest(request);
+        }
       }
       conversation.messages = this.compactPersistedConversation(
         conversation.messages,
@@ -669,15 +675,17 @@ export class DevelopmentAgent implements vscode.Disposable {
       this.activeRunThreadId = threadId;
       await this.saveThreadCollection(collection);
       this.startRunHeartbeat(threadId, runId);
-      onEvent({
-        type: "thread",
-        threadId,
-        userMessage: {
-          id: stagedUserMessage.id,
-          text: stagedUserMessage.content,
-          createdAt: stagedUserMessage.createdAt
-        }
-      });
+      if (stagedUserMessage) {
+        onEvent({
+          type: "thread",
+          threadId,
+          userMessage: {
+            id: stagedUserMessage.id,
+            text: stagedUserMessage.content,
+            createdAt: stagedUserMessage.createdAt
+          }
+        });
+      }
 
       const authentication = modelClientAuthentication(connection);
       const [memoryText, snapshot] = await Promise.all([
@@ -837,7 +845,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       });
 
       const firstInvocation = !this.hydratedThreads.has(threadId);
-      const messages = firstInvocation && priorMessages.length
+      const messages = !goalRun && firstInvocation && priorMessages.length
         ? [
             ...this.compactPersistedConversation(priorMessages, maxConversationCharacters),
             new HumanMessage(request)
@@ -1065,19 +1073,21 @@ export class DevelopmentAgent implements vscode.Disposable {
       }
       this.hydratedThreads.add(threadId);
       const assistantCompletedAt = Date.now();
-      conversation.messages.push({
-        id: assistantMessageId,
-        role: "assistant",
-        content: answer,
-        createdAt: assistantCreatedAt,
-        runId,
-        status: "complete",
-        completedAt: assistantCompletedAt
-      });
-      conversation.messages = this.compactPersistedConversation(
-        conversation.messages,
-        maxConversationCharacters
-      );
+      if (!goalRun) {
+        conversation.messages.push({
+          id: assistantMessageId,
+          role: "assistant",
+          content: answer,
+          createdAt: assistantCreatedAt,
+          runId,
+          status: "complete",
+          completedAt: assistantCompletedAt
+        });
+        conversation.messages = this.compactPersistedConversation(
+          conversation.messages,
+          maxConversationCharacters
+        );
+      }
       conversation.updatedAt = Date.now();
       this.finishRunHeartbeat(runId);
       delete conversation.recovery;
