@@ -121,10 +121,10 @@ git clone https://github.com/rlsgarcia-code/local-agent-companion.git
 cd local-agent-companion
 npm ci --ignore-scripts
 npm run package
-code --install-extension ./local-agent-companion-0.11.0-<plataforma>.vsix --force
+code --install-extension ./local-agent-companion-<versao>-<plataforma>.vsix --force
 ```
 
-`npm run package` detecta sistema e arquitetura, grava o `TargetPlatform` no manifesto e gera um nome explícito como `local-agent-companion-0.11.0-win32-x64.vsix`. Use `--force` durante o piloto quando estiver substituindo outro build com o mesmo número de versão; depois execute **Developer: Reload Window** para carregar a cópia instalada. O VSIX contém o binário local do ChromaDB para a plataforma em que foi gerado. Gere o pacote no mesmo sistema/arquitetura em que ele será instalado (macOS arm64/x64, Linux arm64/x64 ou Windows x64). Hosts não suportados são recusados em vez de gerar um pacote incorretamente identificado como universal. Não é necessário Docker nem instalar um servidor Chroma separadamente. Os binários necessários são fornecidos por pacotes npm específicos da plataforma e o projeto desabilita scripts de lifecycle durante a instalação de dependências.
+`npm run package` detecta sistema e arquitetura, grava o `TargetPlatform` no manifesto e gera um nome explícito como `local-agent-companion-<versao>-win32-x64.vsix`. Substitua `<versao>` pelo número da release que você gerou ou baixou. Use `--force` durante o piloto quando estiver substituindo outro build com o mesmo número de versão; depois execute **Developer: Reload Window** para carregar a cópia instalada. O VSIX contém o binário local do ChromaDB para a plataforma em que foi gerado. Gere o pacote no mesmo sistema/arquitetura em que ele será instalado (macOS arm64/x64, Linux arm64/x64 ou Windows x64). Hosts não suportados são recusados em vez de gerar um pacote incorretamente identificado como universal. Não é necessário Docker nem instalar um servidor Chroma separadamente. Os binários necessários são fornecidos por pacotes npm específicos da plataforma e o projeto desabilita scripts de lifecycle durante a instalação de dependências.
 
 `npm run package` executa somente o build local e o empacotamento. A chave, o endpoint, o certificado e os aliases serão configurados pelo usuário dentro do VS Code depois da instalação.
 
@@ -143,7 +143,7 @@ npm run package:ollama
 npm run package:openai
 ```
 
-Os arquivos opcionais recebem o provedor no nome, por exemplo `local-agent-companion-0.11.0-ollama-win32-x64.vsix` e `local-agent-companion-0.11.0-openai-win32-x64.vsix`. Instale somente um deles com **Install from VSIX…** ou `code --install-extension <caminho-absoluto-do-vsix> --force`, depois execute **Developer: Reload Window**. Como todos usam o mesmo ID da extensão, a variante escolhida substitui a anterior e preserva threads, memória e configurações locais. Quando ainda não existe uma escolha explícita de provedor, cada variante abre com o provedor indicado no nome; uma seleção posterior do usuário é preservada.
+Os arquivos opcionais recebem o provedor no nome, por exemplo `local-agent-companion-<versao>-ollama-win32-x64.vsix` e `local-agent-companion-<versao>-openai-win32-x64.vsix`. Instale somente um deles com **Install from VSIX…** ou `code --install-extension <caminho-absoluto-do-vsix> --force`, depois execute **Developer: Reload Window**. Como todos usam o mesmo ID da extensão, a variante escolhida substitui a anterior e preserva threads, memória e configurações locais. Quando ainda não existe uma escolha explícita de provedor, cada variante abre com o provedor indicado no nome; uma seleção posterior do usuário é preservada.
 
 Cada artefato contém uma allowlist de provedores definida no build:
 
@@ -423,7 +423,7 @@ Para gerar e reinstalar o pacote:
 
 ```bash
 npm run package:verified
-code --install-extension local-agent-companion-0.11.0-<plataforma>.vsix --force
+code --install-extension local-agent-companion-<versao>-<plataforma>.vsix --force
 ```
 
 ## Memória
