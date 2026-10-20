@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.5
+
+- Added `/env` quick command for a read-only local environment check with actionable preflight feedback.
+- Added accessible evidence filtering and workspace goal navigation refinements.
+
 ## 0.11.4
 
 - Added evidence-type filtering in Review run and grouped diff, test, command, diagnostic, browser, and MCP evidence for faster verification.

@@ -381,6 +381,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (this.connectionSettingsRequested) await this.postConnectionSettings();
         void this.resumePendingGoals();
         break;
+      case "environmentCheck":
+        await this.checkEnvironment();
+        break;
       case "send":
         await this.send(message.text, parseRunMode(message.mode), Boolean(message.replacePending));
         break;
@@ -1869,6 +1872,15 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.post({ type: "goal", goal });
     this.post({ type: "toast", message: "Goal draft created. Review the criteria in .local-agent/goals and activate it when ready." });
     this.post({ type: "threadsUpdated", ...await this.threadPayload() });
+  }
+
+  private async checkEnvironment(): Promise<void> {
+    try {
+      const result = await this.agent.preflightRun();
+      this.post({ type: "toast", message: result.ready ? "Environment ready: workspace, provider, model, and certificate checks passed." : `Environment needs attention (${result.kind}): ${result.message}` });
+    } catch (error) {
+      this.post({ type: "toast", message: `Environment check failed: ${await this.safeError(error)}` });
+    }
   }
 
   private async updateGoal(id: string, status: "active" | "paused" | "cancelled"): Promise<void> {
@@ -4562,7 +4574,13 @@ function submit() {
 
 function handleQuickCommand(text) {
   const command = text.trim().toLowerCase();
-  if (!['/status', '/resume', '/pause', '/evidence'].includes(command)) return false;
+  if (!['/status', '/resume', '/pause', '/evidence', '/env'].includes(command)) return false;
+  if (command === '/env') {
+    vscode.postMessage({ type: 'environmentCheck' });
+    status.textContent = 'Checking local environment';
+    announce(status.textContent);
+    return true;
+  }
   if (command === '/status') {
     const goal = activeGoalRecord;
     const message = goal
