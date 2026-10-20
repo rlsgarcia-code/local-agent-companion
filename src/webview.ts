@@ -4413,10 +4413,10 @@ function renderGoal(goal) {
 function renderThreadList() {
   const query = threadSearch.value.trim().toLocaleLowerCase();
   const recoveryLabels = {
-    running: 'active elsewhere',
-    interrupted: 'restart available',
-    failed: 'retry available',
-    cancelled: 'cancelled'
+    running: 'active in another window',
+    interrupted: 'interrupted · restart available',
+    failed: 'failed · retry available',
+    cancelled: 'cancelled · review effects'
   };
   const threads = currentThreadSummaries.filter(thread => {
     if (!query) return true;
@@ -4561,6 +4561,9 @@ function submit() {
   currentRunSummary = createRunSummary();
   closeTopPanels(false);
   clearCurrentPlan();
+  ensureRunActivity();
+  updateRunActivityStatus('Preparing plan before the first action');
+  setActivityExpanded(true);
   pendingRequestText = text;
   replacePendingOnSubmit = false;
   vscode.postMessage({

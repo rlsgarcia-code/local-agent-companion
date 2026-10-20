@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.7
+
+- Made the pre-send plan state visible before the first tool action.
+- Clarified thread recovery labels for interrupted runs, active runs in another window, failures, and cancelled runs.
+
 ## 0.11.6
 
 - Added a direct **Open diagnostics** action to Review run so Problems evidence opens in VS Code without manual navigation.
