@@ -390,6 +390,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "createGoal":
         await this.createGoal(message.text, parseRunMode(message.mode), message.runtime, message.finalReview);
         break;
+      case "createGoalAndRun":
+        await this.createGoalAndRun(message.text, parseRunMode(message.mode), message.runtime, message.finalReview);
+        break;
       case "activateGoal":
         await this.resumeGoal(message.id);
         break;
@@ -1883,6 +1886,15 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.post({ type: "threadsUpdated", ...await this.threadPayload() });
   }
 
+  private async createGoalAndRun(text: string, mode: RunMode, runtime: AgentRuntime, finalReview: "off" | "changes" | "always"): Promise<void> {
+    const snapshot = await this.agent.threadSnapshot();
+    const draft = await this.agent.createGoal({ objective: text.trim(), threadId: snapshot.activeThreadId, runtime, autonomyMode: mode, finalReview });
+    const goal = await this.agent.activateGoal(draft.id);
+    this.post({ type: "goal", goal });
+    this.post({ type: "activity", kind: "goal", title: "Goal started", detail: "The message was saved as a persistent goal and its first iteration is starting." });
+    await this.send(text, mode, false, goal.id);
+  }
+
   private async checkEnvironment(): Promise<void> {
     try {
       const result = await this.agent.preflightRun();
@@ -2896,7 +2908,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             </div>
           </details>
           <button class="cancel hidden" id="cancel" type="button">Cancel run</button>
-          <button class="goal-button" id="goal" type="button" aria-label="Set message as a persistent goal">Goal</button>
+          <button class="goal-button" id="goal" type="button" aria-label="Send the next message as a persistent goal" aria-pressed="false">Goal</button>
           <button class="send" id="send" type="button" aria-label="Send message">↑</button>
         </div>
       </div>
@@ -3234,11 +3246,13 @@ textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; res
 .send { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 7px; background: var(--accent); color: #111; cursor: pointer; font-size: 17px; font-weight: 700; transition: transform .12s, opacity .12s; }
 .goal-button { border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; color: var(--vscode-descriptionForeground); background: transparent; cursor: pointer; }
 .goal-button:hover { color: var(--vscode-foreground); background: var(--vscode-toolbar-hoverBackground); }
-.goal-strip { display: flex; align-items: center; gap: 8px; padding: 6px 18px; border-bottom: 1px solid var(--line); color: var(--vscode-descriptionForeground); font-size: 11px; }
+.goal-button.selected { color: var(--vscode-editor-background); border-color: var(--accent); background: var(--accent); }
+.goal-strip, .goal-workspace { display: none !important; }
+.goal-strip { align-items: center; gap: 8px; padding: 6px 18px; border-bottom: 1px solid var(--line); color: var(--vscode-descriptionForeground); font-size: 11px; }
 .goal-strip .signal { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .goal-strip button { margin-left: auto; border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 5px; padding: 2px 7px; cursor: pointer; }
 .goal-strip button + button { margin-left: 0; }
-.goal-panel { margin: 0 18px 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--vscode-sideBar-background) 92%, var(--accent)); }
+.goal-panel { position: absolute; z-index: 4; left: 12px; right: 12px; bottom: 8px; max-height: 65%; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--vscode-sideBar-background) 96%, var(--accent)); box-shadow: 0 8px 24px color-mix(in srgb, #000 22%, transparent); }
 .goal-panel-heading, .goal-panel-actions { display: flex; align-items: center; gap: 6px; }
 .goal-panel-heading button { margin-left: auto; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
 .goal-panel p { margin: 7px 0; font-size: 10px; color: var(--muted); white-space: pre-wrap; }
@@ -3248,6 +3262,8 @@ textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; res
 .goal-criterion-dot { width: 6px; height: 6px; margin-top: 4px; border-radius: 50%; background: var(--vscode-disabledForeground); }
 .goal-criterion-dot.verified { background: #6ddc72; }.goal-criterion-dot.failed { background: var(--vscode-errorForeground); }
 .goal-panel-actions { margin-top: 8px; }.goal-panel-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
+.goal-event { margin: 8px 14px; padding: 9px 10px; border-left: 2px solid var(--accent); border-radius: 4px; background: color-mix(in srgb, var(--vscode-editor-background) 72%, var(--accent)); animation: reveal .18s ease-out; }
+.goal-event-heading { display: flex; align-items: center; gap: 6px; font-size: 11px; }.goal-event-heading small { margin-left: auto; color: var(--muted); font-size: 10px; }.goal-event-signal { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }.goal-event-objective { margin-top: 4px; font-size: 11px; white-space: pre-wrap; }.goal-event-progress, .goal-event-detail, .goal-event-next { margin-top: 3px; color: var(--muted); font-size: 10px; }.goal-event-next { color: var(--vscode-descriptionForeground); }
 .goal-editor { margin-top: 8px; }.goal-editor label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 10px; }.goal-editor textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: 11px var(--vscode-font-family); }.goal-editor-actions { display: flex; gap: 6px; margin-top: 5px; }.goal-editor-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
 .goal-workspace { margin: 0 18px 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }.goal-workspace .goal-panel-heading { color: var(--muted); font-size: 10px; }.goal-workspace .goal-panel-heading span { margin-left: auto; font-size: 9px; }.goal-list { display: grid; gap: 4px; margin-top: 6px; }.goal-list-empty { color: var(--muted); font-size: 10px; }.goal-list-item { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; gap: 6px; align-items: center; width: 100%; padding: 5px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }.goal-list-item:hover, .goal-list-item.active { border-color: var(--line); background: var(--vscode-list-hoverBackground); }.goal-list-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--vscode-disabledForeground); }.goal-list-dot.active { background: var(--accent); }.goal-list-dot.completed { background: #6ddc72; }.goal-list-dot.blocked, .goal-list-dot.paused { background: var(--vscode-editorWarning-foreground); }.goal-list-copy { min-width: 0; }.goal-list-title, .goal-list-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.goal-list-title { font-size: 10px; }.goal-list-meta { color: var(--muted); font-size: 9px; }.goal-list-action { color: var(--muted); font-size: 9px; }
 .evidence-filter-label { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 7px; color: var(--muted); font-size: 10px; }.evidence-filter-label select { border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); font-size: 10px; }
@@ -4376,6 +4392,39 @@ function renderThreads(data) {
 let activeGoalId = '';
 let activeGoalStatus = '';
 let activeGoalRecord = undefined;
+let goalModeEnabled = false;
+
+function setGoalMode(enabled) {
+  goalModeEnabled = Boolean(enabled);
+  goalButton.classList.toggle('selected', goalModeEnabled);
+  goalButton.setAttribute('aria-pressed', String(goalModeEnabled));
+  goalButton.textContent = goalModeEnabled ? 'Goal on' : 'Goal';
+  goalButton.setAttribute('aria-label', goalModeEnabled
+    ? 'Goal mode enabled; the next message will start a persistent goal'
+    : 'Send the next message as a persistent goal');
+  if (goalModeEnabled) {
+    status.textContent = 'Goal mode · next message starts a persistent goal';
+    announce(status.textContent);
+  }
+}
+
+function appendGoalTimeline(goal, detail = '') {
+  if (!goal) return;
+  document.getElementById('welcome')?.remove();
+  const verified = (goal.criteria || []).filter(item => item.status === 'verified').length;
+  const total = (goal.criteria || []).length;
+  const milestone = (goal.milestones || []).find(item => item.id === goal.currentMilestoneId);
+  const element = document.createElement('article');
+  element.className = 'goal-event';
+  element.innerHTML = '<div class="goal-event-heading"><span class="goal-event-signal" aria-hidden="true"></span><strong>Goal · ' + escapeHtml(goal.status) + '</strong><small>iteration ' + Number(goal.iteration || 0) + '</small></div>' +
+    '<div class="goal-event-objective">' + escapeHtml(goal.objective || goal.title || '') + '</div>' +
+    '<div class="goal-event-progress">' + verified + '/' + total + ' criteria verified' + (milestone?.title ? ' · ' + escapeHtml(milestone.title) : '') + '</div>' +
+    (detail ? '<div class="goal-event-detail">' + escapeHtml(detail) + '</div>' : '') +
+    (goal.nextAction ? '<div class="goal-event-next">Next · ' + escapeHtml(goal.nextAction) + '</div>' : '');
+  timeline.appendChild(element);
+  scrollConversationToBottom();
+}
+
 function renderGoals(goals) {
   const allGoals = goals || [];
   goalWorkspaceCount.textContent = String(allGoals.length);
@@ -4576,11 +4625,13 @@ function submit() {
   pendingRequestText = text;
   replacePendingOnSubmit = false;
   vscode.postMessage({
-    type: 'send',
+    type: goalModeEnabled ? 'createGoalAndRun' : 'send',
     text,
     mode: autonomyMode.value,
-    replacePending
+    replacePending,
+    ...(goalModeEnabled ? { runtime: agentRuntime.value, finalReview: finalReviewMode.value } : {})
   });
+  setGoalMode(false);
   prompt.value = '';
   resizePrompt();
   updatePromptTokenEstimate();
@@ -4624,11 +4675,8 @@ function handleQuickCommand(text) {
 }
 
 function setAsGoal() {
-  const text = prompt.value.trim();
-  if (!text || busy) return;
-  vscode.postMessage({ type: 'createGoal', text, mode: autonomyMode.value, runtime: agentRuntime.value, finalReview: finalReviewMode.value });
-  prompt.value = '';
-  resizePrompt();
+  if (busy) return;
+  setGoalMode(!goalModeEnabled);
 }
 
 function setupStepComplete(step) {
@@ -5792,7 +5840,10 @@ window.addEventListener('message', ({ data }) => {
       renderActivityOverview();
       break;
     case 'activity': appendActivity(data.kind, data.title, data.detail); break;
-    case 'goal': renderGoal(data.goal); break;
+    case 'goal':
+      renderGoal(data.goal);
+      appendGoalTimeline(data.goal, data.goal?.lastOutcome || 'Goal progress updated.');
+      break;
     case 'changes':
       currentRunSummary.files = new Map((data.items || []).map(item => [item.path, item]));
       currentRunSummary.omittedChanges = Number(data.omitted || 0);

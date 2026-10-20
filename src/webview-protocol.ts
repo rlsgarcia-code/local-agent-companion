@@ -41,6 +41,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   noPayload("environmentCheck"),
   z.object({ type: z.literal("send"), text: messageText, mode: runMode, replacePending: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("createGoal"), text: messageText, mode: runMode, runtime, finalReview: finalReviewMode }).strict(),
+  z.object({ type: z.literal("createGoalAndRun"), text: messageText, mode: runMode, runtime, finalReview: finalReviewMode, replacePending: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("activateGoal"), id: identifier }).strict(),
   z.object({ type: z.literal("resumeGoal"), id: identifier }).strict(),
   z.object({ type: z.literal("pauseGoal"), id: identifier }).strict(),
