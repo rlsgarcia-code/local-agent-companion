@@ -1887,6 +1887,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     try {
       const result = await this.agent.preflightRun();
       this.post({ type: "toast", message: result.ready ? "Environment ready: workspace, provider, model, and certificate checks passed." : `Environment needs attention (${result.kind}): ${result.message}` });
+      if (!result.ready && result.openConnectionSettings) await this.openConnectionSettings();
     } catch (error) {
       this.post({ type: "toast", message: `Environment check failed: ${await this.safeError(error)}` });
     }

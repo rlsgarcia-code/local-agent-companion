@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.10
+
+- `/env` now opens the relevant connection setup surface automatically when the read-only preflight identifies a provider, model, or certificate remediation.
+
 ## 0.11.9
 
 - Added accessible live plan status and approval counts, with approvals visually grouped in the activity timeline.
