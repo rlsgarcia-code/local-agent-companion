@@ -1096,6 +1096,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         );
       }
       conversation.updatedAt = Date.now();
+      conversation.unread = true;
       this.finishRunHeartbeat(runId);
       delete conversation.recovery;
       await this.saveThreadCollection(collection);
@@ -1115,6 +1116,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       this.finishRunHeartbeat(runId);
       if (runId && activeCollection && activeConversation?.recovery?.id === runId) {
         const recovery = activeConversation.recovery;
+        activeConversation.unread = true;
         activeConversation.recovery = {
           id: recovery.id,
           status: controller.signal.aborted ? "cancelled" : "failed",
@@ -1181,6 +1183,17 @@ export class DevelopmentAgent implements vscode.Disposable {
     }
     collection.activeThreadId = threadId;
     this.contextCollector.clearPinned();
+    await this.saveThreadCollection(collection);
+  }
+
+  public async markThreadRead(threadId: string): Promise<void> {
+    const collection = this.isRunning && this.activeRunCollection
+      ? this.activeRunCollection
+      : await this.threadCollection();
+    const thread = collection.threads.find((candidate) => candidate.id === threadId);
+    if (!thread) throw new Error("The selected local thread no longer exists.");
+    if (!thread.unread) return;
+    delete thread.unread;
     await this.saveThreadCollection(collection);
   }
 

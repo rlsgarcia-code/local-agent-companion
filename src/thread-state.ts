@@ -40,6 +40,7 @@ export type LocalThread = {
   updatedAt: number;
   messages: ThreadMessage[];
   pinned?: boolean;
+  unread?: boolean;
   recovery?: ThreadRunRecovery;
 };
 
@@ -55,6 +56,7 @@ export type ThreadSummary = {
   updatedAt: number;
   messageCount: number;
   pinned: boolean;
+  unread?: boolean;
   recoveryStatus?: ThreadRunRecovery["status"];
 };
 
@@ -118,6 +120,7 @@ export function summarizeThreads(collection: ThreadCollection): ThreadSummary[] 
       updatedAt: thread.updatedAt,
       messageCount: thread.messages.length,
       pinned: Boolean(thread.pinned),
+      ...(thread.unread ? { unread: true } : {}),
       ...(thread.recovery ? { recoveryStatus: thread.recovery.status } : {})
     }));
 }
@@ -267,6 +270,7 @@ function normalizeThread(
     updatedAt,
     messages,
     ...(value.pinned === true ? { pinned: true } : {}),
+    ...(value.unread === true ? { unread: true } : {}),
     ...(recovery ? { recovery } : {})
   };
 }

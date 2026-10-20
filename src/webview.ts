@@ -469,6 +469,10 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "selectThread":
         await this.selectThread(message.id);
         break;
+      case "markThreadRead":
+        await this.agent.markThreadRead(message.id);
+        this.post({ type: "threadsUpdated", ...await this.threadPayload() });
+        break;
       case "toggleThreadPinned":
         await this.toggleThreadPinned(message.id);
         break;
@@ -3018,6 +3022,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .thread-select { min-width: 0; padding: 9px 4px 9px 0; border: 0; color: var(--muted); background: transparent; cursor: pointer; text-align: left; }
 .thread-select strong, .thread-select small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread-select strong { color: var(--vscode-foreground); font-size: 11px; font-weight: 500; }
+.thread-unread-dot { display: inline-block; width: 6px; height: 6px; margin: 0 5px 1px 0; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent); }
 .thread-select small { margin-top: 2px; font-size: 9px; }
 .thread-item.active .thread-select { box-shadow: inset 2px 0 0 var(--accent); padding-left: 8px; }
 .thread-actions { display: flex; align-items: center; opacity: .45; }
@@ -4519,7 +4524,7 @@ function renderGoal(goal) {
 function renderThreadList() {
   const query = threadSearch.value.trim().toLocaleLowerCase();
   const recoveryLabels = {
-    running: 'active in another window',
+    running: 'running',
     interrupted: 'interrupted · restart available',
     failed: 'failed · retry available',
     cancelled: 'cancelled · review effects'
@@ -4537,14 +4542,17 @@ function renderThreadList() {
   threadList.innerHTML = threads.length ? threads.map(thread => {
     const active = thread.id === activeThreadId;
     const recoveryLabel = recoveryLabels[thread.recoveryStatus] || '';
-    const metadata = relativeThreadTime(thread.updatedAt) + ' · ' + thread.messageCount + ' message' +
+    const stateLabel = thread.recoveryStatus
+      ? recoveryLabels[thread.recoveryStatus]
+      : thread.unread ? 'finished · unseen' : thread.messageCount ? 'finished · seen' : 'ready';
+    const metadata = stateLabel + ' · ' + relativeThreadTime(thread.updatedAt) + ' · ' + thread.messageCount + ' message' +
       (thread.messageCount === 1 ? '' : 's') + (thread.pinned ? ' · pinned' : '') +
-      (recoveryLabel ? ' · ' + recoveryLabel : '');
+      (recoveryLabel && recoveryLabel !== stateLabel ? ' · ' + recoveryLabel : '');
     const selectDisabled = '';
     const actionDisabled = locked ? ' disabled' : '';
     return '<div class="thread-item' + (active ? ' active' : '') + '">' +
       '<button class="thread-select" type="button" data-select-thread="' + escapeHtml(thread.id) + '"' + (active ? ' aria-current="true"' : '') + selectDisabled + '>' +
-      '<strong>' + escapeHtml(thread.title) + '</strong><small>' + escapeHtml(metadata) + '</small></button>' +
+      '<strong>' + (thread.unread ? '<span class="thread-unread-dot" aria-label="Unseen finished thread"></span>' : '') + escapeHtml(thread.title) + '</strong><small>' + escapeHtml(metadata) + '</small></button>' +
       '<span class="thread-actions">' +
       '<button type="button" class="' + (thread.pinned ? 'pinned' : '') + '" data-pin-thread="' + escapeHtml(thread.id) + '" aria-pressed="' + String(Boolean(thread.pinned)) + '" aria-label="' + (thread.pinned ? 'Unpin ' : 'Pin ') + escapeHtml(thread.title) + '"' + actionDisabled + '>' + (thread.pinned ? '★' : '☆') + '</button>' +
       '<button type="button" data-rename-thread="' + escapeHtml(thread.id) + '" aria-label="Rename ' + escapeHtml(thread.title) + '"' + actionDisabled + '>✎</button>' +
@@ -5126,6 +5134,7 @@ function resetConversation(context, history, threads, draft = '') {
   clearCurrentPlan();
   renderContextState(context || currentContextState);
   if (threads) renderThreads(threads);
+  if (threads?.activeThreadId) vscode.postMessage({ type: 'markThreadRead', id: threads.activeThreadId });
   setContextExpanded(false);
   closeTopPanels(false);
   prompt.value = draft || localDrafts[activeThreadId] || '';
@@ -5938,6 +5947,7 @@ window.addEventListener('message', ({ data }) => {
       currentRunSummary.failed = data.outcome === 'failed';
       if (data.outcome !== 'completed') markAssistantStreamsInterrupted(data.outcome);
       renderRunSummary();
+      if (liveRunThreadId && liveRunThreadId === activeThreadId) vscode.postMessage({ type: 'markThreadRead', id: liveRunThreadId });
       break;
     case 'reset':
       suppressLiveRunEvents = Boolean(liveRunThreadId && data.activeThreadId && data.activeThreadId !== liveRunThreadId);

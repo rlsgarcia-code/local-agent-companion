@@ -58,6 +58,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   noPayload("cancel"),
   noPayload("newThread"),
   z.object({ type: z.literal("selectThread"), id: identifier }).strict(),
+  z.object({ type: z.literal("markThreadRead"), id: identifier }).strict(),
   z.object({ type: z.literal("toggleThreadPinned"), id: identifier }).strict(),
   z.object({ type: z.literal("renameThread"), id: identifier }).strict(),
   z.object({ type: z.literal("deleteThread"), id: identifier }).strict(),
