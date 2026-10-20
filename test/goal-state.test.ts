@@ -44,6 +44,23 @@ test("requires evidence before completion", () => {
   assert.equal(complete.status, "completed");
 });
 
+test("keeps typed evidence associated with the criterion", () => {
+  const goal = startGoalIteration({ ...draft(), status: "active" }, "run-typed", 2);
+  const complete = applyGoalEvaluation(goal, {
+    decision: "completed",
+    criteria: [{
+      id: goal.criteria[0]!.id,
+      status: "verified",
+      evidence: ["npm test passed"],
+      evidenceRefs: [{ kind: "test", summary: "npm test · exit 0", iteration: 1 }]
+    }],
+    completedMilestones: [goal.milestones[0]!.id],
+    reason: "verified"
+  }, 4);
+  assert.equal(complete.status, "completed");
+  assert.deepEqual(complete.criteria[0]!.evidenceRefs, [{ kind: "test", summary: "npm test · exit 0", iteration: 1 }]);
+});
+
 test("pauses after repeated stagnation and iteration cap", () => {
   let goal = startGoalIteration({ ...draft(), status: "active" }, "run-1", 2);
   const evaluation = { decision: "continue" as const, criteria: [], completedMilestones: [], reason: "no evidence" };

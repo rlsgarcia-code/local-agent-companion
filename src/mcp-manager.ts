@@ -180,6 +180,7 @@ export class CorporateMcpManager {
     dispatcher?: UndiciAgent;
     signal: AbortSignal;
     onEvent: (event: AgentUiEvent) => void;
+    onToolUsed?: (name: string) => void;
     sensitiveValues: readonly string[];
     stdioCaPath?: string;
   }): Promise<McpRunSession> {
@@ -228,6 +229,7 @@ export class CorporateMcpManager {
             options.onEvent({ type: "status", label: `Calling ${profile.name} · ${name}` });
           },
           afterToolCall: async ({ name, result }) => {
+            options.onToolUsed?.(name);
             options.onEvent({
               type: "activity",
               kind: "mcp",

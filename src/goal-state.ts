@@ -19,6 +19,13 @@ export type GoalCriterion = {
   text: string;
   status: "pending" | "verified" | "failed";
   evidence: string[];
+  evidenceRefs?: GoalEvidenceRef[];
+};
+
+export type GoalEvidenceRef = {
+  kind: "test" | "diagnostic" | "diff" | "visual" | "command" | "mcp" | "note";
+  summary: string;
+  iteration: number;
 };
 
 export type GoalMilestone = {
@@ -66,7 +73,7 @@ export type GoalRecord = {
 
 export type GoalEvaluation = {
   decision: "continue" | "completed" | "blocked";
-  criteria: Array<{ id: string; status: "verified" | "pending" | "failed"; evidence: string[] }>;
+  criteria: Array<{ id: string; status: "verified" | "pending" | "failed"; evidence: string[]; evidenceRefs?: GoalEvidenceRef[] }>;
   completedMilestones: string[];
   nextAction?: string;
   reason: string;
@@ -153,7 +160,10 @@ export function applyGoalEvaluation(goal: GoalRecord, evaluation: GoalEvaluation
     return {
       ...criterion,
       status: next.status,
-      evidence: uniqueEvidence(next.evidence).slice(0, 20)
+      evidence: uniqueEvidence(next.evidence).slice(0, 20),
+      ...(next.evidenceRefs?.length
+        ? { evidenceRefs: normalizeEvidenceRefs(next.evidenceRefs, goal.iteration) }
+        : criterion.evidenceRefs?.length ? { evidenceRefs: criterion.evidenceRefs } : {})
     };
   });
   const completed = new Set(evaluation.completedMilestones);
@@ -197,7 +207,7 @@ export function applyGoalEvaluation(goal: GoalRecord, evaluation: GoalEvaluation
 
 export function goalSignature(goal: Pick<GoalRecord, "criteria" | "milestones" | "nextAction">): string {
   return JSON.stringify({
-    criteria: goal.criteria.map(({ id, status, evidence }) => ({ id, status, evidence })),
+    criteria: goal.criteria.map(({ id, status, evidence, evidenceRefs }) => ({ id, status, evidence, evidenceRefs })),
     milestones: goal.milestones.map(({ id, status, evidence }) => ({ id, status, evidence })),
     nextAction: goal.nextAction ?? ""
   });
@@ -251,7 +261,17 @@ function normalizeCriterion(value: unknown): GoalCriterion | undefined {
   if (!isRecord(value) || !stringValue(value.id) || !stringValue(value.text)) return undefined;
   const status = value.status === "verified" || value.status === "failed" ? value.status : "pending";
   const evidence = Array.isArray(value.evidence) ? value.evidence.filter((item): item is string => typeof item === "string").map((item) => cleanText(item, 500)).slice(0, 20) : [];
-  return { id: cleanText(stringValue(value.id)!, 128), text: cleanText(stringValue(value.text)!, 4_000), status, evidence };
+  const evidenceRefs = Array.isArray(value.evidenceRefs) ? normalizeEvidenceRefs(value.evidenceRefs, 0) : [];
+  return { id: cleanText(stringValue(value.id)!, 128), text: cleanText(stringValue(value.text)!, 4_000), status, evidence, ...(evidenceRefs.length ? { evidenceRefs } : {}) };
+}
+
+function normalizeEvidenceRefs(value: unknown[], fallbackIteration: number): GoalEvidenceRef[] {
+  const kinds = ["test", "diagnostic", "diff", "visual", "command", "mcp", "note"] as const;
+  return value.filter(isRecord).map((item) => ({
+    kind: kinds.includes(item.kind as typeof kinds[number]) ? item.kind as GoalEvidenceRef["kind"] : "note",
+    summary: cleanText(stringValue(item.summary) ?? "Evidence", 500),
+    iteration: clampInteger(item.iteration, 0, MAX_GOAL_ITERATIONS) || fallbackIteration
+  })).slice(0, 30);
 }
 
 function normalizeMilestone(value: unknown): GoalMilestone | undefined {

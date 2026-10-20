@@ -764,6 +764,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         dispatcher,
         signal: controller.signal,
         onEvent,
+        onToolUsed: (name) => evidence.mcpTool({ tool: name, approved: true }),
         sensitiveValues,
         stdioCaPath: certificateAuthorities ? importedGatewayCaPath(this.extensionContext) : undefined
       });
@@ -1013,9 +1014,12 @@ export class DevelopmentAgent implements vscode.Disposable {
       if (!answer) {
         throw new Error(`${agentRuntimeLabel(runtime)} completed without a final assistant message.`);
       }
-      const evidenceSnapshot = toolHost.evidenceSnapshot();
-      onEvent({ type: "evidence", evidence: evidenceSnapshot });
       const pendingChanges = changeTracker.finalize();
+      for (const change of pendingChanges.changes) {
+        evidence.diff({ path: change.path, kind: change.kind });
+      }
+      const evidenceSnapshot = evidence.snapshot();
+      onEvent({ type: "evidence", evidence: evidenceSnapshot });
       if (shouldRunCompletionReview(
         configuration.get("finalReviewMode", "changes"),
         mode,
@@ -1561,7 +1565,7 @@ ${goalGuidance}`;
     sensitiveValues: readonly string[]
   ): Promise<GoalEvaluation> {
     const response = await model.invoke([
-      new SystemMessage("Evaluate the persistent goal conservatively. Return JSON only with decision, criteria, completedMilestones, nextAction, reason. A criterion is verified only when concrete evidence is present; never infer verification from a claim alone."),
+      new SystemMessage("Evaluate the persistent goal conservatively. Return JSON only with decision, criteria, completedMilestones, nextAction, reason. Each criterion must include evidence strings and, when verified, evidenceRefs with kind test|diagnostic|diff|visual|command|mcp|note and a concise summary copied from the supplied evidence. Associate every claim with the criterion it proves. A criterion is verified only when concrete evidence is present; never infer verification from a claim alone. Tests, diagnostics, diffs, visual validation, approved commands, and actually invoked MCP tools are distinct evidence kinds; do not claim an MCP tool was used merely because it was available."),
       new HumanMessage(JSON.stringify({
         goal: { objective: goal.objective, criteria: goal.criteria, milestones: goal.milestones },
         answer: redactSensitiveText(answer.slice(-12_000), sensitiveValues),
@@ -1576,7 +1580,12 @@ ${goalGuidance}`;
       criteria: Array.isArray(parsed.criteria) ? parsed.criteria.filter((criterion): criterion is GoalEvaluation["criteria"][number] => Boolean(criterion && typeof criterion.id === "string" && criterionIds.has(criterion.id))).map((criterion) => ({
         id: criterion.id,
         status: criterion.status === "verified" || criterion.status === "failed" ? criterion.status : "pending",
-        evidence: Array.isArray(criterion.evidence) ? criterion.evidence.filter((item): item is string => typeof item === "string").slice(0, 20) : []
+        evidence: Array.isArray(criterion.evidence) ? criterion.evidence.filter((item): item is string => typeof item === "string").slice(0, 20) : [],
+        ...(Array.isArray(criterion.evidenceRefs) ? { evidenceRefs: criterion.evidenceRefs.filter((item): item is NonNullable<GoalEvaluation["criteria"][number]["evidenceRefs"]>[number] => Boolean(item && typeof item === "object" && typeof item.summary === "string" && typeof item.kind === "string")).slice(0, 30).map((item) => ({
+          kind: ["test", "diagnostic", "diff", "visual", "command", "mcp", "note"].includes(item.kind) ? item.kind as NonNullable<GoalEvaluation["criteria"][number]["evidenceRefs"]>[number]["kind"] : "note",
+          summary: item.summary.slice(0, 500),
+          iteration: Number.isInteger(item.iteration) ? Math.max(0, Math.min(20, item.iteration)) : goal.iteration
+        })) } : {})
       })) : [],
       completedMilestones: Array.isArray(parsed.completedMilestones) ? parsed.completedMilestones.filter((id): id is string => typeof id === "string") : [],
       ...(typeof parsed.nextAction === "string" ? { nextAction: parsed.nextAction.slice(0, 4_000) } : {}),

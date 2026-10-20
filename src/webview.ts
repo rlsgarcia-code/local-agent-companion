@@ -1898,7 +1898,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         id: existing?.id ?? `${goal.id}-criterion-${index + 1}`,
         text: text.slice(0, 4_000),
         status: existing?.status === "verified" && existing.text === text ? "verified" as const : "pending" as const,
-        evidence: existing?.text === text ? existing.evidence : []
+        evidence: existing?.text === text ? existing.evidence : [],
+        ...(existing?.text === text && existing.evidenceRefs?.length ? { evidenceRefs: existing.evidenceRefs } : {})
       };
     });
     const milestones = goal.milestones.map((milestone) => ({
@@ -1922,7 +1923,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         id: existing?.id ?? `${goal.id}-criterion-${index + 1}`,
         text: text.slice(0, 4_000),
         status: existing?.status === "verified" && existing.text === text ? "verified" as const : "pending" as const,
-        evidence: existing?.text === text ? existing.evidence : []
+        evidence: existing?.text === text ? existing.evidence : [],
+        ...(existing?.text === text && existing.evidenceRefs?.length ? { evidenceRefs: existing.evidenceRefs } : {})
       };
     });
     const milestones = goal.milestones.map((milestone) => ({
@@ -3926,6 +3928,8 @@ function preserveRunReview(summary) {
       diagnostics: summary.evidence.diagnostics.map(item => ({ ...item })),
       browser: summary.evidence.browser.map(item => ({ ...item })),
       processes: summary.evidence.processes.map(item => ({ ...item })),
+      diffs: (summary.evidence.diffs || []).map(item => ({ ...item })),
+      mcp: (summary.evidence.mcp || []).map(item => ({ ...item })),
       playbooksRead: [...summary.evidence.playbooksRead]
     } : undefined,
     contextReceipt: summary.contextReceipt ? {
@@ -4363,7 +4367,7 @@ function renderGoal(goal) {
   const criteria = goal.criteria || [];
   goalObjective.textContent = goal.objective || goal.title || '';
   goalProgress.textContent = 'Status: ' + goal.status + ' · Iteration ' + Number(goal.iteration || 0) + ' · ' + verified + '/' + criteria.length + ' criteria verified';
-  goalCriteria.innerHTML = criteria.map(item => '<div class="goal-criterion"><span class="goal-criterion-dot ' + escapeHtml(item.status) + '"></span><span>' + escapeHtml(item.text) + (item.evidence && item.evidence.length ? '<small> · ' + escapeHtml(item.evidence[0]) + '</small>' : '') + '</span></div>').join('');
+  goalCriteria.innerHTML = criteria.map(item => '<div class="goal-criterion"><span class="goal-criterion-dot ' + escapeHtml(item.status) + '"></span><span>' + escapeHtml(item.text) + (item.evidence && item.evidence.length ? '<small> · ' + escapeHtml(item.evidence[0]) + '</small>' : '') + ((item.evidenceRefs || []).length ? '<small class="goal-evidence-kinds"> · ' + escapeHtml(item.evidenceRefs.map(ref => ref.kind).join(', ')) + '</small>' : '') + '</span></div>').join('');
   goalCriteriaInput.value = criteria.map(item => item.text).join('\\n');
   goalNext.textContent = goal.nextAction ? 'Next: ' + goal.nextAction : '';
   goalPause.disabled = goal.status !== 'active';

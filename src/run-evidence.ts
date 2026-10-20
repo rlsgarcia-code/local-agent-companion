@@ -27,11 +27,23 @@ export type ProcessEvidence = {
   ready?: boolean;
 };
 
+export type DiffEvidence = {
+  path: string;
+  kind: "created" | "modified" | "deleted";
+};
+
+export type McpEvidence = {
+  tool: string;
+  approved: boolean;
+};
+
 export type RunEvidenceSnapshot = {
   commands: CommandEvidence[];
   diagnostics: DiagnosticEvidence[];
   browser: BrowserEvidence[];
   processes: ProcessEvidence[];
+  diffs?: DiffEvidence[];
+  mcp?: McpEvidence[];
   projectIndexInspected: boolean;
   playbooksRead: string[];
 };
@@ -41,6 +53,8 @@ export class RunEvidenceRecorder {
   private readonly diagnostics: DiagnosticEvidence[] = [];
   private readonly browser: BrowserEvidence[] = [];
   private readonly processes: ProcessEvidence[] = [];
+  private readonly diffs: DiffEvidence[] = [];
+  private readonly mcp: McpEvidence[] = [];
   private readonly playbooks = new Set<string>();
   private projectIndexInspected = false;
 
@@ -60,6 +74,10 @@ export class RunEvidenceRecorder {
     this.processes.push(item);
   }
 
+  public diff(item: DiffEvidence): void { this.diffs.push(item); }
+
+  public mcpTool(item: McpEvidence): void { this.mcp.push(item); }
+
   public projectIndex(): void {
     this.projectIndexInspected = true;
   }
@@ -74,6 +92,8 @@ export class RunEvidenceRecorder {
       diagnostics: this.diagnostics.slice(-20),
       browser: this.browser.slice(-20),
       processes: this.processes.slice(-20),
+      diffs: this.diffs.slice(-50),
+      mcp: this.mcp.slice(-30),
       projectIndexInspected: this.projectIndexInspected,
       playbooksRead: [...this.playbooks].slice(0, 20)
     };
