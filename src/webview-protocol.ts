@@ -9,6 +9,7 @@ const secretText = z.string().max(16_384);
 const runMode = z.enum(["review", "execute", "plan"]);
 const runtime = z.enum(["standard", "deep"]);
 const finalReviewMode = z.enum(["off", "changes", "always"]);
+const responseLanguage = z.enum(["pt-BR", "en"]);
 const authHeader = z.enum(["authorization", "api-key", "ocp-apim-subscription-key"]);
 const modelProvider = z.enum(["litellm", "ollama", "openai"]);
 const noPayload = <Type extends string>(type: Type) => z.object({ type: z.literal(type) }).strict();
@@ -88,6 +89,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("selectRuntime"), runtime }).strict(),
   z.object({ type: z.literal("selectAutonomy"), mode: runMode }).strict(),
   z.object({ type: z.literal("selectFinalReview"), mode: finalReviewMode }).strict(),
+  z.object({ type: z.literal("selectResponseLanguage"), language: responseLanguage }).strict(),
   z.object({ type: z.literal("setLocalBrowserToolsEnabled"), enabled: z.boolean() }).strict(),
   z.object({ type: z.literal("testLiteLlm"), ...liteLlmFields }).strict(),
   z.object({ type: z.literal("saveLiteLlm"), ...liteLlmFields }).strict()

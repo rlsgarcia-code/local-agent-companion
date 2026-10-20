@@ -75,6 +75,7 @@ import {
 import type { McpConnectionSnapshot } from "./mcp-config";
 import { redactSensitiveText, safeErrorMessage } from "./redaction";
 import { agentRuntimeLabel, parseAgentRuntime } from "./runtime";
+import { parseResponseLanguage } from "./response-language";
 import { renderSafeMarkdown } from "./safe-markdown";
 import { isSensitiveWorkspacePath } from "./sensitive-files";
 import { createSupportBundle, serializeSupportBundle } from "./support-bundle";
@@ -559,6 +560,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         break;
       case "selectFinalReview":
         await this.selectFinalReview(message.mode);
+        break;
+      case "selectResponseLanguage":
+        await this.selectResponseLanguage(message.language);
         break;
       case "setLocalBrowserToolsEnabled":
         await this.setLocalBrowserToolsEnabled(message.enabled);
@@ -2369,6 +2373,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       history: this.threadMessages(snapshot),
       draft: drafts[snapshot.activeThreadId] ?? "",
       autonomyMode: this.autonomyMode(),
+      responseLanguage: parseResponseLanguage(vscode.workspace.getConfiguration("localAgentCompanion").get("responseLanguage")),
       recovery: snapshot.recovery,
       remoteRunActive: externalRunActive || (
         !this.agent.running && snapshot.threads.some((thread) => thread.recoveryStatus === "running")
@@ -2388,6 +2393,17 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     await vscode.workspace
       .getConfiguration("localAgentCompanion")
       .update("autonomyMode", mode, vscode.ConfigurationTarget.Workspace);
+  }
+
+  private async selectResponseLanguage(value: unknown): Promise<void> {
+    try {
+      await this.assertProviderConfigurationEditable();
+      const language = parseResponseLanguage(value);
+      await vscode.workspace.getConfiguration("localAgentCompanion").update("responseLanguage", language, vscode.ConfigurationTarget.Workspace);
+      this.post({ type: "responseLanguageChanged", language, message: language === "en" ? "Agent language set to English" : "Idioma do agente definido como português do Brasil" });
+    } catch (error) {
+      this.post({ type: "responseLanguageChangeError", language: parseResponseLanguage(vscode.workspace.getConfiguration("localAgentCompanion").get("responseLanguage")), message: await this.safeError(error) });
+    }
   }
 
   private drafts(): Record<string, string> {
@@ -2905,6 +2921,14 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
                 </select>
                 <small id="final-review-help">A separate model call reviews local evidence.</small>
               </label>
+              <label class="run-control-field" for="response-language">
+                <span>Language</span>
+                <select id="response-language" aria-describedby="response-language-help">
+                  <option value="pt-BR">Português</option>
+                  <option value="en">English</option>
+                </select>
+                <small id="response-language-help">Keep agent explanations and goal updates in one language.</small>
+              </label>
             </div>
           </details>
           <button class="cancel hidden" id="cancel" type="button">Cancel run</button>
@@ -3409,6 +3433,7 @@ const browserControl = document.getElementById('browser-control');
 const agentRuntime = document.getElementById('runtime');
 const autonomyMode = document.getElementById('mode');
 const finalReviewMode = document.getElementById('final-review-mode');
+const responseLanguage = document.getElementById('response-language');
 const runControls = document.getElementById('run-controls');
 const runControlsLabel = document.getElementById('run-controls-label');
 const runtimeHelp = document.getElementById('runtime-help');
@@ -5464,6 +5489,11 @@ finalReviewMode.addEventListener('change', () => {
   updateRunControlsSummary();
   vscode.postMessage({ type: 'selectFinalReview', mode: finalReviewMode.value });
 });
+responseLanguage.addEventListener('change', () => {
+  vscode.postMessage({ type: 'selectResponseLanguage', language: responseLanguage.value });
+  status.textContent = responseLanguage.value === 'en' ? 'Agent language set to English' : 'Idioma do agente definido como português';
+  announce(status.textContent);
+});
 prompt.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); submit(); }
 });
@@ -5518,6 +5548,7 @@ window.addEventListener('message', ({ data }) => {
       break;
     case 'hydrate':
       document.getElementById('workspace').textContent = data.workspace;
+      responseLanguage.value = data.responseLanguage === 'en' ? 'en' : 'pt-BR';
       setBrowserControl(Boolean(data.browserControlEnabled));
       setMcpConnectionState(data.mcpConnections || {});
       fillLiteLlmSettings(data.liteLlm || {});
@@ -5544,6 +5575,16 @@ window.addEventListener('message', ({ data }) => {
     case 'liteLlmSettings':
       fillLiteLlmSettings(data.liteLlm);
       if (data.message) status.textContent = data.message;
+      break;
+    case 'responseLanguageChanged':
+      responseLanguage.value = data.language === 'en' ? 'en' : 'pt-BR';
+      status.textContent = data.message || status.textContent;
+      announce(status.textContent);
+      break;
+    case 'responseLanguageChangeError':
+      responseLanguage.value = data.language === 'en' ? 'en' : 'pt-BR';
+      status.textContent = data.message || 'Could not change agent language';
+      announce(status.textContent);
       break;
     case 'gatewayCaError':
       liteLlmSettingsError.textContent = data.message;

@@ -159,6 +159,20 @@
           "scope": "resource",
           "description": "Default autonomy level for new Local Agent Companion requests in this workspace."
         },
+        "localAgentCompanion.responseLanguage": {
+          "type": "string",
+          "enum": [
+            "pt-BR",
+            "en"
+          ],
+          "enumDescriptions": [
+            "Respostas exclusivamente em português do Brasil.",
+            "Responses exclusively in English."
+          ],
+          "default": "pt-BR",
+          "scope": "resource",
+          "description": "Language used by the agent for explanations, plans, progress updates, and goal reports. Code and exact quoted text are preserved."
+        },
         "localAgentCompanion.liteLlmEndpoint": {
           "type": "string",
           "default": "",

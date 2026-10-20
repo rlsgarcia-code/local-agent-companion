@@ -4,9 +4,11 @@ import type { RunOutcome } from "./completion-notification";
 import type { ProjectGuidanceDocument } from "./project-guidance";
 import type { RunEvidenceSnapshot } from "./run-evidence";
 import type { GoalRecord } from "./goal-state";
+import type { ResponseLanguage } from "./response-language";
 
 export type RunMode = "review" | "execute" | "plan";
 export type AgentRuntime = "standard" | "deep";
+export type { ResponseLanguage };
 
 export type RunPreflightResult =
   | { ready: true }
