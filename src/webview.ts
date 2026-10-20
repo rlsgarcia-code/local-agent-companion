@@ -3251,6 +3251,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .message.user .message-body { font-size: 14px; }
 .message.assistant .message-body { line-height: 1.62; }
 .message.assistant.streaming .message-body { min-height: 1.62em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message.assistant.streaming.tool-turn .message-body { color: var(--muted); }
 .message.assistant.streaming .message-body::after { display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: var(--accent); content: ""; vertical-align: -.12em; animation: stream-cursor .85s steps(1, end) infinite; }
 .message.assistant.interrupted, .message.assistant.failed, .message.assistant.cancelled { padding-left: 10px; border-left: 2px solid var(--line); }
 .message-body p { margin: 0 0 9px; }
@@ -3795,8 +3796,9 @@ function flushAssistantStream(id) {
   state.pending = '';
   const element = state.element?.isConnected ? state.element : assistantMessageElement(id);
   const body = element?.querySelector('.message-body');
-  if (body) body.textContent = state.text;
-  if (element) messageSources.set(element, state.text);
+  const visibleText = (state.transientText || '') + state.text;
+  if (body) body.textContent = visibleText;
+  if (element) messageSources.set(element, visibleText);
   scrollConversationToBottom({ countUpdate: false });
 }
 
@@ -3820,13 +3822,10 @@ function resetAssistantStream(data) {
   state.frame = 0;
   state.pending = '';
   state.text = '';
-  state.element?.remove();
-  state.element = null;
-  if (state.countedUnseen && unseenConversationUpdates > 0) {
-    unseenConversationUpdates -= 1;
-    renderJumpToLatest();
-  }
-  state.countedUnseen = false;
+  state.transientText = ((state.transientText || '') + (state.element?.querySelector('.message-body')?.textContent || '')).slice(-12_000);
+  state.element?.classList.add('tool-turn');
+  const body = state.element?.querySelector('.message-body');
+  if (body) body.textContent = state.transientText;
 }
 
 function completeAssistantMessage(message) {
