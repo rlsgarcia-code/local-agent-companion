@@ -642,22 +642,19 @@ export class DevelopmentAgent implements vscode.Disposable {
         onEvent({ type: "goal", goal: started });
       }
       changeTracker = this.changeReview.startRun(workspace.uri.fsPath);
-      const goalRun = Boolean(goal);
       let priorMessages: ThreadMessage[] = [];
       let stagedUserMessage: ThreadMessage | undefined;
-      if (!goalRun) {
-        const requestTime = Date.now();
-        priorMessages = stageThreadRequest(conversation, request, {
-          now: requestTime,
-          replacePendingUser: options.replacePendingUser
-        });
-        stagedUserMessage = conversation.messages.at(-1);
-        if (!stagedUserMessage || stagedUserMessage.role !== "user") {
-          throw new Error("The request could not be staged in the active conversation.");
-        }
-        if (!priorMessages.some((message) => message.role === "user")) {
-          conversation.title = titleFromRequest(request);
-        }
+      const requestTime = Date.now();
+      priorMessages = stageThreadRequest(conversation, request, {
+        now: requestTime,
+        replacePendingUser: options.replacePendingUser
+      });
+      stagedUserMessage = conversation.messages.at(-1);
+      if (!stagedUserMessage || stagedUserMessage.role !== "user") {
+        throw new Error("The request could not be staged in the active conversation.");
+      }
+      if (!priorMessages.some((message) => message.role === "user")) {
+        conversation.title = titleFromRequest(request);
       }
       conversation.messages = this.compactPersistedConversation(
         conversation.messages,
@@ -855,7 +852,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       const userMessage = images.length
         ? new HumanMessage({ content: [{ type: "text" as const, text: request }, ...images.map((image) => ({ type: "image_url" as const, image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))] })
         : new HumanMessage(request);
-      const messages = !goalRun && firstInvocation && priorMessages.length
+      const messages = firstInvocation && priorMessages.length
         ? [
             ...this.compactPersistedConversation(priorMessages, maxConversationCharacters),
             userMessage
@@ -1087,21 +1084,19 @@ export class DevelopmentAgent implements vscode.Disposable {
       }
       this.hydratedThreads.add(threadId);
       const assistantCompletedAt = Date.now();
-      if (!goalRun) {
-        conversation.messages.push({
-          id: assistantMessageId,
-          role: "assistant",
-          content: answer,
-          createdAt: assistantCreatedAt,
-          runId,
-          status: "complete",
-          completedAt: assistantCompletedAt
-        });
-        conversation.messages = this.compactPersistedConversation(
-          conversation.messages,
-          maxConversationCharacters
-        );
-      }
+      conversation.messages.push({
+        id: assistantMessageId,
+        role: "assistant",
+        content: answer,
+        createdAt: assistantCreatedAt,
+        runId,
+        status: "complete",
+        completedAt: assistantCompletedAt
+      });
+      conversation.messages = this.compactPersistedConversation(
+        conversation.messages,
+        maxConversationCharacters
+      );
       conversation.updatedAt = Date.now();
       conversation.unread = true;
       this.finishRunHeartbeat(runId);
@@ -1602,7 +1597,7 @@ ${goalGuidance}`;
     sensitiveValues: readonly string[]
   ): Promise<GoalEvaluation> {
     const response = await model.invoke([
-      new SystemMessage("Evaluate the persistent goal conservatively. Return JSON only with decision, criteria, completedMilestones, nextAction, reason. Each criterion must include evidence strings and, when verified, evidenceRefs with kind test|diagnostic|diff|visual|command|mcp|note and a concise summary copied from the supplied evidence. Associate every claim with the criterion it proves. A criterion is verified only when concrete evidence is present; never infer verification from a claim alone. Tests, diagnostics, diffs, visual validation, approved commands, and actually invoked MCP tools are distinct evidence kinds; do not claim an MCP tool was used merely because it was available."),
+      new SystemMessage("Evaluate the persistent goal conservatively. Return JSON only with decision, criteria, completedMilestones, nextAction, reason. When decision is continue, nextAction must be a self-contained, concrete operational prompt that the agent can execute as its next iteration; do not write meta commentary. Each criterion must include evidence strings and, when verified, evidenceRefs with kind test|diagnostic|diff|visual|command|mcp|note and a concise summary copied from the supplied evidence. Associate every claim with the criterion it proves. A criterion is verified only when concrete evidence is present; never infer verification from a claim alone. Tests, diagnostics, diffs, visual validation, approved commands, and actually invoked MCP tools are distinct evidence kinds; do not claim an MCP tool was used merely because it was available."),
       new HumanMessage(JSON.stringify({
         goal: { objective: goal.objective, criteria: goal.criteria, milestones: goal.milestones },
         answer: redactSensitiveText(answer.slice(-12_000), sensitiveValues),

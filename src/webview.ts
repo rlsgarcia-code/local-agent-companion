@@ -1875,7 +1875,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     this.post({ type: "busy", value: true });
-    let requestAccepted = Boolean(goalId);
+    let requestAccepted = false;
     let outcome: RunOutcome | undefined;
     try {
       const snapshot = await this.agent.threadSnapshot();
@@ -1912,6 +1912,22 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         { replacePendingUser: replacePending, ...(goalId ? { goalId } : {}), ...(images.length ? { images } : {}) }
       );
       if (requestAccepted && outcome) void this.notifyRunCompletion(outcome);
+      if (goalId && requestAccepted && outcome === "completed" && mode !== "plan") {
+        const latestGoal = await this.agent.getGoal(goalId);
+        if (latestGoal?.status === "active" && latestGoal.nextAction) {
+          this.post({
+            type: "activity",
+            kind: "goal",
+            title: "Goal follow-up queued",
+            detail: latestGoal.nextAction
+          });
+          setTimeout(() => {
+            void this.resumeGoal(goalId).catch((error) => {
+              this.post({ type: "error", message: `Goal continuation failed: ${error instanceof Error ? error.message : String(error)}`, recoverable: true });
+            });
+          }, 50);
+        }
+      }
     } catch (error) {
       this.post({
         type: "error",
@@ -1941,8 +1957,12 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private async createGoalAndRun(text: string, mode: RunMode, runtime: AgentRuntime, finalReview: "off" | "changes" | "always"): Promise<void> {
     const snapshot = await this.agent.threadSnapshot();
-    const draft = await this.agent.createGoal({ objective: text.trim(), threadId: snapshot.activeThreadId, runtime, autonomyMode: mode, finalReview });
-    const goal = await this.agent.activateGoal(draft.id);
+    const existing = (await this.agent.listGoals()).find((item) =>
+      item.threadId === snapshot.activeThreadId && (item.status === "active" || item.status === "awaiting-criteria")
+    );
+    const goal = existing
+      ? (existing.status === "awaiting-criteria" ? await this.agent.activateGoal(existing.id) : existing)
+      : await this.agent.activateGoal((await this.agent.createGoal({ objective: text.trim(), threadId: snapshot.activeThreadId, runtime, autonomyMode: mode, finalReview })).id);
     this.post({ type: "goal", goal });
     this.post({ type: "activity", kind: "goal", title: "Goal started", detail: "The message was saved as a persistent goal and its first iteration is starting." });
     await this.send(text, mode, false, goal.id);
@@ -2028,7 +2048,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const goal = await this.agent.activateGoal(id);
     this.post({ type: "goal", goal });
     const mode = goal.policy.autonomyMode;
-    await this.send(`Continue the persistent goal: ${goal.objective}\nCurrent next action: ${goal.nextAction ?? "inspect the workspace and proceed"}`, mode, false, id);
+    await this.send(goal.nextAction?.trim() || `Continue the persistent goal: ${goal.objective}`, mode, false, id);
   }
 
   private async resumePendingGoals(): Promise<void> {
