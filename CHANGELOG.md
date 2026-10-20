@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+- Added a collapsible persistent-goal panel with inline acceptance-criteria editing, pause/cancel controls, and automatic continuation after restart without duplicating goal turns in chat history.
+- Added typed, criterion-linked evidence references for tests, diagnostics, diffs, visual validation, approved commands, and MCP tools actually invoked; goal completion remains blocked without concrete evidence.
+- Added workspace lease protection for goal iterations across VS Code windows and expanded regression coverage for persistence, recovery, and evidence association.
+
 ## 0.11.0
 
 - Added persistent workspace goals under `.local-agent/goals/`: create a goal from the composer, keep criteria/milestones/evidence and bounded progress history, resume active goals after restart, and evaluate completion through a structured evidence-only LangChain call. Goals pause after repeated stagnation or the 20-iteration safety limit and preserve the selected runtime, autonomy mode, approvals, and final-review policy.
