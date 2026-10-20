@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { access, mkdtemp, rm, stat } from "node:fs/promises";
+import { access, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -37,16 +37,22 @@ const extensionsDirectory = path.join(profileRoot, "extensions");
 let completed = false;
 
 try {
-  await runVSCodeCommand(
-    [
-      "--install-extension",
-      vsixPath,
-      "--force",
-      `--user-data-dir=${userDataDirectory}`,
-      `--extensions-dir=${extensionsDirectory}`
-    ],
-    { version }
-  );
+  const installArgs = [
+    "--install-extension",
+    vsixPath,
+    "--force",
+    `--user-data-dir=${userDataDirectory}`,
+    `--extensions-dir=${extensionsDirectory}`
+  ];
+  try {
+    await runVSCodeCommand(installArgs, { version });
+  } catch (error) {
+    // Some Windows VS Code builds exit with V8 code 134 after the CLI has
+    // already installed the VSIX. Continue only when the package is present
+    // in the isolated extension directory; a real install failure remains fatal.
+    if (process.platform !== "win32" || !(await installedExtensionPresent(extensionsDirectory))) throw error;
+    console.warn("PACKAGED_EXTENSION_TEST_INSTALL_WARNING VS Code CLI crashed after installing the VSIX; continuing with the verified isolated copy.");
+  }
 
   await runTests({
     version,
@@ -76,4 +82,17 @@ try {
   } else {
     console.error(`PACKAGED_EXTENSION_TEST_PROFILE_PRESERVED ${profileRoot}`);
   }
+}
+
+async function installedExtensionPresent(extensionsDirectory) {
+  let entries;
+  try { entries = await readdir(extensionsDirectory, { withFileTypes: true }); } catch { return false; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const manifest = JSON.parse(await readFile(path.join(extensionsDirectory, entry.name, "package.json"), "utf8"));
+      if (manifest.name === "local-agent-companion" && typeof manifest.version === "string") return true;
+    } catch { /* ignore incomplete install entries */ }
+  }
+  return false;
 }

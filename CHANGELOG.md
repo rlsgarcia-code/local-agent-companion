@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.2
+
+- Hardened packaged-VSIX verification on Windows when the VS Code CLI exits after successfully installing the isolated extension copy.
+
 ## 0.11.1
 
 - Added a collapsible persistent-goal panel with inline acceptance-criteria editing, pause/cancel controls, and automatic continuation after restart without duplicating goal turns in chat history.
