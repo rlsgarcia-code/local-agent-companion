@@ -405,6 +405,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "editGoal":
         await this.editGoal(message.id);
         break;
+      case "saveGoalCriteria":
+        await this.saveGoalCriteria(message.id, message.criteria);
+        break;
       case "retry":
         await this.retry(parseRunMode(message.mode));
         break;
@@ -1908,6 +1911,30 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.post({ type: "threadsUpdated", ...await this.threadPayload() });
   }
 
+  private async saveGoalCriteria(id: string, texts: string[]): Promise<void> {
+    const goal = await this.agent.getGoal(id);
+    if (!goal) throw new Error("Goal not found.");
+    const normalized = texts.map((text) => text.trim()).filter(Boolean).slice(0, 20);
+    if (!normalized.length) throw new Error("Provide at least one acceptance criterion.");
+    const criteria = normalized.map((text, index) => {
+      const existing = goal.criteria[index];
+      return {
+        id: existing?.id ?? `${goal.id}-criterion-${index + 1}`,
+        text: text.slice(0, 4_000),
+        status: existing?.status === "verified" && existing.text === text ? "verified" as const : "pending" as const,
+        evidence: existing?.text === text ? existing.evidence : []
+      };
+    });
+    const milestones = goal.milestones.map((milestone) => ({
+      ...milestone,
+      criteriaIds: criteria.map((criterion) => criterion.id),
+      status: milestone.status === "completed" ? "active" as const : milestone.status
+    }));
+    const updated = await this.agent.updateGoal({ ...goal, criteria, milestones, status: "awaiting-criteria", nextAction: "Review the updated criteria and activate the next iteration.", updatedAt: Date.now() });
+    this.post({ type: "goal", goal: updated });
+    this.post({ type: "threadsUpdated", ...await this.threadPayload() });
+  }
+
   private async resumeGoal(id: string): Promise<void> {
     const goal = await this.agent.activateGoal(id);
     this.post({ type: "goal", goal });
@@ -1929,6 +1956,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.resumedGoals.add(goal.id);
     this.post({ type: "activity", kind: "goal", title: `Resuming goal · iteration ${goal.iteration + 1}` });
     try { await this.resumeGoal(goal.id); } catch (error) { this.post({ type: "error", message: await this.safeError(error), recoverable: true }); }
+    finally { setTimeout(() => void this.resumePendingGoals(), 250); }
   }
 
   private async notifyRunCompletion(outcome: RunOutcome): Promise<void> {
@@ -2705,9 +2733,23 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div class="conversation-stage">
       <section class="goal-strip hidden" id="goal-strip" aria-live="polite">
         <span class="signal" aria-hidden="true"></span><span id="goal-strip-text"></span>
+        <button type="button" id="goal-details">Details</button>
         <button type="button" id="goal-edit">Edit</button>
         <button type="button" id="goal-open">Open</button>
         <button type="button" id="goal-resume" class="hidden">Resume</button>
+      </section>
+      <section class="goal-panel hidden" id="goal-panel" aria-labelledby="goal-panel-title">
+        <div class="goal-panel-heading"><strong id="goal-panel-title">Persistent goal</strong><button type="button" id="goal-panel-close">Close</button></div>
+        <p id="goal-objective"></p>
+        <div class="goal-progress" id="goal-progress"></div>
+        <div class="goal-criteria" id="goal-criteria"></div>
+        <div class="goal-editor hidden" id="goal-editor">
+          <label for="goal-criteria-input">Acceptance criteria (one per line)</label>
+          <textarea id="goal-criteria-input" rows="5" maxlength="80000"></textarea>
+          <div class="goal-editor-actions"><button type="button" id="goal-save-criteria">Save criteria</button><button type="button" id="goal-cancel-criteria">Cancel</button></div>
+        </div>
+        <p class="goal-next" id="goal-next"></p>
+        <div class="goal-panel-actions"><button type="button" id="goal-pause">Pause</button><button type="button" id="goal-cancel">Cancel</button></div>
       </section>
       <section class="timeline" id="timeline" aria-label="Conversation">
         <div class="welcome" id="welcome">
@@ -3166,6 +3208,18 @@ textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; res
 .goal-strip { display: flex; align-items: center; gap: 8px; padding: 6px 18px; border-bottom: 1px solid var(--line); color: var(--vscode-descriptionForeground); font-size: 11px; }
 .goal-strip .signal { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .goal-strip button { margin-left: auto; border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 5px; padding: 2px 7px; cursor: pointer; }
+.goal-strip button + button { margin-left: 0; }
+.goal-panel { margin: 0 18px 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--vscode-sideBar-background) 92%, var(--accent)); }
+.goal-panel-heading, .goal-panel-actions { display: flex; align-items: center; gap: 6px; }
+.goal-panel-heading button { margin-left: auto; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
+.goal-panel p { margin: 7px 0; font-size: 10px; color: var(--muted); white-space: pre-wrap; }
+.goal-progress { margin: 7px 0; font: 10px var(--vscode-editor-font-family); }
+.goal-criteria { display: grid; gap: 4px; }
+.goal-criterion { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 6px; align-items: start; font-size: 10px; }
+.goal-criterion-dot { width: 6px; height: 6px; margin-top: 4px; border-radius: 50%; background: var(--vscode-disabledForeground); }
+.goal-criterion-dot.verified { background: #6ddc72; }.goal-criterion-dot.failed { background: var(--vscode-errorForeground); }
+.goal-panel-actions { margin-top: 8px; }.goal-panel-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
+.goal-editor { margin-top: 8px; }.goal-editor label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 10px; }.goal-editor textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: 11px var(--vscode-font-family); }.goal-editor-actions { display: flex; gap: 6px; margin-top: 5px; }.goal-editor-actions button { border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; background: transparent; color: inherit; cursor: pointer; font-size: 10px; }
 .send:hover { transform: translateY(-1px); }
 .send:disabled { opacity: .35; cursor: default; transform: none; }
 .hint { padding: 5px 5px 0; color: var(--muted); text-align: center; font-size: 9px; }
@@ -3194,6 +3248,19 @@ const send = document.getElementById('send');
 const goalButton = document.getElementById('goal');
 const goalStrip = document.getElementById('goal-strip');
 const goalStripText = document.getElementById('goal-strip-text');
+const goalDetails = document.getElementById('goal-details');
+const goalPanel = document.getElementById('goal-panel');
+const goalPanelClose = document.getElementById('goal-panel-close');
+const goalObjective = document.getElementById('goal-objective');
+const goalProgress = document.getElementById('goal-progress');
+const goalCriteria = document.getElementById('goal-criteria');
+const goalEditor = document.getElementById('goal-editor');
+const goalCriteriaInput = document.getElementById('goal-criteria-input');
+const goalSaveCriteria = document.getElementById('goal-save-criteria');
+const goalCancelCriteria = document.getElementById('goal-cancel-criteria');
+const goalNext = document.getElementById('goal-next');
+const goalPause = document.getElementById('goal-pause');
+const goalCancel = document.getElementById('goal-cancel');
 const goalResume = document.getElementById('goal-resume');
 const goalOpen = document.getElementById('goal-open');
 const goalEdit = document.getElementById('goal-edit');
@@ -4269,26 +4336,38 @@ function renderThreads(data) {
 
 let activeGoalId = '';
 let activeGoalStatus = '';
+let activeGoalRecord = undefined;
 function renderGoals(goals) {
   const goal = (goals || []).find(item => item.threadId === activeThreadId && ['active','awaiting-criteria','paused'].includes(item.status));
-  if (!goal) { goalStrip.classList.add('hidden'); activeGoalId = ''; activeGoalStatus = ''; return; }
+  if (!goal) { goalStrip.classList.add('hidden'); goalPanel.classList.add('hidden'); activeGoalId = ''; activeGoalStatus = ''; return; }
   renderGoal(goal);
 }
 
 function renderGoal(goal) {
   if (!goal || !['active','awaiting-criteria','paused'].includes(goal.status)) {
     goalStrip.classList.add('hidden');
+    goalPanel.classList.add('hidden');
     activeGoalId = '';
     activeGoalStatus = '';
+    activeGoalRecord = undefined;
     return;
   }
   activeGoalId = goal.id;
   activeGoalStatus = goal.status;
+  activeGoalRecord = goal;
   goalStrip.classList.remove('hidden');
   const verified = (goal.criteria || []).filter(item => item.status === 'verified').length;
   goalStripText.textContent = goal.status + ' · ' + verified + '/' + (goal.criteria || []).length + ' criteria · ' + (goal.nextAction || goal.title);
   goalResume.classList.toggle('hidden', goal.status === 'completed' || goal.status === 'cancelled');
   goalResume.textContent = goal.status === 'awaiting-criteria' ? 'Activate' : 'Resume';
+  const criteria = goal.criteria || [];
+  goalObjective.textContent = goal.objective || goal.title || '';
+  goalProgress.textContent = 'Status: ' + goal.status + ' · Iteration ' + Number(goal.iteration || 0) + ' · ' + verified + '/' + criteria.length + ' criteria verified';
+  goalCriteria.innerHTML = criteria.map(item => '<div class="goal-criterion"><span class="goal-criterion-dot ' + escapeHtml(item.status) + '"></span><span>' + escapeHtml(item.text) + (item.evidence && item.evidence.length ? '<small> · ' + escapeHtml(item.evidence[0]) + '</small>' : '') + '</span></div>').join('');
+  goalCriteriaInput.value = criteria.map(item => item.text).join('\\n');
+  goalNext.textContent = goal.nextAction ? 'Next: ' + goal.nextAction : '';
+  goalPause.disabled = goal.status !== 'active';
+  goalCancel.disabled = ['completed', 'cancelled'].includes(goal.status);
 }
 
 function renderThreadList() {
@@ -4929,7 +5008,13 @@ goalResume.addEventListener('click', () => {
   vscode.postMessage({ type: activeGoalStatus === 'awaiting-criteria' ? 'activateGoal' : 'resumeGoal', id: activeGoalId });
 });
 goalOpen.addEventListener('click', () => { if (activeGoalId) vscode.postMessage({ type: 'openGoal', id: activeGoalId }); });
-goalEdit.addEventListener('click', () => { if (activeGoalId) vscode.postMessage({ type: 'editGoal', id: activeGoalId }); });
+goalEdit.addEventListener('click', () => { if (!activeGoalId) return; goalPanel.classList.remove('hidden'); goalEditor.classList.remove('hidden'); goalCriteria.classList.add('hidden'); goalCriteriaInput.focus(); });
+goalDetails.addEventListener('click', () => { goalPanel.classList.toggle('hidden'); });
+goalPanelClose.addEventListener('click', () => goalPanel.classList.add('hidden'));
+goalSaveCriteria.addEventListener('click', () => { if (!activeGoalId) return; const criteria = goalCriteriaInput.value.split(/\\r?\\n/).map(item => item.trim()).filter(Boolean); vscode.postMessage({ type: 'saveGoalCriteria', id: activeGoalId, criteria }); goalEditor.classList.add('hidden'); goalCriteria.classList.remove('hidden'); });
+goalCancelCriteria.addEventListener('click', () => { goalEditor.classList.add('hidden'); goalCriteria.classList.remove('hidden'); });
+goalPause.addEventListener('click', () => { if (activeGoalId) vscode.postMessage({ type: 'pauseGoal', id: activeGoalId }); });
+goalCancel.addEventListener('click', () => { if (activeGoalId) vscode.postMessage({ type: 'cancelGoal', id: activeGoalId }); });
 cancel.addEventListener('click', () => {
   if (!busy || cancellationPending) return;
   setCancellationPending(true);

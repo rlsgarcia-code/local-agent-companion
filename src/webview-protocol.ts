@@ -46,6 +46,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("cancelGoal"), id: identifier }).strict(),
   z.object({ type: z.literal("openGoal"), id: identifier }).strict(),
   z.object({ type: z.literal("editGoal"), id: identifier }).strict(),
+  z.object({ type: z.literal("saveGoalCriteria"), id: identifier, criteria: z.array(shortText).min(1).max(20) }).strict(),
   z.object({ type: z.literal("retry"), mode: runMode }).strict(),
   z.object({ type: z.literal("discardRecovery"), threadId: identifier, messageId: identifier }).strict(),
   noPayload("refreshRunState"),
