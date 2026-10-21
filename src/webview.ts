@@ -2738,7 +2738,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         </label>
         <label class="field">
           <span id="provider-endpoint-label">Gateway Base URL</span>
-          <input id="litellm-endpoint" type="url" autocomplete="off" spellcheck="false" placeholder="https://gateway.example.com/v1 or …/chat/completions" />
+          <input id="litellm-endpoint" type="url" autocomplete="off" spellcheck="false" placeholder="https://gateway.example.com/v1, …/chat/completions, or …/responses" />
         </label>
         <label class="field" id="auth-header-field">
           <span>Key Header</span>

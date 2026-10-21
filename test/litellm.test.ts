@@ -28,23 +28,26 @@ import {
   validateLiteLlmModelProfile
 } from "../src/litellm";
 
-test("normalizes HTTPS LiteLLM base and full Chat Completions URLs", () => {
+test("normalizes HTTPS LiteLLM base and full model API URLs", () => {
   assert.equal(normalizeLiteLlmEndpoint("https://gateway.example.com/v1/"), "https://gateway.example.com/v1");
   assert.equal(normalizeLiteLlmEndpoint("https://gateway.example.com/team/litellm"), "https://gateway.example.com/team/litellm");
   assert.equal(
     normalizeLiteLlmEndpoint("https://gateway.example.com/team/litellm/chat/completions/"),
     "https://gateway.example.com/team/litellm/chat/completions"
   );
+  assert.equal(
+    normalizeLiteLlmEndpoint("https://gateway.example.com/team/litellm/v1/responses/"),
+    "https://gateway.example.com/team/litellm/v1/responses"
+  );
 });
 
-test("rejects invalid, insecure, credential-bearing, and route-specific URLs", () => {
+test("rejects invalid and insecure gateway URLs", () => {
   assert.throws(() => normalizeLiteLlmEndpoint("not-a-url"), /valid HTTPS URL/);
   assert.throws(() => normalizeLiteLlmEndpoint("http://gateway.example.com/v1"), /use HTTPS/);
   assert.throws(
     () => normalizeLiteLlmEndpoint("https://user:secret@gateway.example.com/v1"),
     /must not contain credentials/
   );
-  assert.throws(() => normalizeLiteLlmEndpoint("https://gateway.example.com/v1/responses"), /not \/responses/);
   assert.throws(() => normalizeLiteLlmEndpoint("https://gateway.example.com/v1?api_key=secret"), /must not contain query/);
 });
 
@@ -63,6 +66,14 @@ test("validates the Chat Completions connection and constructs its route", () =>
   });
   assert.equal(chatCompletionsUrl(connection), "https://gateway.example.com/v1/chat/completions");
   assert.equal(chatCompletionsBaseUrl(connection), "https://gateway.example.com/v1");
+  assert.equal(
+    chatCompletionsUrl({ endpoint: "https://gateway.example.com/v1/responses" }),
+    "https://gateway.example.com/v1/chat/completions"
+  );
+  assert.equal(
+    chatCompletionsBaseUrl({ endpoint: "https://gateway.example.com/v1/responses" }),
+    "https://gateway.example.com/v1"
+  );
   assert.equal(
     chatCompletionsUrl({ endpoint: "https://gateway.example.com/proxy/chat/completions" }),
     "https://gateway.example.com/proxy/chat/completions"

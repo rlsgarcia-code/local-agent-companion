@@ -128,9 +128,6 @@ export function normalizeLiteLlmEndpoint(value: string): string {
     throw new Error("LiteLLM base URL must not contain credentials.");
   }
   const pathname = url.pathname.replace(/\/+$/, "");
-  if (/\/responses$/i.test(pathname)) {
-    throw new Error("LiteLLM endpoint must use the Chat Completions route, not /responses.");
-  }
   if (url.search) {
     throw new Error("LiteLLM endpoint must not contain query parameters or secrets.");
   }
@@ -428,14 +425,16 @@ export function chatCompletionsModelOptions(profile: LiteLlmModelProfile): {
 
 export function chatCompletionsUrl(connection: Pick<LiteLlmConnection, "endpoint">): string {
   const endpoint = connection.endpoint.replace(/\/$/, "");
-  return /\/chat\/completions$/i.test(new URL(endpoint).pathname)
-    ? endpoint
-    : `${endpoint}/chat/completions`;
+  const url = new URL(endpoint);
+  if (/\/chat\/completions$/i.test(url.pathname)) return endpoint;
+  url.pathname = url.pathname.replace(/\/responses$/i, "");
+  url.pathname = `${url.pathname}/chat/completions`;
+  return url.toString().replace(/\/$/, "");
 }
 
 export function chatCompletionsBaseUrl(connection: Pick<LiteLlmConnection, "endpoint">): string {
   const url = new URL(connection.endpoint.replace(/\/$/, ""));
-  url.pathname = url.pathname.replace(/\/chat\/completions$/i, "");
+  url.pathname = url.pathname.replace(/\/(?:chat\/completions|responses)$/i, "");
   return url.toString().replace(/\/$/, "");
 }
 

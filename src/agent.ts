@@ -1746,7 +1746,7 @@ ${goalGuidance}`;
       return `${message}\n\nCheck whether the selected provider is running and reachable. For LiteLLM with a private corporate CA, import its PEM in model provider settings.`;
     }
     if (/404|not found|method not allowed|405/i.test(message)) {
-      return `${message}\n\nThe configured provider must expose POST /chat/completions. You may enter either its base URL or the complete Chat Completions URL where editable.`;
+      return `${message}\n\nThe configured provider must expose the selected model API route: POST /responses for Responses API or POST /chat/completions for Chat Completions. You may enter its base URL or the complete selected route.`;
     }
     return message;
   }
