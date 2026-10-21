@@ -5066,7 +5066,7 @@ function fillLiteLlmSettings(liteLlm) {
   if (liteLlm.caCertificatePath) details.push('CA: ' + liteLlm.caCertificatePath);
   details.push(liteLlm.providerLabel || 'LiteLLM');
   if (liteLlm.requiresKey) details.push('Auth: ' + (liteLlm.authHeader || 'authorization'));
-  details.push('POST /chat/completions');
+  details.push((liteLlm.modelApi === 'responses' ? 'POST /responses' : 'POST /chat/completions'));
   document.getElementById('litellm-details').textContent = details.join(' · ');
   liteLlmSettingsError.classList.add('hidden');
   connectionDiagnostics.classList.add('hidden');

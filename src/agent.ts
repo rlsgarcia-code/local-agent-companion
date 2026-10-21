@@ -473,7 +473,8 @@ export class DevelopmentAgent implements vscode.Disposable {
         });
       }
 
-      diagnostics.push(await runDiagnostic("chat", "Chat Completions", async () => {
+      const modelApi = options.profile.api === "responses" ? "Responses API" : "Chat Completions";
+      diagnostics.push(await runDiagnostic("chat", modelApi, async () => {
         const model = options.profile.api === "responses"
           ? new ChatOpenAIResponses({
               model: connection.model,
@@ -505,7 +506,7 @@ export class DevelopmentAgent implements vscode.Disposable {
           () => "probe-ok",
           {
             name: "connection_probe",
-            description: "A harmless local tool exposed only to verify Chat Completions tool compatibility.",
+            description: `A harmless local tool exposed only to verify ${modelApi} tool compatibility.`,
             schema: z.object({})
           }
         );
