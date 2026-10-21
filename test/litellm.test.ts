@@ -22,6 +22,8 @@ import {
   parseLiteLlmModelsResponse,
   parseOptionalTemperature,
   resolveWorkspaceCertificatePath,
+  resolveLiteLlmModelApi,
+  liteLlmModelMetadata,
   updateLiteLlmModelProfile,
   validateGatewayCaPem,
   validateLiteLlmConnection,
@@ -141,7 +143,12 @@ test("selects documented GPT and Claude compatibility profiles", () => {
   assert.equal(detectLiteLlmModelPreset("claude-opus-4-8"), "claude-modern");
   assert.equal(detectLiteLlmModelPreset("claude-sonnet-4-6"), "claude-4.6");
   assert.doesNotThrow(() => validateLiteLlmModelProfile("gpt-6-luna", { reasoningEffort: "none" }));
-  assert.throws(() => validateLiteLlmModelProfile("gpt-6-luna", {}), /requires reasoning_effort none/);
+  assert.doesNotThrow(() => validateLiteLlmModelProfile("gpt-6-luna", {}));
+  assert.throws(() => validateLiteLlmModelProfile("gpt-6-luna", { api: "chat_completions" }), /requires reasoning_effort none/);
+  assert.equal(resolveLiteLlmModelApi("gpt-6-luna", {}), "responses");
+  assert.equal(resolveLiteLlmModelApi("gpt-6-luna", { reasoningEffort: "none", api: "chat_completions" }), "chat_completions");
+  assert.equal(liteLlmModelMetadata("gpt-6-luna")?.supportsNoneReasoningEffort, true);
+  assert.equal(liteLlmModelMetadata("company-coding-model"), undefined);
   assert.throws(
     () => validateLiteLlmModelProfile("claude-opus-4-8", { temperature: 0.5 }),
     /does not accept Temperature or Top P/

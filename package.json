@@ -214,6 +214,10 @@
           "additionalProperties": {
             "type": "object",
             "properties": {
+              "api": {
+                "type": "string",
+                "enum": ["auto", "chat_completions", "responses"]
+              },
               "reasoningEffort": {
                 "type": "string",
                 "enum": [
@@ -252,7 +256,7 @@
             },
             "additionalProperties": false
           },
-          "description": "Optional Chat Completions parameters stored per exact model alias. Missing fields are omitted from the request. Prefer the LiteLLM form in the Local Agent Companion sidebar."
+          "description": "Optional API and compatibility parameters stored per exact model alias. Auto selection uses the versioned LiteLLM snapshot conservatively."
         },
         "localAgentCompanion.gatewayCaCertificatePath": {
           "type": "string",
@@ -394,6 +398,7 @@
     "test:extension-host": "npm run build && npm run compile:extension-host-tests && node scripts/run-extension-host-tests.mjs",
     "test:vsix-install": "npm run compile:extension-host-tests && node scripts/run-vsix-install-tests.mjs",
     "smoke:litellm": "npm run compile:tests && node scripts/smoke-litellm-routing.mjs",
+    "catalog:update": "node scripts/update-litellm-catalog.mjs",
     "smoke:chroma": "node scripts/smoke-chroma-lifecycle.mjs",
     "audit:prod": "node scripts/audit-production.mjs",
     "verify": "npm run check && npm test && npm run build && npm run smoke:litellm && npm run smoke:chroma",

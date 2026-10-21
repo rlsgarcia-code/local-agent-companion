@@ -1,12 +1,13 @@
 import { X509Certificate } from "node:crypto";
 import * as path from "node:path";
+import { liteLlmCatalogMetadata, type LiteLlmCatalogMetadata } from "./litellm-catalog";
 
 export const LITELLM_API_KEY_SECRET = "localAgentCompanion.liteLlmApiKey";
 
 export type LiteLlmAuthHeader = "authorization" | "api-key" | "ocp-apim-subscription-key";
 
 export type LiteLlmReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-export type LiteLlmModelApi = "chat_completions" | "responses";
+export type LiteLlmModelApi = "auto" | "chat_completions" | "responses";
 
 export type LiteLlmModelPreset =
   | "auto"
@@ -101,6 +102,18 @@ export type LiteLlmModelProfile = {
   temperature?: number;
   topP?: number;
 };
+
+export function resolveLiteLlmModelApi(model: string, profile: LiteLlmModelProfile = {}): LiteLlmModelApi {
+  if (profile.api === "chat_completions" || profile.api === "responses") return profile.api;
+  const metadata = liteLlmCatalogMetadata(model);
+  if (!metadata) return "auto";
+  if (metadata.supportsReasoning && metadata.endpoints.includes("responses")) return "responses";
+  return metadata.endpoints.includes("chat_completions") ? "chat_completions" : "responses";
+}
+
+export function liteLlmModelMetadata(model: string): LiteLlmCatalogMetadata | undefined {
+  return liteLlmCatalogMetadata(model);
+}
 
 export type LiteLlmModelProfiles = Record<string, LiteLlmModelProfile>;
 
@@ -321,7 +334,7 @@ export function parseLiteLlmModelProfiles(value: unknown): LiteLlmModelProfiles 
       Array.isArray(rawProfile)
     ) continue;
     const source = rawProfile as Record<string, unknown>;
-    const api = source.api === "responses" || source.api === "chat_completions" ? source.api : undefined;
+    const api = source.api === "responses" || source.api === "chat_completions" || source.api === "auto" ? source.api : undefined;
     const preset = parseLiteLlmModelPreset(source.preset);
     const reasoningEffort = parseLiteLlmReasoningEffort(source.reasoningEffort);
     let temperature: number | undefined;
@@ -355,7 +368,7 @@ export function updateLiteLlmModelProfile(
   const profiles = parseLiteLlmModelProfiles(value);
   const alias = model.trim();
   const normalized: LiteLlmModelProfile = {
-    ...(profile.api === "responses" || profile.api === "chat_completions" ? { api: profile.api } : {}),
+    ...(profile.api === "responses" || profile.api === "chat_completions" || profile.api === "auto" ? { api: profile.api } : {}),
     ...(parseLiteLlmModelPreset(profile.preset) !== "auto" ? { preset: parseLiteLlmModelPreset(profile.preset) } : {}),
     ...(parseLiteLlmReasoningEffort(profile.reasoningEffort) ? { reasoningEffort: profile.reasoningEffort } : {}),
     ...(profile.temperature !== undefined
@@ -379,11 +392,16 @@ export function updateLiteLlmModelProfile(
 
 export function validateLiteLlmModelProfile(
   model: string,
-  profile: LiteLlmModelProfile
+  profile: LiteLlmModelProfile,
+  strict = false
 ): LiteLlmModelCapabilities {
   const preset = resolveLiteLlmModelPreset(model, profile.preset);
   const capabilities = LITELLM_MODEL_CAPABILITIES[preset];
-  const api = profile.api ?? "chat_completions";
+  const resolvedApi = resolveLiteLlmModelApi(model, profile);
+  if (resolvedApi === "auto" && strict) {
+    throw new Error(`No safe API metadata is available for “${model}”. Choose Responses API or configure a verified Chat Completions profile explicitly.`);
+  }
+  const api = resolvedApi === "auto" ? "chat_completions" : resolvedApi;
   if (api === "chat_completions" && capabilities.toolCalling === "unsupported") {
     throw new Error(`${capabilities.label} requires an API other than Chat Completions for function tools. Choose a compatible model or the Custom preset if your gateway exposes different capabilities.`);
   }

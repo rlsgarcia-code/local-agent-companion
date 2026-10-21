@@ -33,6 +33,7 @@ import {
   updateLiteLlmModelProfile,
   validateLiteLlmModelProfile
 } from "./litellm";
+import { LITELLM_MODEL_CATALOG } from "./litellm-catalog";
 import type {
   LiteLlmAuthHeader,
   LiteLlmModelCapabilities,
@@ -1829,7 +1830,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       ? normalizeLiteLlmEndpoint(message.embeddingEndpoint)
       : "";
     const preset = parseLiteLlmModelPreset(message.preset);
-    const modelApi: LiteLlmModelApi = message.modelApi === "responses" ? "responses" : "chat_completions";
+    const modelApi: LiteLlmModelApi = message.modelApi === "responses"
+      ? "responses"
+      : message.modelApi === "chat_completions" ? "chat_completions" : "auto";
     const reasoningEffort = message.reasoningEffort === "omit"
       ? undefined
       : parseLiteLlmReasoningEffort(message.reasoningEffort);
@@ -2787,11 +2790,13 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <span class="model-compatibility-signal" aria-hidden="true"></span>
           <span class="model-compatibility-copy"><strong id="model-compatibility-title"></strong><small id="model-compatibility-detail"></small></span>
         </div>
+        <div class="model-metadata hidden" id="model-metadata" role="status" aria-live="polite" aria-atomic="true"></div>
         <details class="advanced-settings" id="advanced-settings">
           <summary>Advanced model settings</summary>
           <label class="field">
             <span>Model API</span>
             <select id="litellm-model-api">
+              <option value="auto">Auto (conservative)</option>
               <option value="chat_completions">Chat Completions</option>
               <option value="responses">Responses API</option>
             </select>
@@ -3261,6 +3266,7 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .model-compatibility-copy { display: grid; min-width: 0; gap: 2px; }
 .model-compatibility-copy strong { font-size: 10px; font-weight: 600; }
 .model-compatibility-copy small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.model-metadata { margin: -4px 0 10px; padding: 6px 8px; border-left: 2px solid var(--accent); color: var(--muted); font: 9px/1.45 var(--vscode-editor-font-family); }
 .conversation-stage { position: relative; min-height: 0; overflow: hidden; }
 .timeline { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 18px 20px; }
 .jump-latest { position: absolute; right: 14px; bottom: 10px; z-index: 2; border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line)); border-radius: 999px; padding: 5px 9px; color: var(--vscode-foreground); background: color-mix(in srgb, var(--vscode-sideBar-background) 90%, var(--accent)); box-shadow: 0 5px 18px color-mix(in srgb, #000 24%, transparent); cursor: pointer; font-size: 9px; font-weight: 650; animation: reveal .16s ease-out; }
@@ -3437,6 +3443,7 @@ const script = String.raw`
 const vscode = acquireVsCodeApi();
 const restoredWebviewState = vscode.getState() || {};
 const modelCapabilityCatalog = ${JSON.stringify(LITELLM_MODEL_CAPABILITIES)};
+const modelMetadataCatalog = ${JSON.stringify(LITELLM_MODEL_CATALOG)};
 const timeline = document.getElementById('timeline');
 const jumpLatest = document.getElementById('jump-latest');
 const topDrawers = document.getElementById('top-drawers');
@@ -5043,7 +5050,7 @@ function fillLiteLlmSettings(liteLlm) {
     liteLlm,
     !liteLlmModelProfiles[String(liteLlm.model || '').trim()]
   );
-  liteLlmModelApi.value = liteLlm.modelApi || 'chat_completions';
+  liteLlmModelApi.value = liteLlm.modelApi || 'auto';
   liteLlmAuthHeader.value = liteLlm.authHeader || 'authorization';
   liteLlmApiKey.value = '';
   semanticMemoryEnabled.checked = liteLlm.semanticMemoryEnabled !== false;
@@ -5211,7 +5218,7 @@ function fillEmbeddingModelOptions(models, selected) {
 
 function fillModelProfile(model, fallback, recommendDefaults = false) {
   const profile = liteLlmModelProfiles[String(model).trim()] || fallback || {};
-  liteLlmModelApi.value = profile.api || 'chat_completions';
+  liteLlmModelApi.value = profile.api || 'auto';
   liteLlmModelPreset.value = profile.preset || 'auto';
   liteLlmReasoningEffort.value = profile.reasoningEffort || 'omit';
   liteLlmTemperature.value = profile.temperature === undefined ? '' : String(profile.temperature);
@@ -5253,11 +5260,19 @@ function renderModelCompatibility(resolved, capabilities) {
   if (!alias) return;
   const automatic = liteLlmModelPreset.value === 'auto';
   const modelApi = liteLlmModelApi.value;
+  const metadata = modelMetadataCatalog[alias.toLowerCase()];
+  const effectiveApi = modelApi === 'auto'
+    ? (metadata?.supportsReasoning && metadata?.endpoints.includes('responses') ? 'responses' : metadata?.endpoints?.[0])
+    : modelApi;
   const effort = liteLlmReasoningEffort.value;
   let state = 'ready';
   let title = 'Compatibility profile ready to test';
   let detail = (automatic ? 'Auto-detected' : 'Selected manually') + ' · ' + capabilities.label + '.';
-  if (modelApi === 'chat_completions' && capabilities.toolCalling === 'unsupported') {
+  if (modelApi === 'auto' && !metadata) {
+    state = 'failed';
+    title = 'Metadata unavailable — choose API explicitly';
+    detail = 'This corporate alias is not in the versioned LiteLLM snapshot. Auto selection is blocked to avoid unsafe tool/reasoning assumptions.';
+  } else if (effectiveApi === 'chat_completions' && capabilities.toolCalling === 'unsupported') {
     state = 'failed';
     title = 'Not compatible with this agent';
     detail = capabilities.label + ' requires an API other than Chat Completions for function tools. Choose another model or use Custom only if the gateway exposes different capabilities.';
@@ -5265,7 +5280,7 @@ function renderModelCompatibility(resolved, capabilities) {
     state = 'warning';
     title = automatic ? 'Compatibility could not be inferred' : 'Gateway-defined compatibility';
     detail = 'No assumptions are applied to this alias. Configure only documented parameters, then run Test connection.';
-  } else if (modelApi === 'chat_completions' && capabilities.toolCalling === 'reasoning-none-only' && effort !== 'none') {
+  } else if (effectiveApi === 'chat_completions' && capabilities.toolCalling === 'reasoning-none-only' && effort !== 'none') {
     state = 'warning';
     title = 'Reasoning none is required for tools';
     detail = capabilities.label + ' needs reasoning_effort none on Chat Completions. The recommended value can be selected in Advanced model settings.';
@@ -5276,6 +5291,30 @@ function renderModelCompatibility(resolved, capabilities) {
   modelCompatibility.classList.add(state);
   modelCompatibilityTitle.textContent = title;
   modelCompatibilityDetail.textContent = detail;
+  renderModelMetadata(alias, metadata, effectiveApi);
+}
+
+function renderModelMetadata(alias, metadata, effectiveApi) {
+  const element = document.getElementById('model-metadata');
+  if (!element) return;
+  if (!alias) { element.classList.add('hidden'); return; }
+  element.classList.remove('hidden');
+  if (!metadata) {
+    element.textContent = 'LiteLLM metadata: unavailable for this exact alias. Configure compatibility explicitly.';
+    return;
+  }
+  const limits = [metadata.maxInputTokens ? 'in ' + metadata.maxInputTokens.toLocaleString() : '', metadata.maxOutputTokens ? 'out ' + metadata.maxOutputTokens.toLocaleString() : ''].filter(Boolean).join(' · ');
+  const capabilities = [
+    metadata.supportsFunctionCalling ? 'tools' : 'no tools',
+    metadata.supportsParallelFunctionCalling ? 'parallel tools' : '',
+    metadata.vision ? 'vision' : '', metadata.pdf ? 'PDF' : '', metadata.audio ? 'audio' : '',
+    metadata.supportsStructuredOutput ? 'structured output' : '', metadata.promptCaching ? 'prompt cache' : '',
+    metadata.systemMessages ? 'system' : 'no system', metadata.webSearch ? 'web search' : '', metadata.computerUse ? 'computer use' : ''
+  ].filter(Boolean).join(' · ');
+  const pricing = metadata.inputPricePerMillion !== undefined || metadata.outputPricePerMillion !== undefined
+    ? ' · $' + (metadata.inputPricePerMillion ?? '?') + '/$' + (metadata.outputPricePerMillion ?? '?') + ' per 1M in/out' : '';
+  const deprecation = metadata.deprecationDate ? ' · deprecates ' + metadata.deprecationDate : '';
+  element.textContent = metadata.model + ' · ' + metadata.provider + ' · API ' + metadata.endpoints.join(', ') + (effectiveApi ? ' · selected ' + effectiveApi : '') + (limits ? ' · ' + limits : '') + ' · in ' + metadata.inputModalities.join('/') + ' → out ' + metadata.outputModalities.join('/') + ' · ' + capabilities + ' · tool choice ' + (metadata.toolChoice.join('/') || 'unknown') + (metadata.reasoningEfforts.length ? ' · reasoning ' + metadata.reasoningEfforts.join('/') : ' · no reasoning') + pricing + deprecation + ' · snapshot ' + metadata.sourceDate;
 }
 
 function applyModelCapabilities(recommendDefaults) {
@@ -5288,7 +5327,7 @@ function applyModelCapabilities(recommendDefaults) {
   [...liteLlmReasoningEffort.options].forEach(option => {
     option.disabled = option.value !== 'omit' && !capabilities.reasoningEfforts.includes(option.value);
   });
-  if (recommendDefaults && capabilities.toolCalling === 'reasoning-none-only') {
+  if (recommendDefaults && liteLlmModelApi.value === 'chat_completions' && capabilities.toolCalling === 'reasoning-none-only') {
     liteLlmReasoningEffort.value = 'none';
   } else if (currentEffort !== 'omit' && !capabilities.reasoningEfforts.includes(currentEffort)) {
     liteLlmReasoningEffort.value = 'omit';

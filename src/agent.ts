@@ -50,6 +50,7 @@ import {
   normalizeLiteLlmModelsEndpoint,
   parseLiteLlmModelsResponse,
   resolveWorkspaceCertificatePath,
+  resolveLiteLlmModelApi,
   validateLiteLlmModelProfile
 } from "./litellm";
 import type { LiteLlmModelProfile } from "./litellm";
@@ -320,7 +321,8 @@ export class DevelopmentAgent implements vscode.Disposable {
     try {
       validateLiteLlmModelProfile(
         connection.model,
-        liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model)
+        liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model),
+        true
       );
     } catch (error) {
       return {
@@ -429,7 +431,7 @@ export class DevelopmentAgent implements vscode.Disposable {
     if (!workspace) throw new Error("Open a workspace before testing the model connection.");
 
     const connection = validateModelConnection(options.connection);
-    validateLiteLlmModelProfile(connection.model, options.profile);
+    validateLiteLlmModelProfile(connection.model, options.profile, true);
     const authentication = modelClientAuthentication(connection);
     const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
       ? await this.certificateAuthorities(workspace.uri.fsPath)
@@ -474,9 +476,10 @@ export class DevelopmentAgent implements vscode.Disposable {
         });
       }
 
-      const modelApi = options.profile.api === "responses" ? "Responses API" : "Chat Completions";
+      const resolvedApi = resolveLiteLlmModelApi(connection.model, options.profile);
+      const modelApi = resolvedApi === "responses" ? "Responses API" : "Chat Completions";
       diagnostics.push(await runDiagnostic("chat", modelApi, async () => {
-        const model = options.profile.api === "responses"
+        const model = resolvedApi === "responses"
           ? new ChatOpenAIResponses({
               model: connection.model,
               apiKey: authentication.apiKey,
@@ -514,7 +517,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         await model.bindTools([connectionProbe]).invoke([
           new HumanMessage("Connection diagnostic only. Reply with OK without calling the available tool.")
         ], { signal: AbortSignal.timeout(20_000) });
-        return `Model “${connection.model}” accepted ${options.profile.api === "responses" ? "Responses API" : "Chat Completions"} streaming and function tools`;
+        return `Model “${connection.model}” accepted ${modelApi} streaming and function tools`;
       }, [connection.apiKey], { authHeader: connection.authHeader, surface: "chat" }));
 
       const embeddingModel = options.embeddingModel?.trim();
@@ -552,7 +555,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         provider: connection.provider,
         model: connection.model,
         api: modelApi,
-        route: new URL(options.profile.api === "responses"
+        route: new URL(resolvedApi === "responses"
           ? responsesUrl(connection, connection.model)
           : chatCompletionsUrl(connection)).pathname,
         diagnostics: diagnostics.map(({ id, label, status, detail, durationMs }) => ({ id, label, status, detail, durationMs }))
@@ -651,7 +654,8 @@ export class DevelopmentAgent implements vscode.Disposable {
       activeConnection = connection;
       const modelProfile = liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
       activeModelProfile = modelProfile;
-      validateLiteLlmModelProfile(connection.model, modelProfile);
+      validateLiteLlmModelProfile(connection.model, modelProfile, true);
+      const resolvedModelApi = resolveLiteLlmModelApi(connection.model, modelProfile);
       const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
         ? await this.certificateAuthorities(workspace.uri.fsPath)
         : undefined;
@@ -734,7 +738,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       const context = redactSensitiveText(renderedContext.text, sensitiveValues);
       const safeMemoryText = redactSensitiveText(memoryText, sensitiveValues);
 
-      const model = modelProfile.api === "responses"
+      const model = resolvedModelApi === "responses"
         ? new ChatOpenAIResponses({
             model: connection.model,
             apiKey: authentication.apiKey,

@@ -24,7 +24,8 @@ test("keeps the embedded webview script syntactically valid", () => {
   assert.notEqual(end, -1);
   const script = source
     .slice(bodyStart, end)
-    .replace("${JSON.stringify(LITELLM_MODEL_CAPABILITIES)}", "{}");
+    .replace("${JSON.stringify(LITELLM_MODEL_CAPABILITIES)}", "{}")
+    .replace("${JSON.stringify(LITELLM_MODEL_CATALOG)}", "{}");
 
   assert.doesNotThrow(() => new Function(script));
 });
