@@ -84,6 +84,7 @@ import { redactSensitiveText, safeErrorMessage } from "./redaction";
 import { RunEvidenceRecorder } from "./run-evidence";
 import type { RunEvidenceSnapshot } from "./run-evidence";
 import { agentRuntimeLabel, parseAgentRuntime } from "./runtime";
+import { appendAgentLog } from "./agent-log";
 import { parseResponseLanguage, responseLanguageInstruction, type ResponseLanguage } from "./response-language";
 import { SemanticProjectMemory } from "./semantic-memory";
 import {
@@ -546,6 +547,16 @@ export class DevelopmentAgent implements vscode.Disposable {
           detail: "Semantic vector memory is disabled"
         });
       }
+      await appendAgentLog(workspace.uri.fsPath, {
+        event: "connection-test",
+        provider: connection.provider,
+        model: connection.model,
+        api: modelApi,
+        route: new URL(options.profile.api === "responses"
+          ? responsesUrl(connection, connection.model)
+          : chatCompletionsUrl(connection)).pathname,
+        diagnostics: diagnostics.map(({ id, label, status, detail, durationMs }) => ({ id, label, status, detail, durationMs }))
+      }, [connection.apiKey]);
       return diagnostics;
     } finally {
       await dispatcher?.close();
@@ -603,6 +614,8 @@ export class DevelopmentAgent implements vscode.Disposable {
     let workspaceLease: WorkspaceRunLease | undefined;
     let mcpSession: McpRunSession | undefined;
     let sensitiveValues: string[] = [];
+    let activeConnection: ModelConnection | undefined;
+    let activeModelProfile: LiteLlmModelProfile = {};
     let outcome: RunOutcome = "failed";
     onEvent({ type: "status", label: "Collecting workspace context" });
 
@@ -635,7 +648,9 @@ export class DevelopmentAgent implements vscode.Disposable {
         apiKey: apiKey ?? "",
         authHeader: modelProviderAuthHeader(provider, configuration.get("liteLlmAuthHeader"))
       });
+      activeConnection = connection;
       const modelProfile = liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
+      activeModelProfile = modelProfile;
       validateLiteLlmModelProfile(connection.model, modelProfile);
       const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
         ? await this.certificateAuthorities(workspace.uri.fsPath)
@@ -1169,6 +1184,14 @@ export class DevelopmentAgent implements vscode.Disposable {
         onEvent({ type: "status", label: "Run cancelled" });
       } else {
         const message = safeErrorMessage(error, sensitiveValues);
+        await appendAgentLog(workspace.uri.fsPath, {
+          event: "agent-run",
+          status: outcome,
+          runId,
+          model: activeConnection?.model,
+          api: activeModelProfile.api === "responses" ? "Responses API" : "Chat Completions",
+          detail: this.explainError(message)
+        }, sensitiveValues).catch(() => undefined);
         onEvent({ type: "error", message: this.explainError(message), recoverable: Boolean(runId) });
       }
     } finally {

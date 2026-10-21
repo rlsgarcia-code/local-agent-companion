@@ -6,4 +6,5 @@ dist-extension-tests/
 *.vsix
 .DS_Store
 .local-agent/session.json
+.local-agent/logs/
 *.pem
