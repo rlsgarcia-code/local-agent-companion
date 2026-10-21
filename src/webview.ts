@@ -3087,7 +3087,8 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .plan-latest li.approval { border-left: 2px solid var(--vscode-editorWarning-foreground); padding-left: 7px; }.plan-latest li.approval strong { color: var(--vscode-editorWarning-foreground); }
 .plan-latest strong { color: var(--vscode-foreground); font: 650 8px/1.55 var(--vscode-font-family); letter-spacing: .07em; }
 .plan-latest span { min-width: 0; overflow-wrap: anywhere; }
-.execution-event { margin: 6px 14px; padding: 6px 9px; border-left: 2px solid var(--line); color: var(--muted); font-size: 10px; animation: reveal .14s ease-out; }.execution-event-heading { display: flex; align-items: baseline; gap: 6px; }.execution-event-heading strong { color: var(--vscode-descriptionForeground); font: 650 8px var(--vscode-font-family); letter-spacing: .06em; }.execution-event-heading span { overflow-wrap: anywhere; }.execution-event-signal { width: 5px; height: 5px; flex: 0 0 auto; margin-top: 3px; border-radius: 50%; background: var(--accent); }.execution-event-detail { margin: 3px 0 0 11px; white-space: pre-wrap; overflow-wrap: anywhere; }.execution-event-detail a { color: var(--vscode-textLink-foreground); text-decoration: underline; }.execution-event-browser { border-left-color: var(--accent); }.execution-event-tool, .execution-event-command { border-left-color: var(--vscode-descriptionForeground); }
+.execution-event { display: grid; grid-template-columns: 17px minmax(0, 1fr); gap: 5px; margin: 5px 14px; padding: 5px 8px; border-left: 2px solid var(--line); color: var(--muted); font-size: 10px; animation: reveal .14s ease-out; }.execution-event-heading { display: flex; align-items: baseline; grid-column: 2; gap: 6px; min-width: 0; }.execution-event-heading strong { color: var(--vscode-descriptionForeground); font: 650 8px var(--vscode-font-family); letter-spacing: .06em; }.execution-event-heading span { overflow-wrap: anywhere; }.execution-event-icon { display: grid; place-items: center; width: 16px; height: 16px; color: var(--vscode-descriptionForeground); font: 600 12px/1 var(--vscode-font-family); }.execution-event-signal { display: none; }.execution-event-detail { grid-column: 2; margin: 1px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }.execution-event-detail a { color: var(--vscode-textLink-foreground); text-decoration: underline; }.execution-event-browser { border-left-color: var(--accent); }.execution-event-browser .execution-event-icon { color: var(--accent); }.execution-event-tool, .execution-event-command { border-left-color: var(--vscode-descriptionForeground); }.execution-event-approval { border-left-color: var(--vscode-editorWarning-foreground); }.execution-event-approval .execution-event-icon { color: var(--vscode-editorWarning-foreground); }.execution-event-memory .execution-event-icon { color: var(--vscode-charts-purple, var(--accent)); }
+.thinking-event { margin: 7px 14px; padding: 0 8px; border-left: 2px solid color-mix(in srgb, var(--accent) 55%, var(--line)); color: var(--muted); font-size: 10px; animation: reveal .14s ease-out; }.thinking-event details { min-width: 0; }.thinking-event summary { display: flex; align-items: center; gap: 7px; padding: 5px 0; color: var(--vscode-descriptionForeground); cursor: pointer; list-style: none; }.thinking-event summary::-webkit-details-marker { display: none; }.thinking-event summary::before { content: '◇'; color: var(--accent); font-size: 13px; }.thinking-event summary::after { content: '⌄'; margin-left: auto; color: var(--muted); font-size: 10px; }.thinking-event details:not([open]) summary::after { content: '›'; }.thinking-event summary strong { font-weight: 600; }.thinking-event summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.thinking-event-body { display: grid; gap: 5px; padding: 1px 0 8px 20px; line-height: 1.45; }.thinking-event-body span { display: list-item; margin-left: 14px; }
 .top-drawers { min-height: 0; }
 .top-drawers.panel-open > .setup-callout { display: none; }
 .setup-callout { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--vscode-sideBar-background) 96%, var(--accent)); }
@@ -4083,12 +4084,32 @@ function localLinkify(value) {
   return escapeHtml(String(value || '')).replace(/(https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?[^\s<]*)/g, '<a class="local-activity-link" href="$1" target="_blank" rel="noreferrer">$1</a>');
 }
 
+function executionEventIcon(kind, title) {
+  const normalizedKind = String(kind || '').toLowerCase();
+  const normalizedTitle = String(title || '').toLowerCase();
+  if (normalizedKind === 'approval' || normalizedTitle.includes('approval') || normalizedTitle.includes('confirmation')) return '⚠';
+  if (normalizedKind === 'browser' || normalizedTitle.includes('browser') || normalizedTitle.includes('screenshot')) return '◉';
+  if (normalizedKind === 'command' || normalizedTitle.includes('command') || normalizedTitle.includes('ran ')) return '⌘';
+  if (normalizedKind === 'files' || normalizedTitle.includes('read ') || normalizedTitle.includes('file')) return '▣';
+  if (normalizedKind === 'memory' || normalizedTitle.includes('memory')) return '◆';
+  if (normalizedKind === 'tool' || normalizedTitle.includes('searched') || normalizedTitle.includes('inspected')) return '⌕';
+  if (normalizedKind === 'goal' || normalizedTitle.includes('goal')) return '◇';
+  if (normalizedKind === 'status') return '·';
+  return '›';
+}
+
 function appendExecutionTimelineEvent(kind, title, detail = '') {
   document.getElementById('welcome')?.remove();
   const element = document.createElement('article');
-  element.className = 'execution-event execution-event-' + escapeHtml(String(kind || 'activity').toLowerCase());
-  element.innerHTML = '<div class="execution-event-heading"><span class="execution-event-signal" aria-hidden="true"></span><strong>' + escapeHtml(String(kind || 'activity').toUpperCase()) + '</strong><span>' + escapeHtml(String(title || '')) + '</span></div>' +
-    (detail ? '<div class="execution-event-detail">' + localLinkify(detail) + '</div>' : '');
+  const normalizedKind = String(kind || 'activity').toLowerCase();
+  if (normalizedKind === 'status' && String(title || '').toLowerCase() !== 'ready') {
+    element.className = 'thinking-event';
+    element.innerHTML = '<details open><summary><strong>Thinking</strong><small>' + escapeHtml(String(title || '')) + '</small></summary><div class="thinking-event-body"><span>' + escapeHtml(String(title || '')) + '</span>' + (detail ? '<span>' + localLinkify(detail) + '</span>' : '') + '</div></details>';
+  } else {
+    element.className = 'execution-event execution-event-' + escapeHtml(normalizedKind);
+    element.innerHTML = '<span class="execution-event-icon" aria-hidden="true">' + executionEventIcon(kind, title) + '</span><div class="execution-event-heading"><span class="execution-event-signal" aria-hidden="true"></span><strong>' + escapeHtml(String(kind || 'activity').toUpperCase()) + '</strong><span>' + escapeHtml(String(title || '')) + '</span></div>' +
+      (detail ? '<div class="execution-event-detail">' + localLinkify(detail) + '</div>' : '');
+  }
   // Keep execution history before the in-flight assistant message. The assistant
   // stream is created as soon as its first delta arrives, while status/memory/tool
   // events can still arrive afterward; appending blindly would place history below
