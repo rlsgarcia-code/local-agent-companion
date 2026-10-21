@@ -434,7 +434,8 @@ export function chatCompletionsBaseUrl(connection: Pick<LiteLlmConnection, "endp
 
 export function embeddingsBaseUrl(
   connection: Pick<LiteLlmConnection, "endpoint"> & Partial<Pick<LiteLlmConnection, "model">>,
-  embeddingModel?: string
+  embeddingModel?: string,
+  modelInPath = false
 ): string {
   const url = new URL(connection.endpoint.replace(/\/$/, ""));
   url.pathname = url.pathname
@@ -453,6 +454,8 @@ export function embeddingsBaseUrl(
       url.pathname = decodedPath.replace(/\/\{model\}(?=\/|$)/i, `/${encodedModel}`);
     } else if (encodedChatModel && url.pathname.endsWith(`/${encodedChatModel}`)) {
       url.pathname = url.pathname.slice(0, -encodedChatModel.length) + encodedModel;
+    } else if (modelInPath && !url.pathname.endsWith(`/${encodedModel}`)) {
+      url.pathname = `${url.pathname}/${encodedModel}`;
     }
   }
   return url.toString().replace(/\/$/, "");
@@ -460,9 +463,10 @@ export function embeddingsBaseUrl(
 
 export function embeddingsUrl(
   connection: Pick<LiteLlmConnection, "endpoint"> & Partial<Pick<LiteLlmConnection, "model">>,
-  embeddingModel?: string
+  embeddingModel?: string,
+  modelInPath = false
 ): string {
-  return `${embeddingsBaseUrl(connection, embeddingModel)}/embeddings`;
+  return `${embeddingsBaseUrl(connection, embeddingModel, modelInPath)}/embeddings`;
 }
 
 export function resolveWorkspaceCertificatePath(

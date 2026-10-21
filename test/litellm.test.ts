@@ -192,6 +192,14 @@ test("derives the embeddings route from the same LiteLLM base URL", () => {
     ),
     "https://gateway.example.com/litellm/team/embedding%20alias/embeddings"
   );
+  assert.equal(
+    embeddingsUrl(
+      { endpoint: "https://gateway.example.com/litellm/something", model: "chat-alias" },
+      "embedding-alias",
+      true
+    ),
+    "https://gateway.example.com/litellm/something/embedding-alias/embeddings"
+  );
 });
 
 test("keeps the gateway CA certificate inside the workspace", () => {

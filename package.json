@@ -308,7 +308,7 @@
         "localAgentCompanion.embeddingEndpoint": {
           "type": "string",
           "default": "",
-          "description": "Optional complete HTTPS embeddings route. Use this when the gateway requires the embedding model in the URL path."
+          "description": "Optional HTTPS embeddings base URL. When set, the selected embedding model is appended as /<model>/embeddings."
         },
         "localAgentCompanion.semanticMemoryResults": {
           "type": "number",

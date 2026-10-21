@@ -2835,9 +2835,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <datalist id="embedding-model-aliases"></datalist>
         </label>
         <label class="field">
-          <span>Embeddings URL <small>optional</small></span>
-          <input id="embedding-endpoint" type="url" autocomplete="off" spellcheck="false" placeholder="Auto · or https://gateway/.../<model>/embeddings" />
-          <small>Informe a rota completa quando o gateway exigir o modelo no caminho. O alias selecionado continua sendo enviado no corpo.</small>
+          <span>Embeddings base URL <small>optional</small></span>
+          <input id="embedding-endpoint" type="url" autocomplete="off" spellcheck="false" placeholder="https://gateway/.../litellm/something" />
+          <small>Informe somente o prefixo antes de <code>/model/embeddings</code>. O alias selecionado será inserido automaticamente no caminho e no corpo.</small>
         </label>
         <p class="settings-note" id="embedding-provider-note">The selected provider is used for chat and embeddings. Vectors and Chroma data stay on this machine.</p>
       </section>
