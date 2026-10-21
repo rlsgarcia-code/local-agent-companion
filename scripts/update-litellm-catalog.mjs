@@ -4,8 +4,10 @@ import { resolve } from "node:path";
 
 const source = "https://raw.githubusercontent.com/BerriAI/litellm/refs/heads/main/model_prices_and_context_window.json";
 const modelsSource = "https://models.litellm.ai/";
-const snapshotDate = process.env.CATALOG_SNAPSHOT_DATE || new Date().toISOString().slice(0, 10);
 const output = resolve("src/litellm-catalog.ts");
+const existing = await readFile(output, "utf8").catch(() => "");
+const requestedDate = process.argv.find((argument) => argument.startsWith("--date="))?.slice("--date=".length);
+const snapshotDate = requestedDate || existing.match(/LITELLM_CATALOG_SNAPSHOT_DATE\s*=\s*["'](\d{4}-\d{2}-\d{2})["']/)?.[1] || "2026-10-21";
 
 const number = (value) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
 const bool = (value) => value === true;
