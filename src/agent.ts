@@ -848,11 +848,15 @@ export class DevelopmentAgent implements vscode.Disposable {
         }
       });
 
-      const firstInvocation = !this.hydratedThreads.has(threadId);
       const userMessage = images.length
         ? new HumanMessage({ content: [{ type: "text" as const, text: request }, ...images.map((image) => ({ type: "image_url" as const, image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))] })
         : new HumanMessage(request);
-      const messages = firstInvocation && priorMessages.length
+      // The local thread is the durable conversation source. MemorySaver is deliberately
+      // reset at the boundary of each user request and is used only for the current
+      // LangGraph/tool loop, so a browser-heavy run cannot hide history from the next turn.
+      await this.checkpointer.deleteThread(threadId).catch(() => undefined);
+      this.hydratedThreads.delete(threadId);
+      const messages = priorMessages.length
         ? [
             ...this.compactPersistedConversation(priorMessages, maxConversationCharacters),
             userMessage
