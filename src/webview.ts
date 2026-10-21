@@ -21,6 +21,7 @@ import {
 import {
   LITELLM_MODEL_CAPABILITIES,
   liteLlmModelProfile,
+  normalizeLiteLlmEndpoint,
   normalizeLiteLlmModelsEndpoint,
   parseLiteLlmAuthHeader,
   parseLiteLlmModelPreset,
@@ -121,6 +122,7 @@ type LiteLlmFormFields = {
   topP: string;
   semanticMemoryEnabled: boolean;
   embeddingModel: string;
+  embeddingEndpoint: string;
   visionModel: string;
 };
 
@@ -149,6 +151,7 @@ type LiteLlmSettingsSnapshot = {
   topP?: number;
   semanticMemoryEnabled: boolean;
   embeddingModel: string;
+  embeddingEndpoint: string;
   visionModel: string;
   finalReviewMode: "off" | "changes" | "always";
 };
@@ -637,6 +640,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       topP: profile.topP,
       semanticMemoryEnabled: configuration.get<boolean>("semanticMemoryEnabled", true),
       embeddingModel: configuration.get<string>("embeddingModel", ""),
+      embeddingEndpoint: configuration.get<string>("embeddingEndpoint", ""),
       visionModel: configuration.get<string>("visionModel", ""),
       finalReviewMode: parseFinalReviewMode(configuration.get("finalReviewMode"))
     };
@@ -1726,6 +1730,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         configuration.update("liteLlmModelProfiles", modelProfiles, vscode.ConfigurationTarget.Global),
         configuration.update("semanticMemoryEnabled", message.semanticMemoryEnabled, vscode.ConfigurationTarget.Global),
         configuration.update("embeddingModel", message.embeddingModel.trim(), vscode.ConfigurationTarget.Global),
+        configuration.update("embeddingEndpoint", message.embeddingEndpoint.trim(), vscode.ConfigurationTarget.Global),
         configuration.update("visionModel", message.visionModel.trim(), vscode.ConfigurationTarget.Global),
         ...(secretName && message.apiKey.trim()
           ? [this.extensionContext.secrets.store(secretName, message.apiKey.trim())]
@@ -1780,7 +1785,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         connection: parsed.connection,
         profile: liteLlmModelProfile(parsed.modelProfiles, parsed.connection.model),
         modelsEndpoint: parsed.modelsEndpoint,
-        embeddingModel: message.semanticMemoryEnabled ? message.embeddingModel : ""
+        embeddingModel: message.semanticMemoryEnabled ? message.embeddingModel : "",
+        embeddingEndpoint: message.semanticMemoryEnabled ? parsed.embeddingEndpoint : ""
       }));
     } catch (error) {
       const detail = await this.safeError(error, parsed.connection.apiKey);
@@ -1815,6 +1821,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const modelsEndpoint = modelProviderSupportsCatalog(provider) && message.modelsEndpoint.trim()
       ? normalizeLiteLlmModelsEndpoint(message.modelsEndpoint)
       : "";
+    const embeddingEndpoint = message.embeddingEndpoint.trim()
+      ? normalizeLiteLlmEndpoint(message.embeddingEndpoint)
+      : "";
     const preset = parseLiteLlmModelPreset(message.preset);
     const reasoningEffort = message.reasoningEffort === "omit"
       ? undefined
@@ -1834,7 +1843,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (message.visionModel.trim() && message.visionModel.trim() !== profileModel) {
       validateLiteLlmModelProfile(message.visionModel.trim(), liteLlmModelProfile(modelProfiles, message.visionModel.trim()));
     }
-    return { connection, modelsEndpoint, modelProfiles };
+    return { connection, modelsEndpoint, embeddingEndpoint, modelProfiles };
   }
 
   private async send(text: string, mode: RunMode, replacePending = false, goalId?: string, images: ImageAttachment[] = []): Promise<void> {
@@ -2825,6 +2834,11 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <input id="embedding-model" type="text" list="embedding-model-aliases" autocomplete="off" spellcheck="false" placeholder="Disabled · use memory.md only" />
           <datalist id="embedding-model-aliases"></datalist>
         </label>
+        <label class="field">
+          <span>Embeddings URL <small>optional</small></span>
+          <input id="embedding-endpoint" type="url" autocomplete="off" spellcheck="false" placeholder="Auto · or https://gateway/.../<model>/embeddings" />
+          <small>Informe a rota completa quando o gateway exigir o modelo no caminho. O alias selecionado continua sendo enviado no corpo.</small>
+        </label>
         <p class="settings-note" id="embedding-provider-note">The selected provider is used for chat and embeddings. Vectors and Chroma data stay on this machine.</p>
       </section>
       <section class="setup-step" data-setup-step="3" aria-labelledby="setup-step-verify-title" hidden>
@@ -3531,6 +3545,7 @@ const contextMemoryEntry = document.getElementById('context-memory-entry');
 const promptTokenEstimate = document.getElementById('prompt-token-estimate');
 const semanticMemoryEnabled = document.getElementById('semantic-memory-enabled');
 const embeddingModel = document.getElementById('embedding-model');
+const embeddingEndpoint = document.getElementById('embedding-endpoint');
 const embeddingModelAliases = document.getElementById('embedding-model-aliases');
 const newThreadButton = document.getElementById('new-thread');
 const mcpConnections = document.getElementById('mcp-connections');
@@ -5017,6 +5032,7 @@ function fillLiteLlmSettings(liteLlm) {
   liteLlmAuthHeader.value = liteLlm.authHeader || 'authorization';
   liteLlmApiKey.value = '';
   semanticMemoryEnabled.checked = liteLlm.semanticMemoryEnabled !== false;
+  embeddingEndpoint.value = liteLlm.embeddingEndpoint || '';
   fillEmbeddingModelOptions(
     knownModels.filter(isEmbeddingModel),
     liteLlm.embeddingModel || ''
@@ -5298,6 +5314,7 @@ function liteLlmFormMessage(type) {
     topP: liteLlmTopP.value,
     semanticMemoryEnabled: semanticMemoryEnabled.checked,
     embeddingModel: embeddingModel.value,
+    embeddingEndpoint: embeddingEndpoint.value,
     visionModel: visionModel.value
   };
 }
@@ -5659,7 +5676,8 @@ modelProvider.addEventListener('change', () => {
     modelsEndpoint: liteLlmModelsEndpoint.value,
     model: liteLlmModel.value,
     visionModel: visionModel.value,
-    embeddingModel: embeddingModel.value
+    embeddingModel: embeddingModel.value,
+    embeddingEndpoint: embeddingEndpoint.value
   };
   activeProvider = modelProvider.value;
   const draft = providerDrafts[activeProvider] || {};
@@ -5669,6 +5687,7 @@ modelProvider.addEventListener('change', () => {
       ? 'https://api.openai.com/v1'
       : '');
   liteLlmModelsEndpoint.value = draft.modelsEndpoint || '';
+  embeddingEndpoint.value = draft.embeddingEndpoint || '';
   liteLlmModel.value = draft.model || '';
   visionModel.value = draft.visionModel || '';
   liteLlmApiKey.value = '';

@@ -124,6 +124,7 @@ type ConnectionDiagnosticOptions = {
   profile: LiteLlmModelProfile;
   modelsEndpoint?: string;
   embeddingModel?: string;
+  embeddingEndpoint?: string;
 };
 
 export type ModelCatalogResult = {
@@ -437,8 +438,11 @@ export class DevelopmentAgent implements vscode.Disposable {
       authentication.stripAuthorization,
       dispatcher
     );
+    const embeddingConnection = options.embeddingEndpoint?.trim()
+      ? { ...connection, endpoint: options.embeddingEndpoint }
+      : connection;
     const embeddingFetch = gatewayFetch(
-      embeddingsUrl(connection, options.embeddingModel),
+      embeddingsUrl(embeddingConnection, options.embeddingModel),
       authentication.stripAuthorization,
       dispatcher
     );
@@ -506,7 +510,7 @@ export class DevelopmentAgent implements vscode.Disposable {
             maxRetries: 0,
             timeout: 20_000,
             configuration: {
-              baseURL: embeddingsBaseUrl(connection, embeddingModel),
+              baseURL: embeddingsBaseUrl(embeddingConnection, embeddingModel),
               ...(authentication.defaultHeaders
                 ? { defaultHeaders: authentication.defaultHeaders }
                 : {}),
@@ -783,17 +787,19 @@ export class DevelopmentAgent implements vscode.Disposable {
       };
       const semanticMemoryEnabled = configuration.get<boolean>("semanticMemoryEnabled", true);
       const embeddingModel = configuration.get<string>("embeddingModel", "").trim();
+      const embeddingEndpoint = configuration.get<string>("embeddingEndpoint", "").trim();
       if (semanticMemoryEnabled && embeddingModel) {
+        const embeddingConnection = embeddingEndpoint ? { ...connection, endpoint: embeddingEndpoint } : connection;
         try {
           const recalled = await this.semanticMemory.recall({
             query: request,
             memoryText: safeMemoryText,
             embeddingModel,
-            embeddingsBaseUrl: embeddingsBaseUrl(connection, embeddingModel),
+            embeddingsBaseUrl: embeddingsBaseUrl(embeddingConnection, embeddingModel),
             apiKey: authentication.apiKey,
             defaultHeaders: authentication.defaultHeaders,
             fetch: gatewayFetch(
-              embeddingsUrl(connection, embeddingModel),
+              embeddingsUrl(embeddingConnection, embeddingModel),
               authentication.stripAuthorization,
               dispatcher,
               controller.signal

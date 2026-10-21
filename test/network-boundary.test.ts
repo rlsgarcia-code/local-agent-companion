@@ -68,11 +68,11 @@ test("routes every LangChain model client through the exact-route gateway transp
   assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g), 1);
 
   assert.match(agent, /const chatFetch = gatewayFetch\(\s*chatCompletionsUrl\(connection\)/);
-  assert.match(agent, /const embeddingFetch = gatewayFetch\(\s*embeddingsUrl\(connection(?:, (?:embeddingModel|options\.embeddingModel))?\)/);
+  assert.match(agent, /const embeddingFetch = gatewayFetch\(\s*embeddingsUrl\(embeddingConnection(?:, (?:embeddingModel|options\.embeddingModel))?\)/);
   assert.match(agent, /fetch: chatFetch/);
   assert.match(agent, /fetch: embeddingFetch/);
   assert.match(agent, /fetch: gatewayFetch\(\s*chatCompletionsUrl\(connection\)/);
-  assert.match(agent, /fetch: gatewayFetch\(\s*embeddingsUrl\(connection(?:, embeddingModel)?\)/);
+  assert.match(agent, /fetch: gatewayFetch\(\s*embeddingsUrl\(embeddingConnection(?:, embeddingModel)?\)/);
   assert.match(semanticMemory, /options\.fetch \? \{ fetch: options\.fetch \} : \{\}/);
   assert.match(gateway, /validateGatewayRequest\(input, init, allowedUrl\)/);
   assert.match(gateway, /redirect: "manual"/);

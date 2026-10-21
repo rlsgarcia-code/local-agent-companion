@@ -37,6 +37,7 @@ const liteLlmFields = {
   topP: z.string().max(64),
   semanticMemoryEnabled: z.boolean(),
   embeddingModel: shortText,
+  embeddingEndpoint: urlText.default(""),
   visionModel: shortText.default("")
 } as const;
 

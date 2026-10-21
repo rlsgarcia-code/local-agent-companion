@@ -305,6 +305,11 @@
           "default": "",
           "description": "Selected-provider model used only for embeddings. Leave blank to use memory.md without semantic retrieval."
         },
+        "localAgentCompanion.embeddingEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "Optional complete HTTPS embeddings route. Use this when the gateway requires the embedding model in the URL path."
+        },
         "localAgentCompanion.semanticMemoryResults": {
           "type": "number",
           "default": 5,
