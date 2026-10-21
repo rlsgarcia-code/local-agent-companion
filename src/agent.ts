@@ -1544,10 +1544,12 @@ export class DevelopmentAgent implements vscode.Disposable {
     const toolGuidance = runtime === "deep"
       ? `- The opened project is mounted at /workspace. Use ls, glob, grep, and read_file there before making claims or edits.
 - Use write_file and edit_file only for scoped changes under /workspace.
-- Delegate bounded research or analysis to a local subagent when it materially reduces context pressure.`
+- Delegate bounded research or analysis to a local subagent when it materially reduces context pressure.
+- When multiple read-only inspections are independent, emit their tool calls in the same model turn so the runtime can execute them concurrently. Keep writes, commands, browser actions, memory updates, approvals, and dependent steps ordered.`
       : `- Work from evidence. Inspect relevant workspace files before making claims or edits; use search_text before broad reading.
 - Manage context actively. Read only relevant files and use bounded line ranges.
-- Use edit_file for small exact replacements and create_file only for new files.`;
+- Use edit_file for small exact replacements and create_file only for new files.
+- When multiple read-only inspections are independent, emit their tool calls in the same model turn so the runtime can execute them concurrently. Keep writes, commands, browser actions, memory updates, approvals, and dependent steps ordered.`;
     const browserGuidance = browserEnabled
       ? `- UI completion gate: when a request changes a visible web interface and the application can run locally, do not declare the task complete until you open it with browser_open, inspect the affected flow with browser_inspect, exercise that flow with browser_interact in an executable mode, and run browser_visual_check after the final change when the selected model accepts images. Capture a pre-change baseline with browser_capture_baseline and use browser_compare when the same meaningful state is available before and after. For responsive or layout work, also inspect a narrow viewport. Treat page errors and unexpected console errors as failed validation.
 - Use element references from the latest inspection for browser_interact. Browser tools are limited to loopback applications, require explicit session approval, and must not be used to seek internet access or enter passwords.
