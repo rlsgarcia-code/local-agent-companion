@@ -46,7 +46,7 @@ const ROOT_KEYS = new Set(["kind", "version", "exportedAt", "gateway", "models",
 const GATEWAY_KEYS = new Set(["endpoint", "modelsEndpoint", "authHeader", "requiresKey", "requiresCorporateCa"]);
 const MODEL_KEYS = new Set(["chat", "embedding", "semanticMemoryEnabled", "profiles"]);
 const WORKSPACE_KEYS = new Set(["runtime", "autonomyMode"]);
-const MODEL_PROFILE_KEYS = new Set(["preset", "reasoningEffort", "temperature", "topP"]);
+const MODEL_PROFILE_KEYS = new Set(["api", "preset", "reasoningEffort", "temperature", "topP"]);
 const SECRET_KEYS = /^(?:api[-_]?key|key|secret|token|password|credential|authorization|certificate|caCertificate|pem)$/i;
 
 export function createConnectionProfile(input: ProfileInput, now = new Date()): ConnectionProfile {
@@ -135,6 +135,9 @@ function validateRawModelProfiles(value: unknown): void {
     }
     const profile = objectValue(raw, `Profile for ${alias} must be an object.`);
     assertAllowedKeys(profile, MODEL_PROFILE_KEYS, `model profile ${alias}`);
+    if (profile.api !== undefined && profile.api !== "chat_completions" && profile.api !== "responses") {
+      throw new Error(`Profile for ${alias} contains an unsupported model API.`);
+    }
     if (profile.preset !== undefined && parseLiteLlmModelPreset(profile.preset) !== profile.preset) {
       throw new Error(`Profile for ${alias} contains an unsupported compatibility preset.`);
     }

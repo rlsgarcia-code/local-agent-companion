@@ -9,6 +9,8 @@ import {
   detectLiteLlmModelPreset,
   embeddingsBaseUrl,
   embeddingsUrl,
+  responsesBaseUrl,
+  responsesUrl,
   liteLlmModelProfile,
   liteLlmModelsRequestHeaders,
   liteLlmModelsRequestInit,
@@ -199,6 +201,17 @@ test("derives the embeddings route from the same LiteLLM base URL", () => {
       true
     ),
     "https://gateway.example.com/litellm/something/embedding-alias/embeddings"
+  );
+});
+
+test("derives the Responses API route from a configured Chat Completions route", () => {
+  const connection = { endpoint: "https://gateway.example.com/team/chat/completions" };
+  assert.equal(responsesUrl(connection), "https://gateway.example.com/team/responses");
+  assert.equal(responsesBaseUrl(connection), "https://gateway.example.com/team");
+  assert.equal(responsesUrl({ endpoint: "https://gateway.example.com/team/responses" }), "https://gateway.example.com/team/responses");
+  assert.equal(
+    responsesUrl({ endpoint: "https://gateway.example.com/team/{model}/chat/completions", model: "chat" }, "responses-model"),
+    "https://gateway.example.com/team/responses-model/responses"
   );
 });
 

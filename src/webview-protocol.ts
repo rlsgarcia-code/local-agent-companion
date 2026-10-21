@@ -28,6 +28,7 @@ const liteLlmFields = {
   endpoint: urlText,
   model: shortText,
   profileModel: shortText.default(""),
+  modelApi: z.enum(["chat_completions", "responses"]).default("chat_completions"),
   apiKey: secretText,
   authHeader,
   modelsEndpoint: urlText,

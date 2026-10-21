@@ -6,6 +6,7 @@ export const LITELLM_API_KEY_SECRET = "localAgentCompanion.liteLlmApiKey";
 export type LiteLlmAuthHeader = "authorization" | "api-key" | "ocp-apim-subscription-key";
 
 export type LiteLlmReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type LiteLlmModelApi = "chat_completions" | "responses";
 
 export type LiteLlmModelPreset =
   | "auto"
@@ -94,6 +95,7 @@ export const LITELLM_MODEL_CAPABILITIES: Record<Exclude<LiteLlmModelPreset, "aut
 };
 
 export type LiteLlmModelProfile = {
+  api?: LiteLlmModelApi;
   preset?: LiteLlmModelPreset;
   reasoningEffort?: LiteLlmReasoningEffort;
   temperature?: number;
@@ -322,6 +324,7 @@ export function parseLiteLlmModelProfiles(value: unknown): LiteLlmModelProfiles 
       Array.isArray(rawProfile)
     ) continue;
     const source = rawProfile as Record<string, unknown>;
+    const api = source.api === "responses" || source.api === "chat_completions" ? source.api : undefined;
     const preset = parseLiteLlmModelPreset(source.preset);
     const reasoningEffort = parseLiteLlmReasoningEffort(source.reasoningEffort);
     let temperature: number | undefined;
@@ -333,6 +336,7 @@ export function parseLiteLlmModelProfiles(value: unknown): LiteLlmModelProfiles 
       continue;
     }
     profiles[model] = {
+      ...(api ? { api } : {}),
       ...(preset !== "auto" ? { preset } : {}),
       ...(reasoningEffort ? { reasoningEffort } : {}),
       ...(temperature !== undefined ? { temperature } : {}),
@@ -354,6 +358,7 @@ export function updateLiteLlmModelProfile(
   const profiles = parseLiteLlmModelProfiles(value);
   const alias = model.trim();
   const normalized: LiteLlmModelProfile = {
+    ...(profile.api === "responses" || profile.api === "chat_completions" ? { api: profile.api } : {}),
     ...(parseLiteLlmModelPreset(profile.preset) !== "auto" ? { preset: parseLiteLlmModelPreset(profile.preset) } : {}),
     ...(parseLiteLlmReasoningEffort(profile.reasoningEffort) ? { reasoningEffort: profile.reasoningEffort } : {}),
     ...(profile.temperature !== undefined
@@ -362,6 +367,7 @@ export function updateLiteLlmModelProfile(
     ...(profile.topP !== undefined ? { topP: parseOptionalTopP(profile.topP) } : {})
   };
   if (
+    normalized.api === undefined &&
     normalized.preset === undefined &&
     normalized.reasoningEffort === undefined &&
     normalized.temperature === undefined &&
@@ -380,13 +386,14 @@ export function validateLiteLlmModelProfile(
 ): LiteLlmModelCapabilities {
   const preset = resolveLiteLlmModelPreset(model, profile.preset);
   const capabilities = LITELLM_MODEL_CAPABILITIES[preset];
-  if (capabilities.toolCalling === "unsupported") {
+  const api = profile.api ?? "chat_completions";
+  if (api === "chat_completions" && capabilities.toolCalling === "unsupported") {
     throw new Error(`${capabilities.label} requires an API other than Chat Completions for function tools. Choose a compatible model or the Custom preset if your gateway exposes different capabilities.`);
   }
   if (profile.reasoningEffort && !capabilities.reasoningEfforts.includes(profile.reasoningEffort)) {
     throw new Error(`${capabilities.label} does not allow reasoning_effort ${profile.reasoningEffort} in this compatibility profile.`);
   }
-  if (capabilities.toolCalling === "reasoning-none-only" && profile.reasoningEffort !== "none") {
+  if (api === "chat_completions" && capabilities.toolCalling === "reasoning-none-only" && profile.reasoningEffort !== "none") {
     throw new Error(`${capabilities.label} requires reasoning_effort none for Chat Completions function tools.`);
   }
   const hasSampling = profile.temperature !== undefined || profile.topP !== undefined;
@@ -429,6 +436,48 @@ export function chatCompletionsUrl(connection: Pick<LiteLlmConnection, "endpoint
 export function chatCompletionsBaseUrl(connection: Pick<LiteLlmConnection, "endpoint">): string {
   const url = new URL(connection.endpoint.replace(/\/$/, ""));
   url.pathname = url.pathname.replace(/\/chat\/completions$/i, "");
+  return url.toString().replace(/\/$/, "");
+}
+
+export function responsesUrl(
+  connection: Pick<LiteLlmConnection, "endpoint"> & Partial<Pick<LiteLlmConnection, "model">>,
+  model?: string
+): string {
+  const url = new URL(connection.endpoint.replace(/\/$/, ""));
+  url.pathname = url.pathname.replace(/\/(?:chat\/completions|responses)$/i, "");
+  const selectedModel = model?.trim();
+  if (selectedModel) {
+    const encodedModel = encodeURIComponent(selectedModel);
+    const chatModel = connection.model?.trim();
+    const decodedPath = decodeURIComponent(url.pathname);
+    if (decodedPath.includes("/{model}")) {
+      url.pathname = decodedPath.replace(/\/\{model\}(?=\/|$)/i, `/${encodedModel}`);
+    } else if (chatModel && url.pathname.endsWith(`/${encodeURIComponent(chatModel)}`)) {
+      url.pathname = url.pathname.slice(0, -encodeURIComponent(chatModel).length) + encodedModel;
+    }
+  }
+  url.pathname = `${url.pathname}/responses`;
+  return url.toString().replace(/\/$/, "");
+}
+
+export function responsesBaseUrl(
+  connection: Pick<LiteLlmConnection, "endpoint"> & Partial<Pick<LiteLlmConnection, "model">>,
+  model?: string
+): string {
+  const url = new URL(connection.endpoint.replace(/\/$/, ""));
+  url.pathname = url.pathname
+    .replace(/\/chat\/completions$/i, "")
+    .replace(/\/responses$/i, "");
+  const selectedModel = model?.trim();
+  const chatModel = connection.model?.trim();
+  if (selectedModel) {
+    const decodedPath = decodeURIComponent(url.pathname);
+    if (decodedPath.includes("/{model}")) {
+      url.pathname = decodedPath.replace(/\/\{model\}(?=\/|$)/i, `/${encodeURIComponent(selectedModel)}`);
+    } else if (chatModel && url.pathname.endsWith(`/${encodeURIComponent(chatModel)}`)) {
+      url.pathname = url.pathname.slice(0, -encodeURIComponent(chatModel).length) + encodeURIComponent(selectedModel);
+    }
+  }
   return url.toString().replace(/\/$/, "");
 }
 

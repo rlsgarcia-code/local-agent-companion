@@ -36,6 +36,7 @@ import {
 import type {
   LiteLlmAuthHeader,
   LiteLlmModelCapabilities,
+  LiteLlmModelApi,
   LiteLlmModelPreset,
   LiteLlmModelProfiles,
   LiteLlmReasoningEffort
@@ -113,6 +114,7 @@ type LiteLlmFormFields = {
   endpoint: string;
   model: string;
   profileModel: string;
+  modelApi: LiteLlmModelApi;
   apiKey: string;
   authHeader: LiteLlmAuthHeader;
   modelsEndpoint: string;
@@ -143,6 +145,7 @@ type LiteLlmSettingsSnapshot = {
   runtime: AgentRuntime;
   authHeader: LiteLlmAuthHeader;
   modelProfiles: LiteLlmModelProfiles;
+  modelApi: LiteLlmModelApi;
   preset: LiteLlmModelPreset;
   resolvedPreset: Exclude<LiteLlmModelPreset, "auto">;
   capabilities: LiteLlmModelCapabilities;
@@ -632,6 +635,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       runtime: parseAgentRuntime(configuration.get("agentRuntime")),
       authHeader: parseLiteLlmAuthHeader(configuration.get("liteLlmAuthHeader")),
       modelProfiles,
+      modelApi: profile.api ?? "chat_completions",
       preset: parseLiteLlmModelPreset(profile.preset),
       resolvedPreset,
       capabilities: LITELLM_MODEL_CAPABILITIES[resolvedPreset],
@@ -1825,6 +1829,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       ? normalizeLiteLlmEndpoint(message.embeddingEndpoint)
       : "";
     const preset = parseLiteLlmModelPreset(message.preset);
+    const modelApi: LiteLlmModelApi = message.modelApi === "responses" ? "responses" : "chat_completions";
     const reasoningEffort = message.reasoningEffort === "omit"
       ? undefined
       : parseLiteLlmReasoningEffort(message.reasoningEffort);
@@ -1837,7 +1842,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const modelProfiles = updateLiteLlmModelProfile(
       configuration.get("liteLlmModelProfiles"),
       profileModel,
-      { preset, reasoningEffort, temperature, topP }
+      { api: modelApi, preset, reasoningEffort, temperature, topP }
     );
     validateLiteLlmModelProfile(profileModel, liteLlmModelProfile(modelProfiles, profileModel));
     if (message.visionModel.trim() && message.visionModel.trim() !== profileModel) {
@@ -2785,6 +2790,14 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <details class="advanced-settings" id="advanced-settings">
           <summary>Advanced model settings</summary>
           <label class="field">
+            <span>Model API</span>
+            <select id="litellm-model-api">
+              <option value="chat_completions">Chat Completions</option>
+              <option value="responses">Responses API</option>
+            </select>
+            <small>Responses envia <code>model</code> e <code>input</code> para a rota <code>/responses</code>.</small>
+          </label>
+          <label class="field">
             <span>Compatibility profile</span>
             <select id="litellm-model-preset">
               <option value="auto">Auto-detect from alias</option>
@@ -3509,6 +3522,7 @@ const modelCompatibility = document.getElementById('model-compatibility');
 const modelCompatibilityTitle = document.getElementById('model-compatibility-title');
 const modelCompatibilityDetail = document.getElementById('model-compatibility-detail');
 const liteLlmReasoningEffort = document.getElementById('litellm-reasoning-effort');
+const liteLlmModelApi = document.getElementById('litellm-model-api');
 const liteLlmModelPreset = document.getElementById('litellm-model-preset');
 const liteLlmTemperature = document.getElementById('litellm-temperature');
 const liteLlmTopP = document.getElementById('litellm-top-p');
@@ -5029,6 +5043,7 @@ function fillLiteLlmSettings(liteLlm) {
     liteLlm,
     !liteLlmModelProfiles[String(liteLlm.model || '').trim()]
   );
+  liteLlmModelApi.value = liteLlm.modelApi || 'chat_completions';
   liteLlmAuthHeader.value = liteLlm.authHeader || 'authorization';
   liteLlmApiKey.value = '';
   semanticMemoryEnabled.checked = liteLlm.semanticMemoryEnabled !== false;
@@ -5196,6 +5211,7 @@ function fillEmbeddingModelOptions(models, selected) {
 
 function fillModelProfile(model, fallback, recommendDefaults = false) {
   const profile = liteLlmModelProfiles[String(model).trim()] || fallback || {};
+  liteLlmModelApi.value = profile.api || 'chat_completions';
   liteLlmModelPreset.value = profile.preset || 'auto';
   liteLlmReasoningEffort.value = profile.reasoningEffort || 'omit';
   liteLlmTemperature.value = profile.temperature === undefined ? '' : String(profile.temperature);
@@ -5236,11 +5252,12 @@ function renderModelCompatibility(resolved, capabilities) {
   modelCompatibility.classList.toggle('hidden', !alias);
   if (!alias) return;
   const automatic = liteLlmModelPreset.value === 'auto';
+  const modelApi = liteLlmModelApi.value;
   const effort = liteLlmReasoningEffort.value;
   let state = 'ready';
   let title = 'Compatibility profile ready to test';
   let detail = (automatic ? 'Auto-detected' : 'Selected manually') + ' · ' + capabilities.label + '.';
-  if (capabilities.toolCalling === 'unsupported') {
+  if (modelApi === 'chat_completions' && capabilities.toolCalling === 'unsupported') {
     state = 'failed';
     title = 'Not compatible with this agent';
     detail = capabilities.label + ' requires an API other than Chat Completions for function tools. Choose another model or use Custom only if the gateway exposes different capabilities.';
@@ -5248,7 +5265,7 @@ function renderModelCompatibility(resolved, capabilities) {
     state = 'warning';
     title = automatic ? 'Compatibility could not be inferred' : 'Gateway-defined compatibility';
     detail = 'No assumptions are applied to this alias. Configure only documented parameters, then run Test connection.';
-  } else if (capabilities.toolCalling === 'reasoning-none-only' && effort !== 'none') {
+  } else if (modelApi === 'chat_completions' && capabilities.toolCalling === 'reasoning-none-only' && effort !== 'none') {
     state = 'warning';
     title = 'Reasoning none is required for tools';
     detail = capabilities.label + ' needs reasoning_effort none on Chat Completions. The recommended value can be selected in Advanced model settings.';
@@ -5306,6 +5323,7 @@ function liteLlmFormMessage(type) {
     modelsEndpoint: liteLlmModelsEndpoint.value,
     model: liteLlmModel.value,
     profileModel: profileModelForControls(),
+    modelApi: liteLlmModelApi.value,
     apiKey: liteLlmApiKey.value,
     authHeader: liteLlmAuthHeader.value,
     preset: liteLlmModelPreset.value,
@@ -5732,6 +5750,7 @@ visionModel.addEventListener('change', () => {
 });
 visionModel.addEventListener('input', previewModelCompatibility);
 liteLlmModelPreset.addEventListener('change', () => applyModelCapabilities(true));
+liteLlmModelApi.addEventListener('change', () => applyModelCapabilities(true));
 liteLlmReasoningEffort.addEventListener('change', () => applyModelCapabilities(false));
 liteLlmTemperature.addEventListener('input', () => {
   if (liteLlmTemperature.value !== '') liteLlmTopP.value = '';

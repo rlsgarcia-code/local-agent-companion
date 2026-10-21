@@ -3,10 +3,11 @@ import { readFile, realpath } from "node:fs/promises";
 import * as path from "node:path";
 import { rootCertificates } from "node:tls";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { BaseMessage, HumanMessage, RemoveMessage, SystemMessage } from "@langchain/core/messages";
 import type { LLMResult } from "@langchain/core/outputs";
 import { MemorySaver, REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
-import { ChatOpenAICompletions, OpenAIEmbeddings } from "@langchain/openai";
+import { ChatOpenAICompletions, ChatOpenAIResponses, OpenAIEmbeddings } from "@langchain/openai";
 import {
   CompositeBackend,
   createDeepAgent,
@@ -42,6 +43,8 @@ import {
   chatCompletionsUrl,
   embeddingsBaseUrl,
   embeddingsUrl,
+  responsesBaseUrl,
+  responsesUrl,
   liteLlmModelProfile,
   liteLlmModelsRequestInit,
   normalizeLiteLlmModelsEndpoint,
@@ -471,22 +474,33 @@ export class DevelopmentAgent implements vscode.Disposable {
       }
 
       diagnostics.push(await runDiagnostic("chat", "Chat Completions", async () => {
-        const model = new ChatOpenAICompletions({
-          model: connection.model,
-          apiKey: authentication.apiKey,
-          streaming: true,
-          streamUsage: true,
-          maxRetries: 0,
-          timeout: 20_000,
-          ...chatCompletionsModelOptions(options.profile),
-          configuration: {
-            baseURL: chatCompletionsBaseUrl(connection),
-            ...(authentication.defaultHeaders
-              ? { defaultHeaders: authentication.defaultHeaders }
-              : {}),
-            fetch: chatFetch
-          }
-        });
+        const model = options.profile.api === "responses"
+          ? new ChatOpenAIResponses({
+              model: connection.model,
+              apiKey: authentication.apiKey,
+              streaming: true,
+              maxRetries: 0,
+              timeout: 20_000,
+              configuration: {
+                baseURL: responsesBaseUrl(connection, connection.model),
+                ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+                fetch: gatewayFetch(responsesUrl(connection, connection.model), authentication.stripAuthorization, dispatcher)
+              }
+            })
+          : new ChatOpenAICompletions({
+              model: connection.model,
+              apiKey: authentication.apiKey,
+              streaming: true,
+              streamUsage: true,
+              maxRetries: 0,
+              timeout: 20_000,
+              ...chatCompletionsModelOptions(options.profile),
+              configuration: {
+                baseURL: chatCompletionsBaseUrl(connection),
+                ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+                fetch: chatFetch
+              }
+            });
         const connectionProbe = tool(
           () => "probe-ok",
           {
@@ -498,7 +512,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         await model.bindTools([connectionProbe]).invoke([
           new HumanMessage("Connection diagnostic only. Reply with OK without calling the available tool.")
         ], { signal: AbortSignal.timeout(20_000) });
-        return `Model “${connection.model}” accepted streaming and function tools`;
+        return `Model “${connection.model}” accepted ${options.profile.api === "responses" ? "Responses API" : "Chat Completions"} streaming and function tools`;
       }, [connection.apiKey], { authHeader: connection.authHeader, surface: "chat" }));
 
       const embeddingModel = options.embeddingModel?.trim();
@@ -704,26 +718,31 @@ export class DevelopmentAgent implements vscode.Disposable {
       const context = redactSensitiveText(renderedContext.text, sensitiveValues);
       const safeMemoryText = redactSensitiveText(memoryText, sensitiveValues);
 
-      const model = new ChatOpenAICompletions({
-        model: connection.model,
-        apiKey: authentication.apiKey,
-        streaming: true,
-        streamUsage: true,
-        maxRetries: 2,
-        ...chatCompletionsModelOptions(modelProfile),
-        configuration: {
-          baseURL: chatCompletionsBaseUrl(connection),
-          ...(authentication.defaultHeaders
-            ? { defaultHeaders: authentication.defaultHeaders }
-            : {}),
-          fetch: gatewayFetch(
-            chatCompletionsUrl(connection),
-            authentication.stripAuthorization,
-            dispatcher,
-            controller.signal
-          )
-        }
-      });
+      const model = modelProfile.api === "responses"
+        ? new ChatOpenAIResponses({
+            model: connection.model,
+            apiKey: authentication.apiKey,
+            streaming: true,
+            maxRetries: 2,
+            configuration: {
+              baseURL: responsesBaseUrl(connection, connection.model),
+              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+              fetch: gatewayFetch(responsesUrl(connection, connection.model), authentication.stripAuthorization, dispatcher, controller.signal)
+            }
+          })
+        : new ChatOpenAICompletions({
+            model: connection.model,
+            apiKey: authentication.apiKey,
+            streaming: true,
+            streamUsage: true,
+            maxRetries: 2,
+            ...chatCompletionsModelOptions(modelProfile),
+            configuration: {
+              baseURL: chatCompletionsBaseUrl(connection),
+              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+              fetch: gatewayFetch(chatCompletionsUrl(connection), authentication.stripAuthorization, dispatcher, controller.signal)
+            }
+          });
       const usage = new TokenUsageHandler();
       const browserSession = this.localBrowserSession(workspace.uri.fsPath, configuration, onEvent, sensitiveValues);
       const processManager = this.localProcessManager(workspace.uri.fsPath, onEvent, sensitiveValues);
@@ -1600,7 +1619,7 @@ ${goalGuidance}`;
   }
 
   private async evaluateGoal(
-    model: ChatOpenAICompletions,
+    model: BaseChatModel,
     goal: GoalRecord,
     answer: string,
     evidence: RunEvidenceSnapshot,

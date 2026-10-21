@@ -285,6 +285,7 @@ Clique em **Memory** para abrir a central local de conhecimento do projeto. Ela 
 | Cabeçalho da chave | **Key Header** | `Authorization: Bearer`, `api-key` ou `Ocp-Apim-Subscription-Key` |
 | Chave | **Gateway Key** | chave individual/scoped ou subscription key |
 | CA opcional | **Gateway CA certificate** | importe o `.pem` uma vez para todos os workspaces |
+| Model API | **Chat Completions** ou **Responses API** | seleciona por alias o contrato de request; Chat Completions usa `messages` em `/chat/completions`, Responses usa `input` em `/responses` |
 | Memória semântica | **Embedding Model Alias** e **Embeddings base URL** | alias LiteLLM de embeddings e, quando necessário, o prefixo antes de `/<model>/embeddings`; o modelo selecionado é inserido automaticamente |
 
 Se for informada uma URL base, a extensão acrescenta `/chat/completions`. Se a rota completa já for informada, ela será usada sem duplicação. Caminhos corporativos intermediários são aceitos; query parameters são recusados para evitar que segredos sejam gravados em settings. Gateways que exigem o alias no caminho também são suportados: informe a rota completa de chat (`…/<chat-alias>/chat/completions`) ou use o marcador literal `…/{model}/chat/completions`; para embeddings, a extensão substitui esse segmento pelo alias escolhido e chama `…/<embedding-alias>/embeddings`.
