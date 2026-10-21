@@ -4083,7 +4083,15 @@ function appendExecutionTimelineEvent(kind, title, detail = '') {
   element.className = 'execution-event execution-event-' + escapeHtml(String(kind || 'activity').toLowerCase());
   element.innerHTML = '<div class="execution-event-heading"><span class="execution-event-signal" aria-hidden="true"></span><strong>' + escapeHtml(String(kind || 'activity').toUpperCase()) + '</strong><span>' + escapeHtml(String(title || '')) + '</span></div>' +
     (detail ? '<div class="execution-event-detail">' + localLinkify(detail) + '</div>' : '');
-  timeline.appendChild(element);
+  // Keep execution history before the in-flight assistant message. The assistant
+  // stream is created as soon as its first delta arrives, while status/memory/tool
+  // events can still arrive afterward; appending blindly would place history below
+  // the final answer and force the reader to scroll upward.
+  const activeAssistant = [...assistantStreamStates.values()]
+    .map(state => state.element)
+    .find(candidate => candidate?.isConnected);
+  if (activeAssistant) timeline.insertBefore(element, activeAssistant);
+  else timeline.appendChild(element);
   scrollConversationToBottom();
 }
 
