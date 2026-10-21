@@ -1943,11 +1943,14 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             title: "Goal follow-up queued",
             detail: latestGoal.nextAction
           });
+          // Keep automatic goal iterations below gateway burst limits. The model
+          // call itself is paced centrally by gatewayFetch; this gap also gives
+          // the UI and provider quota a clean boundary between iterations.
           setTimeout(() => {
             void this.resumeGoal(goalId).catch((error) => {
               this.post({ type: "error", message: `Goal continuation failed: ${error instanceof Error ? error.message : String(error)}`, recoverable: true });
             });
-          }, 50);
+          }, 400);
         }
       }
     } catch (error) {

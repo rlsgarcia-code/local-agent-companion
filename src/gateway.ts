@@ -1,5 +1,56 @@
 import { Agent as UndiciAgent, fetch as undiciFetch } from "undici";
 
+const GATEWAY_CALL_INTERVAL_MS = 400;
+const GATEWAY_429_BACKOFF_MS = 1_200;
+type GatewayPacingState = { nextAt: number; tail: Promise<void> };
+const gatewayPacing = new Map<string, GatewayPacingState>();
+
+function delayWithSignal(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new Error("The provider request was cancelled."));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(signal?.reason ?? new Error("The provider request was cancelled."));
+    };
+    const done = () => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const timer = setTimeout(done, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function waitForGatewaySlot(allowedUrl: string, signal?: AbortSignal): Promise<void> {
+  let state = gatewayPacing.get(allowedUrl);
+  if (!state) {
+    state = { nextAt: 0, tail: Promise.resolve() };
+    gatewayPacing.set(allowedUrl, state);
+  }
+  let release!: () => void;
+  const previous = state.tail;
+  state.tail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    await delayWithSignal(Math.max(0, state.nextAt - Date.now()), signal);
+    state.nextAt = Date.now() + GATEWAY_CALL_INTERVAL_MS;
+  } finally {
+    release();
+  }
+}
+
+function recordGatewayResponse(allowedUrl: string, status: number): void {
+  const state = gatewayPacing.get(allowedUrl);
+  if (state && status === 429) {
+    state.nextAt = Math.max(state.nextAt, Date.now() + GATEWAY_429_BACKOFF_MS);
+  }
+}
+
 export type GatewayTransport = (
   input: RequestInfo | URL,
   init?: RequestInit & { dispatcher?: UndiciAgent }
@@ -35,6 +86,7 @@ export function gatewayFetch(
     );
     const requestSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
     const signal = combinedAbortSignal(requestSignal, runSignal);
+    await waitForGatewaySlot(allowedUrl, signal);
     if (stripAuthorization) headers.delete("authorization");
     const response = await transport(input, {
       ...init,
@@ -46,6 +98,7 @@ export function gatewayFetch(
     if (response.status >= 300 && response.status < 400) {
       throw new Error("The configured model route returned a redirect. Configure its final URL; redirects are disabled.");
     }
+    recordGatewayResponse(allowedUrl, response.status);
     return response;
   }) as typeof globalThis.fetch;
 }
