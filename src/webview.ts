@@ -111,6 +111,7 @@ type LiteLlmFormFields = {
   provider: ModelProvider;
   endpoint: string;
   model: string;
+  profileModel: string;
   apiKey: string;
   authHeader: LiteLlmAuthHeader;
   modelsEndpoint: string;
@@ -1823,12 +1824,16 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
     const temperature = parseOptionalTemperature(message.temperature);
     const topP = parseOptionalTopP(message.topP);
+    const profileModel = message.profileModel.trim() || connection.model;
     const modelProfiles = updateLiteLlmModelProfile(
       configuration.get("liteLlmModelProfiles"),
-      connection.model,
+      profileModel,
       { preset, reasoningEffort, temperature, topP }
     );
-    validateLiteLlmModelProfile(connection.model, liteLlmModelProfile(modelProfiles, connection.model));
+    validateLiteLlmModelProfile(profileModel, liteLlmModelProfile(modelProfiles, profileModel));
+    if (message.visionModel.trim() && message.visionModel.trim() !== profileModel) {
+      validateLiteLlmModelProfile(message.visionModel.trim(), liteLlmModelProfile(modelProfiles, message.visionModel.trim()));
+    }
     return { connection, modelsEndpoint, modelProfiles };
   }
 
@@ -3554,6 +3559,7 @@ let connectionSetupStep = 1;
 let planManuallyCollapsed = false;
 let hasStoredLiteLlmKey = false;
 let activeProvider = 'litellm';
+let profileTarget = 'chat';
 let availableModelProviders = ['litellm'];
 let providerKeyStates = { litellm: false, ollama: false, openai: false };
 const providerDrafts = {};
@@ -4976,6 +4982,7 @@ function fillLiteLlmSettings(liteLlm) {
   liteLlmModelsEndpoint.value = liteLlm.modelsEndpoint || '';
   liteLlmModel.value = liteLlm.model || '';
   visionModel.value = liteLlm.visionModel || '';
+  profileTarget = 'chat';
   const knownModels = [...new Set([...loadedModelCatalog, ...Object.keys(liteLlmModelProfiles)])].sort();
   const chatModels = knownModels.filter(model => !isEmbeddingModel(model));
   liteLlmModelAliases.innerHTML = chatModels
@@ -5174,15 +5181,21 @@ function detectModelPreset(model) {
   return 'custom';
 }
 
+function profileModelForControls() {
+  const vision = visionModel.value.trim();
+  return profileTarget === 'vision' && vision ? vision : liteLlmModel.value.trim();
+}
+
 function previewModelCompatibility() {
+  const selectedModel = profileModelForControls();
   const resolved = liteLlmModelPreset.value === 'auto'
-    ? detectModelPreset(liteLlmModel.value)
+    ? detectModelPreset(selectedModel)
     : liteLlmModelPreset.value;
   renderModelCompatibility(resolved, modelCapabilityCatalog[resolved] || modelCapabilityCatalog.custom);
 }
 
 function renderModelCompatibility(resolved, capabilities) {
-  const alias = liteLlmModel.value.trim();
+  const alias = profileModelForControls();
   modelCompatibility.classList.toggle('hidden', !alias);
   if (!alias) return;
   const automatic = liteLlmModelPreset.value === 'auto';
@@ -5212,8 +5225,9 @@ function renderModelCompatibility(resolved, capabilities) {
 }
 
 function applyModelCapabilities(recommendDefaults) {
+  const selectedModel = profileModelForControls();
   const resolved = liteLlmModelPreset.value === 'auto'
-    ? detectModelPreset(liteLlmModel.value)
+    ? detectModelPreset(selectedModel)
     : liteLlmModelPreset.value;
   const capabilities = modelCapabilityCatalog[resolved] || modelCapabilityCatalog.custom;
   const currentEffort = liteLlmReasoningEffort.value;
@@ -5254,6 +5268,7 @@ function liteLlmFormMessage(type) {
     endpoint: liteLlmEndpoint.value,
     modelsEndpoint: liteLlmModelsEndpoint.value,
     model: liteLlmModel.value,
+    profileModel: profileModelForControls(),
     apiKey: liteLlmApiKey.value,
     authHeader: liteLlmAuthHeader.value,
     preset: liteLlmModelPreset.value,
@@ -5664,10 +5679,18 @@ ollamaLoadModels.addEventListener('click', () => {
   });
 });
 liteLlmModel.addEventListener('change', () => {
+  profileTarget = 'chat';
   const hasSavedProfile = Boolean(liteLlmModelProfiles[String(liteLlmModel.value).trim()]);
   fillModelProfile(liteLlmModel.value, {}, !hasSavedProfile);
 });
 liteLlmModel.addEventListener('input', previewModelCompatibility);
+visionModel.addEventListener('change', () => {
+  profileTarget = visionModel.value.trim() ? 'vision' : 'chat';
+  const selected = profileModelForControls();
+  const hasSavedProfile = Boolean(liteLlmModelProfiles[selected]);
+  fillModelProfile(selected, {}, !hasSavedProfile);
+});
+visionModel.addEventListener('input', previewModelCompatibility);
 liteLlmModelPreset.addEventListener('change', () => applyModelCapabilities(true));
 liteLlmReasoningEffort.addEventListener('change', () => applyModelCapabilities(false));
 liteLlmTemperature.addEventListener('input', () => {

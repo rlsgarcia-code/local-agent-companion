@@ -27,6 +27,7 @@ const liteLlmFields = {
   provider: modelProvider,
   endpoint: urlText,
   model: shortText,
+  profileModel: shortText.default(""),
   apiKey: secretText,
   authHeader,
   modelsEndpoint: urlText,
