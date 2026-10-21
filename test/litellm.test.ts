@@ -178,6 +178,20 @@ test("derives the embeddings route from the same LiteLLM base URL", () => {
     embeddingsUrl({ endpoint: "https://gateway.example.com/proxy/chat/completions" }),
     "https://gateway.example.com/proxy/embeddings"
   );
+  assert.equal(
+    embeddingsUrl(
+      { endpoint: "https://gateway.example.com/litellm/team/{model}/chat/completions", model: "chat-alias" },
+      "embedding-alias"
+    ),
+    "https://gateway.example.com/litellm/team/embedding-alias/embeddings"
+  );
+  assert.equal(
+    embeddingsUrl(
+      { endpoint: "https://gateway.example.com/litellm/team/chat-alias/chat/completions", model: "chat-alias" },
+      "embedding alias"
+    ),
+    "https://gateway.example.com/litellm/team/embedding%20alias/embeddings"
+  );
 });
 
 test("keeps the gateway CA certificate inside the workspace", () => {

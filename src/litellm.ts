@@ -432,16 +432,37 @@ export function chatCompletionsBaseUrl(connection: Pick<LiteLlmConnection, "endp
   return url.toString().replace(/\/$/, "");
 }
 
-export function embeddingsBaseUrl(connection: Pick<LiteLlmConnection, "endpoint">): string {
+export function embeddingsBaseUrl(
+  connection: Pick<LiteLlmConnection, "endpoint"> & Partial<Pick<LiteLlmConnection, "model">>,
+  embeddingModel?: string
+): string {
   const url = new URL(connection.endpoint.replace(/\/$/, ""));
   url.pathname = url.pathname
     .replace(/\/chat\/completions$/i, "")
     .replace(/\/embeddings$/i, "");
+  const model = embeddingModel?.trim();
+  if (model) {
+    const encodedModel = encodeURIComponent(model);
+    const chatModel = connection.model?.trim() ?? "";
+    const encodedChatModel = chatModel ? encodeURIComponent(chatModel) : "";
+    // Corporate gateways commonly expose /{model}/embeddings rather than a
+    // shared /embeddings route. Support both an explicit {model} placeholder
+    // and a complete chat route that already contains the chat alias.
+    const decodedPath = decodeURIComponent(url.pathname);
+    if (decodedPath.includes("/{model}")) {
+      url.pathname = decodedPath.replace(/\/\{model\}(?=\/|$)/i, `/${encodedModel}`);
+    } else if (encodedChatModel && url.pathname.endsWith(`/${encodedChatModel}`)) {
+      url.pathname = url.pathname.slice(0, -encodedChatModel.length) + encodedModel;
+    }
+  }
   return url.toString().replace(/\/$/, "");
 }
 
-export function embeddingsUrl(connection: Pick<LiteLlmConnection, "endpoint">): string {
-  return `${embeddingsBaseUrl(connection)}/embeddings`;
+export function embeddingsUrl(
+  connection: Pick<LiteLlmConnection, "endpoint"> & Partial<Pick<LiteLlmConnection, "model">>,
+  embeddingModel?: string
+): string {
+  return `${embeddingsBaseUrl(connection, embeddingModel)}/embeddings`;
 }
 
 export function resolveWorkspaceCertificatePath(

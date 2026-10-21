@@ -438,7 +438,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       dispatcher
     );
     const embeddingFetch = gatewayFetch(
-      embeddingsUrl(connection),
+      embeddingsUrl(connection, options.embeddingModel),
       authentication.stripAuthorization,
       dispatcher
     );
@@ -506,7 +506,7 @@ export class DevelopmentAgent implements vscode.Disposable {
             maxRetries: 0,
             timeout: 20_000,
             configuration: {
-              baseURL: embeddingsBaseUrl(connection),
+              baseURL: embeddingsBaseUrl(connection, embeddingModel),
               ...(authentication.defaultHeaders
                 ? { defaultHeaders: authentication.defaultHeaders }
                 : {}),
@@ -789,11 +789,11 @@ export class DevelopmentAgent implements vscode.Disposable {
             query: request,
             memoryText: safeMemoryText,
             embeddingModel,
-            embeddingsBaseUrl: embeddingsBaseUrl(connection),
+            embeddingsBaseUrl: embeddingsBaseUrl(connection, embeddingModel),
             apiKey: authentication.apiKey,
             defaultHeaders: authentication.defaultHeaders,
             fetch: gatewayFetch(
-              embeddingsUrl(connection),
+              embeddingsUrl(connection, embeddingModel),
               authentication.stripAuthorization,
               dispatcher,
               controller.signal
