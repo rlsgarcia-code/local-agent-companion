@@ -14,6 +14,7 @@ const emptyEvidence: RunEvidenceSnapshot = {
   diagnostics: [],
   browser: [],
   processes: [],
+  filesRead: [],
   projectIndexInspected: false,
   playbooksRead: []
 };

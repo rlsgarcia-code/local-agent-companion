@@ -775,6 +775,8 @@ export class LocalToolHost {
     const lines = contents.split(/\r?\n/);
     const start = clampInteger(input.start_line, 1, Math.max(1, lines.length), 1);
     const end = clampInteger(input.end_line, start, Math.max(start, lines.length), Math.min(lines.length, start + 399));
+    const sha256 = createHash("sha256").update(contents).digest("hex");
+    this.evidence.fileRead({ path: relative, sha256, startLine: start, endLine: end });
     const numbered = lines
       .slice(start - 1, end)
       .map((line, index) => `${start + index}: ${line}`)
@@ -782,6 +784,7 @@ export class LocalToolHost {
     this.onEvent({ type: "activity", kind: "read", title: `${relative}:${start}-${end}` });
     return truncate(JSON.stringify({
       path: relative,
+      sha256,
       startLine: start,
       endLine: end,
       content: redactSensitiveText(numbered, this.sensitiveValues)

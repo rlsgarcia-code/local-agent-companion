@@ -32,6 +32,13 @@ export type DiffEvidence = {
   kind: "created" | "modified" | "deleted";
 };
 
+export type FileReadEvidence = {
+  path: string;
+  sha256: string;
+  startLine?: number;
+  endLine?: number;
+};
+
 export type McpEvidence = {
   tool: string;
   approved: boolean;
@@ -43,6 +50,7 @@ export type RunEvidenceSnapshot = {
   browser: BrowserEvidence[];
   processes: ProcessEvidence[];
   diffs?: DiffEvidence[];
+  filesRead: FileReadEvidence[];
   mcp?: McpEvidence[];
   projectIndexInspected: boolean;
   playbooksRead: string[];
@@ -54,6 +62,7 @@ export class RunEvidenceRecorder {
   private readonly browser: BrowserEvidence[] = [];
   private readonly processes: ProcessEvidence[] = [];
   private readonly diffs: DiffEvidence[] = [];
+  private readonly filesRead: FileReadEvidence[] = [];
   private readonly mcp: McpEvidence[] = [];
   private readonly playbooks = new Set<string>();
   private projectIndexInspected = false;
@@ -76,6 +85,11 @@ export class RunEvidenceRecorder {
 
   public diff(item: DiffEvidence): void { this.diffs.push(item); }
 
+  public fileRead(item: FileReadEvidence): void {
+    const existing = this.filesRead.find((file) => file.path === item.path && file.sha256 === item.sha256);
+    if (!existing) this.filesRead.push(item);
+  }
+
   public mcpTool(item: McpEvidence): void { this.mcp.push(item); }
 
   public projectIndex(): void {
@@ -93,6 +107,7 @@ export class RunEvidenceRecorder {
       browser: this.browser.slice(-20),
       processes: this.processes.slice(-20),
       diffs: this.diffs.slice(-50),
+      filesRead: this.filesRead.slice(-100),
       mcp: this.mcp.slice(-30),
       projectIndexInspected: this.projectIndexInspected,
       playbooksRead: [...this.playbooks].slice(0, 20)
