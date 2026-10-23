@@ -149,8 +149,13 @@ test("selects documented GPT and Claude compatibility profiles", () => {
   assert.equal(resolveLiteLlmModelApi("gpt-6-luna", { reasoningEffort: "none", api: "chat_completions" }), "chat_completions");
   assert.equal(liteLlmModelMetadata("gpt-6-luna")?.supportsNoneReasoningEffort, true);
   assert.equal(liteLlmModelMetadata("company-coding-model"), undefined);
+  assert.doesNotThrow(() => validateLiteLlmModelProfile("claude-opus-4-8", {
+    api: "chat_completions",
+    reasoningEffort: "medium",
+    temperature: 0.5
+  }));
   assert.throws(
-    () => validateLiteLlmModelProfile("claude-opus-4-8", { temperature: 0.5 }),
+    () => validateLiteLlmModelProfile("claude-sonnet-5", { temperature: 0.5 }),
     /does not accept Temperature or Top P/
   );
   assert.doesNotThrow(() => validateLiteLlmModelProfile("opaque-corporate-alias", {

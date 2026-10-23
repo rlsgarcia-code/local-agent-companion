@@ -5242,6 +5242,9 @@ function fillModelProfile(model, fallback, recommendDefaults = false) {
 
 function detectModelPreset(model) {
   const normalized = String(model).trim().toLowerCase();
+  // Corporate LiteLLM aliases may represent any provider. Do not infer an
+  // OpenAI/Claude family unless the exact alias exists in the shipped snapshot.
+  if (!modelMetadataCatalog[normalized]) return 'custom';
   if (/gpt-6(?:\.1)?[-_/ ]*(?:astra|sol)/.test(normalized) && /gpt-6\.1|astra/.test(normalized)) return 'gpt-6-responses-tools';
   if (/gpt-6[-_/ ]*(?:sol|luna)/.test(normalized)) return 'gpt-6-chat-tools';
   if (/gpt-5\.6/.test(normalized)) return 'gpt-5.6';

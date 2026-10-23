@@ -298,7 +298,11 @@ export function detectLiteLlmModelPreset(model: string): Exclude<LiteLlmModelPre
 
 export function resolveLiteLlmModelPreset(model: string, value: unknown): Exclude<LiteLlmModelPreset, "auto"> {
   const preset = parseLiteLlmModelPreset(value);
-  return preset === "auto" ? detectLiteLlmModelPreset(model) : preset;
+  if (preset !== "auto") return preset;
+  // Do not apply OpenAI/Claude family heuristics to an opaque corporate alias.
+  // LiteLLM exposes many providers behind the same OpenAI-compatible surface;
+  // only an exact entry in the versioned snapshot is safe to classify.
+  return liteLlmCatalogMetadata(model) ? detectLiteLlmModelPreset(model) : "custom";
 }
 
 export function parseOptionalTemperature(value: unknown): number | undefined {
