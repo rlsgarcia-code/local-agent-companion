@@ -3142,6 +3142,15 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .thread-select strong, .thread-select small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread-select strong { color: var(--vscode-foreground); font-size: 11px; font-weight: 500; }
 .thread-unread-dot { display: inline-block; width: 6px; height: 6px; margin: 0 5px 1px 0; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent); }
+.thread-state-badge { display: inline-flex; align-items: center; gap: 4px; margin: 0 5px 0 0; padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .04em; vertical-align: 1px; }
+.thread-state-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--vscode-disabledForeground); }
+.thread-state-badge.running { color: var(--vscode-charts-yellow, #e5c07b); border-color: color-mix(in srgb, var(--vscode-charts-yellow, #e5c07b) 45%, var(--line)); }
+.thread-state-badge.running::before { background: var(--vscode-charts-yellow, #e5c07b); box-shadow: 0 0 0 2px color-mix(in srgb, var(--vscode-charts-yellow, #e5c07b) 18%, transparent); animation: pulse 1.4s ease-in-out infinite; }
+.thread-state-badge.interrupted, .thread-state-badge.failed { color: var(--vscode-errorForeground); border-color: color-mix(in srgb, var(--vscode-errorForeground) 42%, var(--line)); }
+.thread-state-badge.interrupted::before, .thread-state-badge.failed::before { background: var(--vscode-errorForeground); }
+.thread-state-badge.cancelled { color: var(--vscode-descriptionForeground); }
+.thread-state-badge.finished { color: var(--vscode-testing-iconPassed, #6ddc72); }
+.thread-state-badge.finished::before { background: var(--vscode-testing-iconPassed, #6ddc72); }
 .thread-select small { margin-top: 2px; font-size: 9px; }
 .thread-item.active .thread-select { box-shadow: inset 2px 0 0 var(--accent); padding-left: 8px; }
 .thread-actions { display: flex; align-items: center; opacity: .45; }
@@ -4736,6 +4745,8 @@ function renderThreadList() {
   threadList.innerHTML = threads.length ? threads.map(thread => {
     const active = thread.id === activeThreadId;
     const recoveryLabel = recoveryLabels[thread.recoveryStatus] || '';
+    const stateClass = thread.recoveryStatus === 'running' ? 'running' : thread.recoveryStatus === 'interrupted' ? 'interrupted' : thread.recoveryStatus === 'failed' ? 'failed' : thread.recoveryStatus === 'cancelled' ? 'cancelled' : 'finished';
+    const stateBadge = thread.recoveryStatus === 'running' ? 'RUNNING' : thread.recoveryStatus === 'interrupted' ? 'INTERRUPTED' : thread.recoveryStatus === 'failed' ? 'FAILED' : thread.recoveryStatus === 'cancelled' ? 'CANCELLED' : thread.messageCount ? 'FINISHED' : 'READY';
     const stateLabel = thread.recoveryStatus
       ? recoveryLabels[thread.recoveryStatus]
       : thread.unread ? 'finished · unseen' : thread.messageCount ? 'finished · seen' : 'ready';
@@ -4746,7 +4757,7 @@ function renderThreadList() {
     const actionDisabled = locked ? ' disabled' : '';
     return '<div class="thread-item' + (active ? ' active' : '') + '">' +
       '<button class="thread-select" type="button" data-select-thread="' + escapeHtml(thread.id) + '"' + (active ? ' aria-current="true"' : '') + selectDisabled + '>' +
-      '<strong>' + (thread.unread ? '<span class="thread-unread-dot" aria-label="Unseen finished thread"></span>' : '') + escapeHtml(thread.title) + '</strong><small>' + escapeHtml(metadata) + '</small></button>' +
+      '<strong>' + '<span class="thread-state-badge ' + stateClass + '" aria-label="Thread status: ' + escapeHtml(stateBadge) + '">' + stateBadge + '</span>' + (thread.unread ? '<span class="thread-unread-dot" aria-label="Unseen finished thread"></span>' : '') + escapeHtml(thread.title) + '</strong><small>' + escapeHtml(metadata) + '</small></button>' +
       '<span class="thread-actions">' +
       '<button type="button" class="' + (thread.pinned ? 'pinned' : '') + '" data-pin-thread="' + escapeHtml(thread.id) + '" aria-pressed="' + String(Boolean(thread.pinned)) + '" aria-label="' + (thread.pinned ? 'Unpin ' : 'Pin ') + escapeHtml(thread.title) + '"' + actionDisabled + '>' + (thread.pinned ? '★' : '☆') + '</button>' +
       '<button type="button" data-rename-thread="' + escapeHtml(thread.id) + '" aria-label="Rename ' + escapeHtml(thread.title) + '"' + actionDisabled + '>✎</button>' +
