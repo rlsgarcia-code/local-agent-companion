@@ -143,6 +143,9 @@ export class DevelopmentAgent implements vscode.Disposable {
   private readonly semanticMemory: SemanticProjectMemory;
   private readonly hydratedThreads = new Set<string>();
   private readonly sessionId = crypto.randomUUID();
+  // The active thread is a UI/window concern. Keep it local so another VS Code
+  // window selecting a thread cannot silently redirect this instance's next run.
+  private selectedThreadId: string | undefined;
   private activeRunId: string | undefined;
   private activeRunCollection: ThreadCollection | undefined;
   private activeRunThreadId: string | undefined;
@@ -1229,6 +1232,7 @@ export class DevelopmentAgent implements vscode.Disposable {
     const thread = createLocalThread(crypto.randomUUID(), Date.now());
     collection.threads.unshift(thread);
     collection.activeThreadId = thread.id;
+    this.selectedThreadId = thread.id;
     this.contextCollector.clearPinned();
     await this.saveThreadCollection(collection);
   }
@@ -1241,6 +1245,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       throw new Error("The selected local thread no longer exists.");
     }
     collection.activeThreadId = threadId;
+    this.selectedThreadId = threadId;
     this.contextCollector.clearPinned();
     await this.saveThreadCollection(collection);
   }
@@ -1285,7 +1290,8 @@ export class DevelopmentAgent implements vscode.Disposable {
     if (remaining.length === collection.threads.length) {
       throw new Error("The selected local thread no longer exists.");
     }
-    const deletingActiveThread = collection.activeThreadId === threadId;
+    const activeThreadId = this.selectedThreadId ?? collection.activeThreadId;
+    const deletingActiveThread = activeThreadId === threadId;
     collection.threads = remaining;
     if (!remaining.length) {
       const replacement = createLocalThread(crypto.randomUUID(), Date.now());
@@ -1293,6 +1299,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       collection.activeThreadId = replacement.id;
     } else if (deletingActiveThread) {
       collection.activeThreadId = [...remaining].sort((left, right) => right.updatedAt - left.updatedAt)[0]!.id;
+      this.selectedThreadId = collection.activeThreadId;
     }
     if (deletingActiveThread) this.contextCollector.clearPinned();
     this.hydratedThreads.delete(threadId);
@@ -1316,8 +1323,10 @@ export class DevelopmentAgent implements vscode.Disposable {
 
   public async threadSnapshot(): Promise<ThreadSnapshot> {
     const collection = await this.threadCollection();
-    const active = collection.threads.find((thread) => thread.id === collection.activeThreadId)
+    const active = collection.threads.find((thread) => thread.id === this.selectedThreadId)
+      ?? collection.threads.find((thread) => thread.id === collection.activeThreadId)
       ?? collection.threads[0]!;
+    this.selectedThreadId = active.id;
     return {
       activeThreadId: active.id,
       threads: summarizeThreads(collection),
@@ -1423,8 +1432,10 @@ export class DevelopmentAgent implements vscode.Disposable {
 
   private async activeConversation(): Promise<{ collection: ThreadCollection; thread: LocalThread }> {
     const collection = await this.threadCollection();
-    const thread = collection.threads.find((candidate) => candidate.id === collection.activeThreadId)
+    const thread = collection.threads.find((candidate) => candidate.id === this.selectedThreadId)
+      ?? collection.threads.find((candidate) => candidate.id === collection.activeThreadId)
       ?? collection.threads[0]!;
+    this.selectedThreadId = thread.id;
     collection.activeThreadId = thread.id;
     return { collection, thread };
   }
