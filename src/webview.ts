@@ -5280,9 +5280,9 @@ function renderModelCompatibility(resolved, capabilities) {
   const automatic = liteLlmModelPreset.value === 'auto';
   const modelApi = liteLlmModelApi.value;
   const metadata = modelMetadataCatalog[alias.toLowerCase()];
-  const ollamaMetadata = modelProvider.value === 'ollama' ? ollamaMetadataCatalog[alias] : null;
+  const ollamaMetadata = lookupOllamaMetadata(alias);
   const effectiveApi = modelApi === 'auto'
-    ? (modelProvider.value === 'ollama' ? 'chat_completions' : metadata?.supportsReasoning && metadata?.endpoints.includes('responses') ? 'responses' : metadata?.endpoints?.[0])
+    ? (ollamaMetadata ? 'chat_completions' : metadata?.supportsReasoning && metadata?.endpoints.includes('responses') ? 'responses' : metadata?.endpoints?.[0])
     : modelApi;
   const effort = liteLlmReasoningEffort.value;
   let state = 'ready';
@@ -5292,7 +5292,7 @@ function renderModelCompatibility(resolved, capabilities) {
     state = 'warning';
     title = 'Ollama metadata unavailable';
     detail = 'Load local models to inspect this model before configuring reasoning, vision or embeddings.';
-  } else if (modelProvider.value === 'ollama') {
+  } else if (ollamaMetadata) {
     state = 'ready';
     title = 'Ollama capabilities detected';
     detail = 'The local /api/show metadata is available. Parameters not declared by Ollama remain unconfirmed.';
@@ -5327,12 +5327,8 @@ function renderModelMetadata(alias, metadata, effectiveApi) {
   if (!element) return;
   if (!alias) { element.classList.add('hidden'); return; }
   element.classList.remove('hidden');
-  if (modelProvider.value === 'ollama') {
-    const local = ollamaMetadataCatalog[String(alias).trim()];
-    if (!local) {
-      element.textContent = 'Ollama metadata unavailable. Load local models to inspect this model.';
-      return;
-    }
+  const local = lookupOllamaMetadata(alias);
+  if (local) {
     const capabilities = (local.capabilities || []).join(', ') || 'not declared';
     const thinking = local.thinking
       ? ' · thinking ' + local.thinking.values.join('/') + ' (default ' + String(local.thinking.default) + ')'
@@ -5358,6 +5354,15 @@ function renderModelMetadata(alias, metadata, effectiveApi) {
     ? ' · $' + (metadata.inputPricePerMillion ?? '?') + '/$' + (metadata.outputPricePerMillion ?? '?') + ' per 1M in/out' : '';
   const deprecation = metadata.deprecationDate ? ' · deprecates ' + metadata.deprecationDate : '';
   element.textContent = metadata.model + ' · ' + metadata.provider + ' · API ' + metadata.endpoints.join(', ') + (effectiveApi ? ' · selected ' + effectiveApi : '') + (limits ? ' · ' + limits : '') + ' · in ' + metadata.inputModalities.join('/') + ' → out ' + metadata.outputModalities.join('/') + ' · ' + capabilities + ' · tool choice ' + (metadata.toolChoice.join('/') || 'unknown') + (metadata.reasoningEfforts.length ? ' · reasoning ' + metadata.reasoningEfforts.join('/') : ' · no reasoning') + pricing + deprecation + ' · snapshot ' + metadata.sourceDate;
+}
+
+function lookupOllamaMetadata(alias) {
+  const normalized = String(alias || '').trim().toLowerCase();
+  if (!normalized) return null;
+  const exact = ollamaMetadataCatalog[String(alias).trim()];
+  if (exact) return exact;
+  const entry = Object.entries(ollamaMetadataCatalog).find(([name]) => name.toLowerCase() === normalized);
+  return entry ? entry[1] : null;
 }
 
 function applyModelCapabilities(recommendDefaults) {
