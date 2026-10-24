@@ -339,11 +339,16 @@ export class DevelopmentAgent implements vscode.Disposable {
       };
     }
     try {
-      validateLiteLlmModelProfile(
-        connection.model,
-        liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model),
-        true
-      );
+      // Ollama is a local OpenAI-compatible provider. It has no LiteLLM
+      // catalog profile, so the generic strict metadata check must not block
+      // a run after the user has already configured and selected the model.
+      if (connection.provider !== "ollama") {
+        validateLiteLlmModelProfile(
+          connection.model,
+          liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model),
+          true
+        );
+      }
     } catch (error) {
       return {
         ready: false,
