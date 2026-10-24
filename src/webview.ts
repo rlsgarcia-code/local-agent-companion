@@ -1584,6 +1584,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           type: "modelsLoaded",
           models: catalog.models,
           embeddingModels: catalog.embeddingModels,
+          ollamaMetadata: catalog.ollamaMetadata,
           endpoint: endpointInput,
           message: `${catalog.models.length} local Ollama models loaded`
         });
@@ -3611,6 +3612,7 @@ let activeProvider = 'litellm';
 let profileTarget = 'chat';
 let availableModelProviders = ['litellm'];
 let providerKeyStates = { litellm: false, ollama: false, openai: false };
+let ollamaMetadataCatalog = {};
 const providerDrafts = {};
 let browserControlEnabled = false;
 let browserControlPending = false;
@@ -5278,14 +5280,23 @@ function renderModelCompatibility(resolved, capabilities) {
   const automatic = liteLlmModelPreset.value === 'auto';
   const modelApi = liteLlmModelApi.value;
   const metadata = modelMetadataCatalog[alias.toLowerCase()];
+  const ollamaMetadata = modelProvider.value === 'ollama' ? ollamaMetadataCatalog[alias] : null;
   const effectiveApi = modelApi === 'auto'
-    ? (metadata?.supportsReasoning && metadata?.endpoints.includes('responses') ? 'responses' : metadata?.endpoints?.[0])
+    ? (modelProvider.value === 'ollama' ? 'chat_completions' : metadata?.supportsReasoning && metadata?.endpoints.includes('responses') ? 'responses' : metadata?.endpoints?.[0])
     : modelApi;
   const effort = liteLlmReasoningEffort.value;
   let state = 'ready';
   let title = 'Compatibility profile ready to test';
   let detail = (automatic ? 'Auto-detected' : 'Selected manually') + ' · ' + capabilities.label + '.';
-  if (modelApi === 'auto' && !metadata) {
+  if (modelProvider.value === 'ollama' && !ollamaMetadata) {
+    state = 'warning';
+    title = 'Ollama metadata unavailable';
+    detail = 'Load local models to inspect this model before configuring reasoning, vision or embeddings.';
+  } else if (modelProvider.value === 'ollama') {
+    state = 'ready';
+    title = 'Ollama capabilities detected';
+    detail = 'The local /api/show metadata is available. Parameters not declared by Ollama remain unconfirmed.';
+  } else if (modelApi === 'auto' && !metadata) {
     state = 'failed';
     title = 'Metadata unavailable — choose API explicitly';
     detail = 'This corporate alias is not in the versioned LiteLLM snapshot. Auto selection is blocked to avoid unsafe tool/reasoning assumptions.';
@@ -5316,6 +5327,21 @@ function renderModelMetadata(alias, metadata, effectiveApi) {
   if (!element) return;
   if (!alias) { element.classList.add('hidden'); return; }
   element.classList.remove('hidden');
+  if (modelProvider.value === 'ollama') {
+    const local = ollamaMetadataCatalog[String(alias).trim()];
+    if (!local) {
+      element.textContent = 'Ollama metadata unavailable. Load local models to inspect this model.';
+      return;
+    }
+    const capabilities = (local.capabilities || []).join(', ') || 'not declared';
+    const thinking = local.thinking
+      ? ' · thinking ' + local.thinking.values.join('/') + ' (default ' + String(local.thinking.default) + ')'
+      : ' · thinking metadata unavailable';
+    const parameters = (local.parameters || []).slice(0, 12).join(', ');
+    const limits = [local.contextLength ? 'context ' + Number(local.contextLength).toLocaleString() : '', local.embeddingLength ? 'embedding ' + Number(local.embeddingLength).toLocaleString() : ''].filter(Boolean).join(' · ');
+    element.textContent = 'Ollama local · ' + local.model + ' · capabilities: ' + capabilities + thinking + (limits ? ' · ' + limits : '') + (local.family ? ' · ' + local.family : '') + (local.quantization ? ' · ' + local.quantization : '') + (parameters ? ' · parameters: ' + parameters : '') + (local.requires ? ' · requires Ollama ' + local.requires : '');
+    return;
+  }
   if (!metadata) {
     element.textContent = 'LiteLLM metadata: unavailable for this exact alias. Configure compatibility explicitly.';
     return;
@@ -5960,6 +5986,7 @@ window.addEventListener('message', ({ data }) => {
       ollamaLoadModels.textContent = 'List local models';
       liteLlmModelsEndpoint.value = data.endpoint;
       loadedModelCatalog = data.models || [];
+      ollamaMetadataCatalog = data.ollamaMetadata || {};
       const catalogModels = [...new Set([...loadedModelCatalog, ...Object.keys(liteLlmModelProfiles)])]
         .sort();
       const discoveredEmbeddingModels = new Set(data.embeddingModels || []);
@@ -5971,6 +5998,7 @@ window.addEventListener('message', ({ data }) => {
       fillEmbeddingModelOptions(embeddingModels, embeddingModel.value);
       status.textContent = chatModels.length + ' chat · ' + embeddingModels.length + ' embedding models loaded';
       liteLlmModel.focus();
+      previewModelCompatibility();
       break;
     case 'modelsLoadError':
       ollamaLoadModels.disabled = false;

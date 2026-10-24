@@ -136,6 +136,21 @@ type ConnectionDiagnosticOptions = {
 export type ModelCatalogResult = {
   models: string[];
   embeddingModels?: string[];
+  ollamaMetadata?: Record<string, OllamaModelMetadata>;
+};
+
+export type OllamaModelMetadata = {
+  model: string;
+  capabilities: string[];
+  parameters: string[];
+  thinking?: { values: Array<boolean | string>; default: boolean | string };
+  contextLength?: number;
+  embeddingLength?: number;
+  family?: string;
+  parameterSize?: string;
+  quantization?: string;
+  modifiedAt?: string;
+  requires?: string;
 };
 
 export class DevelopmentAgent implements vscode.Disposable {
@@ -401,11 +416,12 @@ export class DevelopmentAgent implements vscode.Disposable {
       throw new Error("Ollama is running, but no local models were found. Install a model and try again.");
     }
     const uniqueModels = [...new Set(models)].sort();
-    const embeddingModels = await this.discoverOllamaEmbeddingModels(endpoint, uniqueModels);
-    return { models: uniqueModels, embeddingModels };
+    const ollamaMetadata = await this.discoverOllamaMetadata(endpoint, uniqueModels);
+    const embeddingModels = uniqueModels.filter((name) => ollamaMetadata[name]?.capabilities.includes("embedding"));
+    return { models: uniqueModels, embeddingModels, ollamaMetadata };
   }
 
-  private async discoverOllamaEmbeddingModels(endpoint: string, models: string[]): Promise<string[]> {
+  private async discoverOllamaMetadata(endpoint: string, models: string[]): Promise<Record<string, OllamaModelMetadata>> {
     const showUrl = ollamaShowUrl(endpoint);
     const inspect = gatewayFetch(showUrl, true, undefined, undefined, undefined, ["POST"]);
     const candidates = await Promise.all(models.slice(0, 100).map(async (name) => {
@@ -413,19 +429,41 @@ export class DevelopmentAgent implements vscode.Disposable {
         const response = await inspect(showUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name })
+          body: JSON.stringify({ model: name, verbose: true })
         });
-        if (!response.ok) return undefined;
-        const payload = await response.json() as { capabilities?: unknown };
+        if (!response.ok) return [name, undefined] as const;
+        const payload = await response.json() as Record<string, unknown>;
         const capabilities = Array.isArray(payload.capabilities)
           ? payload.capabilities.filter((value): value is string => typeof value === "string")
           : [];
-        return capabilities.includes("embedding") ? name : undefined;
+        const thinkingValue = payload.thinking;
+        const thinking = thinkingValue && typeof thinkingValue === "object"
+          ? thinkingValue as { values?: unknown; default?: unknown }
+          : undefined;
+        const details = payload.details && typeof payload.details === "object" ? payload.details as Record<string, unknown> : {};
+        const modelInfo = payload.model_info && typeof payload.model_info === "object" ? payload.model_info as Record<string, unknown> : {};
+        const metadata: OllamaModelMetadata = {
+          model: name,
+          capabilities,
+          parameters: typeof payload.parameters === "string" ? payload.parameters.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 100) : [],
+          ...(thinking && Array.isArray(thinking.values) && (typeof thinking.default === "boolean" || typeof thinking.default === "string")
+            ? { thinking: { values: thinking.values.filter((value): value is boolean | string => typeof value === "boolean" || typeof value === "string").slice(0, 20), default: thinking.default } }
+            : {}),
+          ...(typeof modelInfo[`${details.family ?? ""}.context_length`] === "number" ? { contextLength: modelInfo[`${details.family ?? ""}.context_length`] as number } : {}),
+          ...(typeof modelInfo["general.context_length"] === "number" ? { contextLength: modelInfo["general.context_length"] as number } : {}),
+          ...(typeof modelInfo[`${details.family ?? ""}.embedding_length`] === "number" ? { embeddingLength: modelInfo[`${details.family ?? ""}.embedding_length`] as number } : {}),
+          ...(typeof details.family === "string" ? { family: details.family } : {}),
+          ...(typeof details.parameter_size === "string" ? { parameterSize: details.parameter_size } : {}),
+          ...(typeof details.quantization_level === "string" ? { quantization: details.quantization_level } : {}),
+          ...(typeof payload.modified_at === "string" ? { modifiedAt: payload.modified_at } : {}),
+          ...(typeof payload.requires === "string" ? { requires: payload.requires } : {})
+        };
+        return [name, metadata] as const;
       } catch {
-        return undefined;
+        return [name, undefined] as const;
       }
     }));
-    return candidates.filter((name): name is string => Boolean(name));
+    return Object.fromEntries(candidates.filter((entry): entry is readonly [string, OllamaModelMetadata] => Boolean(entry[1])));
   }
 
   public async diagnoseConnection(options: ConnectionDiagnosticOptions): Promise<ConnectionDiagnostic[]> {
