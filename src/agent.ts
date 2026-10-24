@@ -426,11 +426,20 @@ export class DevelopmentAgent implements vscode.Disposable {
     const inspect = gatewayFetch(showUrl, true, undefined, undefined, undefined, ["POST"]);
     const candidates = await Promise.all(models.slice(0, 100).map(async (name) => {
       try {
-        const response = await inspect(showUrl, {
+        let response = await inspect(showUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model: name, verbose: true })
+          body: JSON.stringify({ model: name, name, verbose: true })
         });
+        // Older Ollama releases used the deprecated `name` field. Keep a
+        // bounded compatibility retry for installations that reject `model`.
+        if (!response.ok) {
+          response = await inspect(showUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name, verbose: true })
+          });
+        }
         if (!response.ok) return [name, undefined] as const;
         const payload = await response.json() as Record<string, unknown>;
         const capabilities = Array.isArray(payload.capabilities)
