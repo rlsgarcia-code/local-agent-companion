@@ -40,7 +40,8 @@ import type {
   LiteLlmModelApi,
   LiteLlmModelPreset,
   LiteLlmModelProfiles,
-  LiteLlmReasoningEffort
+  LiteLlmReasoningEffort,
+  LiteLlmModelProfile
 } from "./litellm";
 import {
   AVAILABLE_MODEL_PROVIDERS,
@@ -1843,14 +1844,24 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const temperature = parseOptionalTemperature(message.temperature);
     const topP = parseOptionalTopP(message.topP);
     const profileModel = message.profileModel.trim() || connection.model;
+    const effectiveProfile: LiteLlmModelProfile = provider === 'ollama'
+      ? { api: 'chat_completions', preset: 'custom', reasoningEffort: undefined, temperature, topP }
+      : { api: modelApi, preset, reasoningEffort, temperature, topP };
+    if (provider === 'ollama' && modelApi === 'responses') {
+      throw new Error('Ollama local uses Chat Completions through its OpenAI-compatible /v1 route.');
+    }
     const modelProfiles = updateLiteLlmModelProfile(
       configuration.get("liteLlmModelProfiles"),
       profileModel,
-      { api: modelApi, preset, reasoningEffort, temperature, topP }
+      effectiveProfile
     );
-    validateLiteLlmModelProfile(profileModel, liteLlmModelProfile(modelProfiles, profileModel));
+    if (provider !== 'ollama') {
+      validateLiteLlmModelProfile(profileModel, liteLlmModelProfile(modelProfiles, profileModel));
+    }
     if (message.visionModel.trim() && message.visionModel.trim() !== profileModel) {
-      validateLiteLlmModelProfile(message.visionModel.trim(), liteLlmModelProfile(modelProfiles, message.visionModel.trim()));
+      if (provider !== 'ollama') {
+        validateLiteLlmModelProfile(message.visionModel.trim(), liteLlmModelProfile(modelProfiles, message.visionModel.trim()));
+      }
     }
     return { connection, modelsEndpoint, embeddingEndpoint, modelProfiles };
   }

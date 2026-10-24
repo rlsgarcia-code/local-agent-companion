@@ -483,7 +483,9 @@ export class DevelopmentAgent implements vscode.Disposable {
     if (!workspace) throw new Error("Open a workspace before testing the model connection.");
 
     const connection = validateModelConnection(options.connection);
-    validateLiteLlmModelProfile(connection.model, options.profile, true);
+    if (connection.provider !== "ollama") {
+      validateLiteLlmModelProfile(connection.model, options.profile, true);
+    }
     const authentication = modelClientAuthentication(connection);
     const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
       ? await this.certificateAuthorities(workspace.uri.fsPath)
@@ -528,7 +530,9 @@ export class DevelopmentAgent implements vscode.Disposable {
         });
       }
 
-      const resolvedApi = resolveLiteLlmModelApi(connection.model, options.profile);
+      const resolvedApi = connection.provider === "ollama"
+        ? "chat_completions" as const
+        : resolveLiteLlmModelApi(connection.model, options.profile);
       const modelApi = resolvedApi === "responses" ? "Responses API" : "Chat Completions";
       diagnostics.push(await runDiagnostic("chat", modelApi, async () => {
         const model = resolvedApi === "responses"
@@ -708,10 +712,17 @@ export class DevelopmentAgent implements vscode.Disposable {
         authHeader: modelProviderAuthHeader(provider, configuration.get("liteLlmAuthHeader"))
       });
       activeConnection = connection;
-      const modelProfile = liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
+      const storedModelProfile = liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
+      const modelProfile = connection.provider === "ollama"
+        ? { ...storedModelProfile, api: "chat_completions" as const, preset: "custom" as const, reasoningEffort: undefined }
+        : storedModelProfile;
       activeModelProfile = modelProfile;
-      validateLiteLlmModelProfile(connection.model, modelProfile, true);
-      const resolvedModelApi = resolveLiteLlmModelApi(connection.model, modelProfile);
+      if (connection.provider !== "ollama") {
+        validateLiteLlmModelProfile(connection.model, modelProfile, true);
+      }
+      const resolvedModelApi = connection.provider === "ollama"
+        ? "chat_completions" as const
+        : resolveLiteLlmModelApi(connection.model, modelProfile);
       const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
         ? await this.certificateAuthorities(workspace.uri.fsPath)
         : undefined;
