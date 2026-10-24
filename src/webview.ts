@@ -6000,6 +6000,12 @@ window.addEventListener('message', ({ data }) => {
     case 'modelsLoaded':
       ollamaLoadModels.disabled = false;
       ollamaLoadModels.textContent = 'List local models';
+      // A successful local Ollama discovery supersedes a stale LiteLLM
+      // metadata error left by an earlier provider selection.
+      if (data.ollamaMetadata && Object.keys(data.ollamaMetadata).length) {
+        liteLlmSettingsError.classList.add('hidden');
+        liteLlmSettingsError.textContent = '';
+      }
       liteLlmModelsEndpoint.value = data.endpoint;
       loadedModelCatalog = data.models || [];
       ollamaMetadataCatalog = data.ollamaMetadata || {};
