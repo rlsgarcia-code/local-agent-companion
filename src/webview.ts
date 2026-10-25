@@ -2827,10 +2827,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             <small>Equivalent to <code>ollama list</code>; only this machine is queried.</small>
           </div>
         </div>
-        <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-labelledby="ollama-role-title">
-          <div class="section-label">AGENT SETUP</div>
-          <h4 id="ollama-role-title">How the local agent thinks</h4>
-          <p class="settings-note">Each role can use a complementary model. The agent moves through this loop: understand → plan → act → perceive → evaluate → remember.</p>
+        <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-label="Agent cognitive roles">
           <div class="brief-actions ollama-agent-actions">
             <button class="secondary-action" id="ollama-recommended" type="button">Use recommended setup</button>
             <button class="secondary-action" id="ollama-pull-recommended" type="button">Pull recommended models</button>
