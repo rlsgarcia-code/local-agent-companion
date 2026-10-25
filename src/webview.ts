@@ -2827,6 +2827,18 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             <small>Equivalent to <code>ollama list</code>; only this machine is queried.</small>
           </div>
         </div>
+        <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-labelledby="ollama-role-title">
+          <div class="section-label">AGENT SETUP</div>
+          <h4 id="ollama-role-title">How the local agent thinks</h4>
+          <p class="settings-note">Each role can use a complementary model. The agent moves through this loop: understand → plan → act → perceive → evaluate → remember.</p>
+          <div class="brief-actions ollama-agent-actions">
+            <button class="secondary-action" id="ollama-recommended" type="button">Use recommended setup</button>
+            <button class="secondary-action" id="ollama-pull-recommended" type="button">Pull recommended models</button>
+          </div>
+          <div class="ollama-agent-flow" aria-label="Agent cognitive flow">
+            <span>Understand</span><i>→</i><span>Plan</span><i>→</i><span>Act</span><i>→</i><span>Perceive</span><i>→</i><span>Evaluate</span><i>→</i><span>Remember</span>
+          </div>
+          <div class="section-label settings-subheading">TASK MODELS</div>
         <label class="field">
           <span id="chat-model-label">Chat Model Alias</span>
           <input id="litellm-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="company-coding-model" />
@@ -2838,13 +2850,6 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <input id="vision-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="Use chat model for images" />
           <small>Use an alias with Chat Completions image/OCR support for pasted images and browser screenshots.</small>
         </label>
-        <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-labelledby="ollama-role-title">
-          <div class="section-label">AGENT SETUP</div>
-          <h4 id="ollama-role-title">How the local agent thinks</h4>
-          <p class="settings-note">Each role can use a complementary model. The agent moves through this loop: understand → plan → act → perceive → evaluate → remember.</p>
-          <div class="ollama-agent-flow" aria-label="Agent cognitive flow">
-            <span>Understand</span><i>→</i><span>Plan</span><i>→</i><span>Act</span><i>→</i><span>Perceive</span><i>→</i><span>Evaluate</span><i>→</i><span>Remember</span>
-          </div>
           <div class="section-label settings-subheading">COGNITIVE ROLES</div>
           <div class="field-grid">
             <label class="field">
@@ -2857,10 +2862,6 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             </label>
           </div>
           <datalist id="ollama-model-aliases"></datalist>
-          <div class="brief-actions">
-            <button class="secondary-action" id="ollama-recommended" type="button">Use recommended setup</button>
-            <button class="secondary-action" id="ollama-pull-recommended" type="button">Pull recommended models</button>
-          </div>
           <small class="settings-note" id="ollama-catalog-note"></small>
         </section>
         <div class="model-compatibility hidden" id="model-compatibility" role="status" aria-live="polite" aria-atomic="true">
