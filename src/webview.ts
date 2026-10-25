@@ -1627,14 +1627,15 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private async pullOllamaRecommendedModels(): Promise<void> {
     const terminal = vscode.window.createTerminal({ name: "Ollama recommended models" });
     terminal.show(true);
-    for (const model of new Set([
+    const models = [...new Set([
       OLLAMA_RECOMMENDED_SETUP.executor,
       OLLAMA_RECOMMENDED_SETUP.planner,
       OLLAMA_RECOMMENDED_SETUP.vision,
       OLLAMA_RECOMMENDED_SETUP.embedding
-    ])) {
-      terminal.sendText(`ollama pull ${model}`, true);
-    }
+    ])];
+    // Send one ordered shell line: concurrent sendText calls can be dropped while
+    // the first large model is still occupying the terminal process.
+    terminal.sendText(models.map((model) => `ollama pull ${model}`).join(" && "), true);
     this.post({ type: "toast", message: "Ollama model pulls started in the terminal." });
   }
 
