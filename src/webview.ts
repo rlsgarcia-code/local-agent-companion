@@ -5159,6 +5159,7 @@ function renderProviderFields() {
     : provider === 'openai'
       ? 'OpenAI provides chat and optional embeddings; Chroma data stays on this machine.'
       : 'The same model catalog and LiteLLM base are used for chat and embeddings. Vectors and Chroma data stay on this machine.';
+  applyModelCapabilities(false);
 }
 
 function markConnectionEdited() {
@@ -5378,11 +5379,39 @@ function lookupOllamaMetadata(alias) {
 
 function applyModelCapabilities(recommendDefaults) {
   const selectedModel = profileModelForControls();
+  const isOllama = modelProvider.value === 'ollama';
+  const presetField = liteLlmModelPreset.closest('.field');
   const resolved = liteLlmModelPreset.value === 'auto'
     ? detectModelPreset(selectedModel)
     : liteLlmModelPreset.value;
   const capabilities = modelCapabilityCatalog[resolved] || modelCapabilityCatalog.custom;
   const currentEffort = liteLlmReasoningEffort.value;
+
+  // Ollama is not a LiteLLM alias. Its API route is fixed and the extension
+  // currently sends no native think option, so exposing LiteLLM preset and
+  // reasoning controls here is misleading. Sampling remains available because
+  // temperature/top_p are valid Ollama options even when the model metadata
+  // does not list them in its Modelfile parameters.
+  if (isOllama) {
+    liteLlmModelApi.value = 'chat_completions';
+    liteLlmModelApi.disabled = true;
+    liteLlmModelPreset.value = 'custom';
+    if (presetField) presetField.classList.add('hidden');
+    liteLlmReasoningEffort.value = 'omit';
+    liteLlmReasoningEffort.disabled = true;
+    liteLlmTemperature.disabled = false;
+    liteLlmTopP.disabled = false;
+    const local = lookupOllamaMetadata(selectedModel);
+    liteLlmCapabilities.textContent = local
+      ? 'Ollama local · Chat Completions fixed · reasoning/thinking is not sent by this integration. Temperature and top_p are optional Ollama options; verify against the selected model.'
+      : 'Ollama local · Chat Completions fixed. Load local models to inspect capabilities; temperature and top_p remain optional and model-dependent.';
+    renderModelCompatibility('custom', modelCapabilityCatalog.custom);
+    return;
+  }
+
+  liteLlmModelApi.disabled = false;
+  liteLlmReasoningEffort.disabled = false;
+  if (presetField) presetField.classList.remove('hidden');
   [...liteLlmReasoningEffort.options].forEach(option => {
     option.disabled = option.value !== 'omit' && !capabilities.reasoningEfforts.includes(option.value);
   });
