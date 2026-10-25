@@ -5248,6 +5248,12 @@ function renderProviderFields() {
   chatModelHelp.textContent = isOllama
     ? 'Reads files, uses tools, changes the workspace and produces the final response.'
     : 'The model used for chat and tool calls.';
+  liteLlmModel.placeholder = isOllama
+    ? 'Recommended: ' + (ollamaRecommendedSetup.executor || 'qwen3-coder:30b')
+    : 'company-coding-model';
+  visionModel.placeholder = isOllama
+    ? 'Recommended: ' + (ollamaRecommendedSetup.vision || 'qwen3-vl:8b')
+    : 'Use chat model for images';
   advancedSettingsSummary.textContent = isOllama ? 'Transport and sampling' : 'Advanced model settings';
   visionModelLabel.innerHTML = isOllama ? 'Visual perception · Model C <small>optional</small>' : 'Vision / OCR Model <small>optional</small>';
   providerSetupNote.textContent = isOllama
