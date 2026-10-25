@@ -2811,7 +2811,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <div class="setup-step-heading">
           <div class="section-label">STEP 2 OF 3</div>
           <h3 id="setup-step-models-title" tabindex="-1">Choose the models</h3>
-          <p>Load the optional catalog or enter the exact aliases supplied by your gateway administrator.</p>
+          <p id="setup-step-models-note">Load the optional catalog or enter the exact aliases supplied by your gateway administrator.</p>
         </div>
         <div class="field" id="model-catalog-field">
           <label for="litellm-models-endpoint">Models URL <small>optional</small></label>
@@ -2828,26 +2828,31 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           </div>
         </div>
         <label class="field">
-          <span>Chat Model Alias</span>
+          <span id="chat-model-label">Chat Model Alias</span>
           <input id="litellm-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="company-coding-model" />
+          <small id="chat-model-help">The model used for chat and tool calls.</small>
           <datalist id="litellm-model-aliases"></datalist>
         </label>
         <label class="field">
-          <span>Vision / OCR Model <small>optional</small></span>
+          <span id="vision-model-label">Vision / OCR Model <small>optional</small></span>
           <input id="vision-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="Use chat model for images" />
           <small>Use an alias with Chat Completions image/OCR support for pasted images and browser screenshots.</small>
         </label>
         <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-labelledby="ollama-role-title">
-          <div class="section-label">COMPLEMENTARY LOCAL MODELS</div>
-          <h4 id="ollama-role-title">Ollama execution roles</h4>
-          <p class="settings-note">Use different local models for planning and goal evaluation. The selected chat model remains the executor.</p>
+          <div class="section-label">AGENT SETUP</div>
+          <h4 id="ollama-role-title">How the local agent thinks</h4>
+          <p class="settings-note">Each role can use a complementary model. The agent moves through this loop: understand → plan → act → perceive → evaluate → remember.</p>
+          <div class="ollama-agent-flow" aria-label="Agent cognitive flow">
+            <span>Understand</span><i>→</i><span>Plan</span><i>→</i><span>Act</span><i>→</i><span>Perceive</span><i>→</i><span>Evaluate</span><i>→</i><span>Remember</span>
+          </div>
+          <div class="section-label settings-subheading">COGNITIVE ROLES</div>
           <div class="field-grid">
             <label class="field">
-              <span>Planner model <small>optional</small></span>
+              <span>Planning · Model B <small>optional</small></span>
               <input id="ollama-planner-model" type="text" list="ollama-model-aliases" autocomplete="off" spellcheck="false" placeholder="Recommended: gpt-oss:20b" />
             </label>
             <label class="field">
-              <span>Goal evaluator <small>optional</small></span>
+              <span>Evaluation · Model D <small>optional</small></span>
               <input id="ollama-evaluator-model" type="text" list="ollama-model-aliases" autocomplete="off" spellcheck="false" placeholder="Recommended: gpt-oss:20b" />
             </label>
           </div>
@@ -2864,7 +2869,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         </div>
         <div class="model-metadata hidden" id="model-metadata" role="status" aria-live="polite" aria-atomic="true"></div>
         <details class="advanced-settings" id="advanced-settings">
-          <summary>Advanced model settings</summary>
+          <summary id="advanced-settings-summary">Advanced model settings</summary>
           <label class="field">
             <span>Model API</span>
             <select id="litellm-model-api">
@@ -3311,6 +3316,11 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .advanced-settings summary { color: var(--muted); cursor: pointer; font-size: 10px; font-weight: 600; list-style-position: outside; }
 .advanced-settings[open] summary { color: var(--vscode-foreground); }
 .settings-subheading { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); }
+.ollama-role-setup { margin-top: 12px; padding: 11px; border: 1px solid var(--line); border-radius: 5px; background: color-mix(in srgb, var(--vscode-editor-background) 72%, var(--accent) 3%); }
+.ollama-role-setup h4 { margin: 3px 0 2px; color: var(--vscode-foreground); font-size: 12px; }
+.ollama-agent-flow { display: flex; align-items: center; gap: 4px; overflow-x: auto; margin: 10px 0 2px; padding: 7px 6px; color: var(--vscode-foreground); font: 600 9px var(--vscode-editor-font-family); white-space: nowrap; }
+.ollama-agent-flow span { padding: 3px 5px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ollama-agent-flow i { color: var(--muted); font-style: normal; }
 .toggle-field { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--vscode-foreground); font-size: 11px; }
 .toggle-field input { accent-color: var(--accent); }
 .local-setting { display: flex; align-items: end; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
@@ -3592,6 +3602,11 @@ const modelProvider = document.getElementById('model-provider');
 const modelProviderField = document.getElementById('model-provider-field');
 const providerVariantNote = document.getElementById('provider-variant-note');
 const providerSetupNote = document.getElementById('provider-setup-note');
+const setupModelsTitle = document.getElementById('setup-step-models-title');
+const setupModelsNote = document.getElementById('setup-step-models-note');
+const chatModelLabel = document.getElementById('chat-model-label');
+const chatModelHelp = document.getElementById('chat-model-help');
+const visionModelLabel = document.getElementById('vision-model-label');
 const providerEndpointLabel = document.getElementById('provider-endpoint-label');
 const providerKeyField = document.getElementById('provider-key-field');
 const providerKeyLabel = document.getElementById('provider-key-label');
@@ -3619,6 +3634,7 @@ const modelCompatibilityDetail = document.getElementById('model-compatibility-de
 const liteLlmReasoningEffort = document.getElementById('litellm-reasoning-effort');
 const liteLlmModelApi = document.getElementById('litellm-model-api');
 const liteLlmModelPreset = document.getElementById('litellm-model-preset');
+const advancedSettingsSummary = document.getElementById('advanced-settings-summary');
 const liteLlmTemperature = document.getElementById('litellm-temperature');
 const liteLlmTopP = document.getElementById('litellm-top-p');
 const liteLlmCapabilities = document.getElementById('litellm-capabilities');
@@ -5224,6 +5240,16 @@ function renderProviderFields() {
   const isLiteLlm = provider === 'litellm';
   const isOllama = provider === 'ollama';
   ollamaRoleSetup.classList.toggle('hidden', !isOllama);
+  setupModelsTitle.textContent = isOllama ? 'Agent Setup' : 'Choose the models';
+  setupModelsNote.textContent = isOllama
+    ? 'Configure the cognitive roles of the local agent. Each role may use a different Ollama model.'
+    : 'Load the optional catalog or enter the exact aliases supplied by your gateway administrator.';
+  chatModelLabel.textContent = isOllama ? 'Task execution · Model A' : 'Chat Model Alias';
+  chatModelHelp.textContent = isOllama
+    ? 'Reads files, uses tools, changes the workspace and produces the final response.'
+    : 'The model used for chat and tool calls.';
+  advancedSettingsSummary.textContent = isOllama ? 'Transport and sampling' : 'Advanced model settings';
+  visionModelLabel.innerHTML = isOllama ? 'Visual perception · Model C <small>optional</small>' : 'Vision / OCR Model <small>optional</small>';
   providerSetupNote.textContent = isOllama
     ? 'Connect only to an Ollama server on this machine. No API key is used.'
     : provider === 'openai'
