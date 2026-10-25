@@ -203,6 +203,16 @@
           "default": "",
           "description": "Optional LiteLLM alias used when an image or browser screenshot is sent. Choose a model with Chat Completions vision/OCR support."
         },
+        "localAgentCompanion.ollamaPlannerModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Ollama model used for goal planning."
+        },
+        "localAgentCompanion.ollamaEvaluatorModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Ollama model used for evidence-only goal evaluation and completion review."
+        },
         "localAgentCompanion.liteLlmModelsEndpoint": {
           "type": "string",
           "default": "",

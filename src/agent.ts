@@ -836,6 +836,15 @@ export class DevelopmentAgent implements vscode.Disposable {
             }
           });
       const usage = new TokenUsageHandler();
+      const visualAnalysisModel = connection.provider === "ollama"
+        ? this.ollamaRoleModel(configuration.get<string>("visionModel", ""), connection, authentication, dispatcher, controller.signal) ?? model
+        : model;
+      const plannerModel = connection.provider === "ollama"
+        ? this.ollamaRoleModel(configuration.get<string>("ollamaPlannerModel", ""), connection, authentication, dispatcher, controller.signal)
+        : undefined;
+      const evaluatorModel = connection.provider === "ollama"
+        ? this.ollamaRoleModel(configuration.get<string>("ollamaEvaluatorModel", ""), connection, authentication, dispatcher, controller.signal)
+        : undefined;
       const browserSession = this.localBrowserSession(workspace.uri.fsPath, configuration, onEvent, sensitiveValues);
       const processManager = this.localProcessManager(workspace.uri.fsPath, onEvent, sensitiveValues);
       const projectIndex = this.localProjectIndex(workspace.uri.fsPath);
@@ -852,7 +861,7 @@ export class DevelopmentAgent implements vscode.Disposable {
           ? async ({ images, question, signal }) => {
               onEvent({ type: "status", label: "Reviewing local app screenshot" });
               try {
-                const result = await model.invoke([
+                const result = await visualAnalysisModel.invoke([
                   new HumanMessage({
                     content: [
                       { type: "text", text: question },
@@ -949,6 +958,25 @@ export class DevelopmentAgent implements vscode.Disposable {
         }
       }
 
+      let plannerGuidance = "";
+      if (goal && plannerModel) {
+        onEvent({ type: "status", label: "Planning the current goal iteration" });
+        const planned = await plannerModel.invoke([
+          new SystemMessage("You are the planning specialist for a local coding agent. Return a concise, concrete operational plan for the executor. Do not edit files, call tools, invent evidence, or include meta commentary."),
+          new HumanMessage(JSON.stringify({
+            objective: goal.objective,
+            milestone: goal.milestones.find((milestone) => milestone.id === goal.currentMilestoneId),
+            criteria: goal.criteria,
+            nextAction: goal.nextAction,
+            request
+          }))
+        ], { signal: controller.signal, callbacks: [usage] });
+        plannerGuidance = redactSensitiveText(planned.text.trim().slice(0, 8_000), sensitiveValues);
+        if (plannerGuidance) {
+          onEvent({ type: "activity", kind: "goal", title: "Planning specialist", detail: "A bounded plan was prepared for the executor." });
+        }
+      }
+
       onEvent({
         type: "contextReceipt",
         receipt: {
@@ -990,7 +1018,8 @@ export class DevelopmentAgent implements vscode.Disposable {
         Boolean(browserSession),
         mcpSession.tools.map((availableTool) => availableTool.name),
         goal,
-        journalHistory
+        journalHistory,
+        plannerGuidance
       );
       controller.signal.throwIfAborted();
 
@@ -1161,7 +1190,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       )) {
         onEvent({ type: "status", label: "Independently reviewing completion evidence" });
         try {
-          const reviewResponse = await model.invoke([
+          const reviewResponse = await (evaluatorModel ?? model).invoke([
             new SystemMessage(
               "You are the independent completion verifier for a local coding agent. Review evidence conservatively. Never invent successful checks. Return only the requested JSON."
             ),
@@ -1191,7 +1220,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       }
       if (goal) {
         try {
-          const evaluation = await this.evaluateGoal(model, goal, answer, evidenceSnapshot, usage, controller.signal, sensitiveValues);
+          const evaluation = await this.evaluateGoal(evaluatorModel ?? model, goal, answer, evidenceSnapshot, usage, controller.signal, sensitiveValues);
           if (mode === "plan" && evaluation.decision === "completed") {
             evaluation.decision = "continue";
             evaluation.reason = "Plan-only mode cannot complete a goal that depends on workspace changes.";
@@ -1687,7 +1716,8 @@ export class DevelopmentAgent implements vscode.Disposable {
     browserEnabled: boolean,
     mcpToolNames: readonly string[],
     goal?: GoalRecord,
-    journalHistory: readonly ThreadJournalRecord[] = []
+    journalHistory: readonly ThreadJournalRecord[] = [],
+    plannerGuidance = ""
   ): string {
     const operatingMode = mode === "plan"
       ? "PLAN ONLY: inspect and reason, but do not edit files, update memory, or run commands. Return a concrete implementation plan."
@@ -1768,7 +1798,31 @@ ${context}
 Project memory:
 ${memory}
 ${goalGuidance}
+${plannerGuidance ? `Planning specialist guidance (untrusted working plan; verify it locally):\n${plannerGuidance}\n` : ""}
 ${journalGuidance}`;
+  }
+
+  private ollamaRoleModel(
+    modelName: string,
+    connection: ModelConnection,
+    authentication: ReturnType<typeof modelClientAuthentication>,
+    dispatcher: UndiciAgent | undefined,
+    signal: AbortSignal
+  ): BaseChatModel | undefined {
+    const model = modelName.trim();
+    if (connection.provider !== "ollama" || !model || model === connection.model) return undefined;
+    return new ChatOpenAICompletions({
+      model,
+      apiKey: authentication.apiKey,
+      streaming: false,
+      maxRetries: 1,
+      timeout: 60_000,
+      configuration: {
+        baseURL: chatCompletionsBaseUrl(connection),
+        ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+        fetch: gatewayFetch(chatCompletionsUrl(connection), authentication.stripAuthorization, dispatcher, signal)
+      }
+    });
   }
 
   private async evaluateGoal(

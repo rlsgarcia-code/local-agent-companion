@@ -34,6 +34,11 @@ import {
   validateLiteLlmModelProfile
 } from "./litellm";
 import { LITELLM_MODEL_CATALOG } from "./litellm-catalog";
+import {
+  OLLAMA_CATALOG,
+  OLLAMA_CATALOG_SNAPSHOT_DATE,
+  OLLAMA_RECOMMENDED_SETUP
+} from "./ollama-catalog";
 import type {
   LiteLlmAuthHeader,
   LiteLlmModelCapabilities,
@@ -128,6 +133,8 @@ type LiteLlmFormFields = {
   embeddingModel: string;
   embeddingEndpoint: string;
   visionModel: string;
+  ollamaPlannerModel: string;
+  ollamaEvaluatorModel: string;
 };
 
 type LiteLlmSettingsSnapshot = {
@@ -158,6 +165,11 @@ type LiteLlmSettingsSnapshot = {
   embeddingModel: string;
   embeddingEndpoint: string;
   visionModel: string;
+  ollamaPlannerModel: string;
+  ollamaEvaluatorModel: string;
+  ollamaCatalog: typeof OLLAMA_CATALOG;
+  ollamaRecommendedSetup: typeof OLLAMA_RECOMMENDED_SETUP;
+  ollamaCatalogSnapshotDate: string;
   finalReviewMode: "off" | "changes" | "always";
 };
 
@@ -570,6 +582,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "listModels":
         await this.listModels(message.endpoint, message.apiKey);
         break;
+      case "pullOllamaRecommended":
+        await this.pullOllamaRecommendedModels();
+        break;
       case "selectRuntime":
         await this.selectRuntime(message.runtime);
         break;
@@ -648,6 +663,11 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       embeddingModel: configuration.get<string>("embeddingModel", ""),
       embeddingEndpoint: configuration.get<string>("embeddingEndpoint", ""),
       visionModel: configuration.get<string>("visionModel", ""),
+      ollamaPlannerModel: configuration.get<string>("ollamaPlannerModel", ""),
+      ollamaEvaluatorModel: configuration.get<string>("ollamaEvaluatorModel", ""),
+      ollamaCatalog: OLLAMA_CATALOG,
+      ollamaRecommendedSetup: OLLAMA_RECOMMENDED_SETUP,
+      ollamaCatalogSnapshotDate: OLLAMA_CATALOG_SNAPSHOT_DATE,
       finalReviewMode: parseFinalReviewMode(configuration.get("finalReviewMode"))
     };
   }
@@ -1604,6 +1624,20 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
+  private async pullOllamaRecommendedModels(): Promise<void> {
+    const terminal = vscode.window.createTerminal({ name: "Ollama recommended models" });
+    terminal.show(true);
+    for (const model of new Set([
+      OLLAMA_RECOMMENDED_SETUP.executor,
+      OLLAMA_RECOMMENDED_SETUP.planner,
+      OLLAMA_RECOMMENDED_SETUP.vision,
+      OLLAMA_RECOMMENDED_SETUP.embedding
+    ])) {
+      terminal.sendText(`ollama pull ${model}`, true);
+    }
+    this.post({ type: "toast", message: "Ollama model pulls started in the terminal." });
+  }
+
   private async postConnectionSettings(): Promise<void> {
     if (!this.connectionSettingsRequested || !this.view) return;
     this.post({
@@ -1739,6 +1773,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         configuration.update("embeddingModel", message.embeddingModel.trim(), vscode.ConfigurationTarget.Global),
         configuration.update("embeddingEndpoint", message.embeddingEndpoint.trim(), vscode.ConfigurationTarget.Global),
         configuration.update("visionModel", message.visionModel.trim(), vscode.ConfigurationTarget.Global),
+        configuration.update("ollamaPlannerModel", message.ollamaPlannerModel.trim(), vscode.ConfigurationTarget.Global),
+        configuration.update("ollamaEvaluatorModel", message.ollamaEvaluatorModel.trim(), vscode.ConfigurationTarget.Global),
         ...(secretName && message.apiKey.trim()
           ? [this.extensionContext.secrets.store(secretName, message.apiKey.trim())]
           : [])
@@ -2801,6 +2837,27 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <input id="vision-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="Use chat model for images" />
           <small>Use an alias with Chat Completions image/OCR support for pasted images and browser screenshots.</small>
         </label>
+        <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-labelledby="ollama-role-title">
+          <div class="section-label">COMPLEMENTARY LOCAL MODELS</div>
+          <h4 id="ollama-role-title">Ollama execution roles</h4>
+          <p class="settings-note">Use different local models for planning and goal evaluation. The selected chat model remains the executor.</p>
+          <div class="field-grid">
+            <label class="field">
+              <span>Planner model <small>optional</small></span>
+              <input id="ollama-planner-model" type="text" list="ollama-model-aliases" autocomplete="off" spellcheck="false" placeholder="Recommended: gpt-oss:20b" />
+            </label>
+            <label class="field">
+              <span>Goal evaluator <small>optional</small></span>
+              <input id="ollama-evaluator-model" type="text" list="ollama-model-aliases" autocomplete="off" spellcheck="false" placeholder="Recommended: gpt-oss:20b" />
+            </label>
+          </div>
+          <datalist id="ollama-model-aliases"></datalist>
+          <div class="brief-actions">
+            <button class="secondary-action" id="ollama-recommended" type="button">Use recommended setup</button>
+            <button class="secondary-action" id="ollama-pull-recommended" type="button">Pull recommended models</button>
+          </div>
+          <small class="settings-note" id="ollama-catalog-note"></small>
+        </section>
         <div class="model-compatibility hidden" id="model-compatibility" role="status" aria-live="polite" aria-atomic="true">
           <span class="model-compatibility-signal" aria-hidden="true"></span>
           <span class="model-compatibility-copy"><strong id="model-compatibility-title"></strong><small id="model-compatibility-detail"></small></span>
@@ -3548,6 +3605,13 @@ const liteLlmEndpoint = document.getElementById('litellm-endpoint');
 const liteLlmModelsEndpoint = document.getElementById('litellm-models-endpoint');
 const liteLlmModel = document.getElementById('litellm-model');
 const visionModel = document.getElementById('vision-model');
+const ollamaRoleSetup = document.getElementById('ollama-role-setup');
+const ollamaPlannerModel = document.getElementById('ollama-planner-model');
+const ollamaEvaluatorModel = document.getElementById('ollama-evaluator-model');
+const ollamaRecommended = document.getElementById('ollama-recommended');
+const ollamaPullRecommended = document.getElementById('ollama-pull-recommended');
+const ollamaCatalogNote = document.getElementById('ollama-catalog-note');
+const ollamaModelAliases = document.getElementById('ollama-model-aliases');
 const liteLlmModelAliases = document.getElementById('litellm-model-aliases');
 const modelCompatibility = document.getElementById('model-compatibility');
 const modelCompatibilityTitle = document.getElementById('model-compatibility-title');
@@ -3624,6 +3688,7 @@ let profileTarget = 'chat';
 let availableModelProviders = ['litellm'];
 let providerKeyStates = { litellm: false, ollama: false, openai: false };
 let ollamaMetadataCatalog = {};
+let ollamaRecommendedSetup = {};
 const providerDrafts = {};
 let browserControlEnabled = false;
 let browserControlPending = false;
@@ -5066,6 +5131,10 @@ function fillLiteLlmSettings(liteLlm) {
   liteLlmModelsEndpoint.value = liteLlm.modelsEndpoint || '';
   liteLlmModel.value = liteLlm.model || '';
   visionModel.value = liteLlm.visionModel || '';
+  ollamaPlannerModel.value = liteLlm.ollamaPlannerModel || '';
+  ollamaEvaluatorModel.value = liteLlm.ollamaEvaluatorModel || '';
+  ollamaRecommendedSetup = liteLlm.ollamaRecommendedSetup || {};
+  renderOllamaCatalog(liteLlm.ollamaCatalog || [], liteLlm.ollamaCatalogSnapshotDate || '');
   profileTarget = 'chat';
   const knownModels = [...new Set([...loadedModelCatalog, ...Object.keys(liteLlmModelProfiles)])].sort();
   const chatModels = knownModels.filter(model => !isEmbeddingModel(model));
@@ -5131,10 +5200,30 @@ function updateConnectionReadiness() {
   }
 }
 
+function renderOllamaCatalog(catalog, snapshotDate) {
+  const entries = Array.isArray(catalog) ? catalog : [];
+  const selectable = entries
+    .filter(entry => Array.isArray(entry.roles) && entry.roles.some(role => ['executor', 'planner', 'vision', 'evaluator'].includes(role)))
+    .map(entry => String(entry.pull || '').trim())
+    .filter(Boolean);
+  if (selectable.length) {
+    liteLlmModelAliases.innerHTML = [...new Set(selectable)]
+      .map(model => '<option value="' + escapeHtml(model) + '"></option>')
+      .join('');
+  }
+  ollamaModelAliases.innerHTML = entries
+    .map(entry => '<option value="' + escapeHtml(entry.pull || '') + '"></option>')
+    .join('');
+  ollamaCatalogNote.textContent = entries.length
+    ? 'Versioned Ollama snapshot ' + snapshotDate + ' · pulls: ' + entries.map(entry => (entry.pull || entry.label) + ' (' + (entry.roles || []).join('/') + ')').join(' · ')
+    : 'No bundled Ollama recommendations are available.';
+}
+
 function renderProviderFields() {
   const provider = modelProvider.value || 'litellm';
   const isLiteLlm = provider === 'litellm';
   const isOllama = provider === 'ollama';
+  ollamaRoleSetup.classList.toggle('hidden', !isOllama);
   providerSetupNote.textContent = isOllama
     ? 'Connect only to an Ollama server on this machine. No API key is used.'
     : provider === 'openai'
@@ -5460,7 +5549,9 @@ function liteLlmFormMessage(type) {
     semanticMemoryEnabled: semanticMemoryEnabled.checked,
     embeddingModel: embeddingModel.value,
     embeddingEndpoint: embeddingEndpoint.value,
-    visionModel: visionModel.value
+    visionModel: visionModel.value,
+    ollamaPlannerModel: ollamaPlannerModel.value,
+    ollamaEvaluatorModel: ollamaEvaluatorModel.value
   };
 }
 
@@ -5863,6 +5954,23 @@ ollamaLoadModels.addEventListener('click', () => {
     apiKey: ''
   });
 });
+ollamaRecommended.addEventListener('click', () => {
+  const setup = ollamaRecommendedSetup;
+  liteLlmModel.value = setup.executor || 'qwen3-coder:30b';
+  visionModel.value = setup.vision || 'qwen3-vl:8b';
+  ollamaPlannerModel.value = setup.planner || 'gpt-oss:20b';
+  ollamaEvaluatorModel.value = setup.evaluator || 'gpt-oss:20b';
+  embeddingModel.value = setup.embedding || 'nomic-embed-text:latest';
+  semanticMemoryEnabled.checked = true;
+  profileTarget = 'chat';
+  fillModelProfile(liteLlmModel.value, {}, true);
+  previewModelCompatibility();
+  markConnectionEdited();
+  announce('Recommended Ollama roles applied. Review and save the connection.');
+});
+ollamaPullRecommended.addEventListener('click', () => {
+  vscode.postMessage({ type: 'pullOllamaRecommended' });
+});
 liteLlmModel.addEventListener('change', () => {
   profileTarget = 'chat';
   const hasSavedProfile = Boolean(liteLlmModelProfiles[String(liteLlmModel.value).trim()]);
@@ -5891,6 +5999,8 @@ liteLlmTopP.addEventListener('input', () => {
   liteLlmModelsEndpoint,
   liteLlmModel,
   visionModel,
+  ollamaPlannerModel,
+  ollamaEvaluatorModel,
   liteLlmApiKey,
   liteLlmAuthHeader,
   liteLlmModelPreset,

@@ -39,7 +39,9 @@ const liteLlmFields = {
   semanticMemoryEnabled: z.boolean(),
   embeddingModel: shortText,
   embeddingEndpoint: urlText.default(""),
-  visionModel: shortText.default("")
+  visionModel: shortText.default(""),
+  ollamaPlannerModel: shortText.default(""),
+  ollamaEvaluatorModel: shortText.default("")
 } as const;
 
 export const incomingMessageSchema = z.discriminatedUnion("type", [
@@ -92,6 +94,7 @@ export const incomingMessageSchema = z.discriminatedUnion("type", [
   noPayload("importConnectionProfile"),
   z.object({ type: z.literal("exportSupportBundle"), diagnostics: boundedDiagnostics.optional() }).strict(),
   z.object({ type: z.literal("listModels"), endpoint: urlText, apiKey: secretText }).strict(),
+  noPayload("pullOllamaRecommended"),
   z.object({ type: z.literal("selectRuntime"), runtime }).strict(),
   z.object({ type: z.literal("selectAutonomy"), mode: runMode }).strict(),
   z.object({ type: z.literal("selectFinalReview"), mode: finalReviewMode }).strict(),

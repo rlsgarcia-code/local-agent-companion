@@ -63,7 +63,7 @@ test("keeps browser automation local and approval-gated", () => {
 });
 
 test("routes every LangChain model client through the exact-route gateway transport", () => {
-  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 2);
+  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 3);
   assert.equal(count(agent, /new OpenAIEmbeddings\s*\(/g), 1);
   assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g), 1);
 
