@@ -4124,8 +4124,12 @@ function resetAssistantStream(data) {
   if (state.frame) cancelAnimationFrame(state.frame);
   state.frame = 0;
   state.pending = '';
+  const currentTurnText = state.text;
   state.text = '';
-  state.transientText = ((state.transientText || '') + (state.element?.querySelector('.message-body')?.textContent || '')).slice(-12_000);
+  // Keep the latest tool-turn prose as a compact activity preview. Appending
+  // every prior turn here made repeated model status text grow into a large
+  // green block during multi-step runs.
+  if (currentTurnText.trim()) state.transientText = currentTurnText.slice(-4_000);
   state.element?.classList.add('tool-turn');
   const body = state.element?.querySelector('.message-body');
   if (body) body.textContent = state.transientText;

@@ -53,6 +53,24 @@ test("does not create empty deltas and resets tool-only turns", async () => {
   assert.deepEqual(events, ["reset"]);
 });
 
+test("detects tool calls nested in LangChain run output", async () => {
+  const events: string[] = [];
+  const nested: AsyncIterable<StreamedAssistantMessage> = (async function* () {
+    yield {
+      text: text("Vou consultar os arquivos."),
+      output: Promise.resolve({ messages: [{ additional_kwargs: { tool_calls: [{ name: "read_file" }] } }] })
+    };
+  })();
+
+  await consumeAssistantMessageStreams(
+    nested,
+    async (delta) => { events.push(`delta:${delta}`); },
+    async (toolTurn) => { if (toolTurn) events.push("reset"); }
+  );
+
+  assert.deepEqual(events, ["delta:Vou consultar os arquivos.", "reset"]);
+});
+
 test("normalizes cumulative and repeated provider chunks", async () => {
   const events: string[] = [];
 
