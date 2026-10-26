@@ -11,7 +11,7 @@ import {
   LocalBrowserSession,
   type BrowserInteraction
 } from "./browser";
-import { normalizeBrowserUrl } from "./browser-policy";
+import { browserApprovalDomain, normalizeBrowserUrl } from "./browser-policy";
 import type { ChangeTracker } from "./change-tracker";
 import { evaluateCommandPolicy } from "./command-policy";
 import { isWorkspaceGlob, validateWorkspaceGlob } from "./glob-policy";
@@ -561,11 +561,12 @@ export class LocalToolHost {
     if (!browser.hasApprovalFor(url)) {
       const parsed = new URL(url);
       const origin = parsed.origin;
+      const approvalDomain = browserApprovalDomain(parsed.hostname);
       const external = !["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname.toLowerCase());
       const approved = await requestLocalApproval(this.onEvent, {
-        prompt: external ? `Allow the agent to browse ${parsed.hostname}?` : "Allow the local agent to inspect and control this localhost application?",
+        prompt: external ? `Allow the agent to browse ${approvalDomain} and its subdomains?` : "Allow the local agent to inspect and control this localhost application?",
         action: external ? "Allow this domain" : "Allow local browser session",
-        target: origin,
+        target: external ? approvalDomain : origin,
         explanation: external
           ? "The browser is visible. Page text, interactions, and screenshots may be sent to the configured model provider. This approval applies only to this domain during this run; redirects to other domains are blocked."
           : "The isolated session can reach loopback addresses only. Page text, console output, interactions, and screenshots may be sent to the configured model provider for this session. Downloads, password fields, service workers, and non-local HTTP/WebSocket requests are blocked.",

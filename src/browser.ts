@@ -5,6 +5,8 @@ import * as vscode from "vscode";
 import {
   browserLaunchAttempts,
   isAllowedBrowserResource,
+  browserApprovalDomain,
+  isApprovedBrowserHost,
   normalizeBrowserUrl,
   type LocalBrowserChannel
 } from "./browser-policy";
@@ -89,21 +91,22 @@ export class LocalBrowserSession implements vscode.Disposable {
 
   public hasApprovalFor(url: string): boolean {
     const normalized = normalizeBrowserUrl(url, this.options.externalAccess);
-    return this.approved && this.approvedHosts.has(new URL(normalized).hostname.toLowerCase());
+    return this.approved && isApprovedBrowserHost(new URL(normalized).hostname, this.approvedHosts);
   }
 
   public grantApproval(url: string): void {
     this.approved = true;
-    this.approvedHosts.add(new URL(normalizeBrowserUrl(url, this.options.externalAccess)).hostname.toLowerCase());
+    this.approvedHosts.add(browserApprovalDomain(normalizeBrowserUrl(url, this.options.externalAccess)));
   }
 
   public async open(url: string, signal: AbortSignal): Promise<BrowserSnapshot> {
     this.bindCancellation(signal);
     const normalizedUrl = normalizeBrowserUrl(url, this.options.externalAccess);
     const hostname = new URL(normalizedUrl).hostname.toLowerCase();
-    if (this.options.externalAccess && !this.approvedHosts.has(hostname)) {
-      if (!await this.options.approveExternalDomain(hostname)) throw new Error(`The user declined browser access to ${hostname}.`);
-      this.approvedHosts.add(hostname);
+    const approvalDomain = browserApprovalDomain(hostname);
+    if (this.options.externalAccess && !isApprovedBrowserHost(hostname, this.approvedHosts)) {
+      if (!await this.options.approveExternalDomain(approvalDomain)) throw new Error(`The user declined browser access to ${approvalDomain}.`);
+      this.approvedHosts.add(approvalDomain);
     }
     if (!this.hasApprovalFor(normalizedUrl)) {
       throw new Error("This localhost browser origin has not been approved by the user.");
@@ -287,7 +290,10 @@ export class LocalBrowserSession implements vscode.Disposable {
     await context.route("**/*", async (route) => {
       const requestUrl = route.request().url();
       if (isAllowedBrowserResource(requestUrl, this.options.externalAccess, this.approvedHosts)) return route.continue();
-      if (this.options.externalAccess && await this.approveRedirectDomain(requestUrl)) return route.continue();
+      // Only top-level navigations can request a new approval. Third-party
+      // assets are blocked silently instead of producing an approval dialog
+      // for every script, image, and tracking endpoint on a page.
+      if (this.options.externalAccess && route.request().isNavigationRequest() && await this.approveRedirectDomain(requestUrl)) return route.continue();
       this.blockedRequests.add(redactedBlockedUrl(requestUrl));
       await route.abort("blockedbyclient");
     });
@@ -347,9 +353,10 @@ export class LocalBrowserSession implements vscode.Disposable {
     try { url = new URL(value); } catch { return false; }
     if (url.protocol !== "https:" || url.username || url.password) return false;
     const hostname = url.hostname.toLowerCase();
-    if (this.approvedHosts.has(hostname)) return true;
-    const approved = await this.options.approveExternalDomain(hostname);
-    if (approved) this.approvedHosts.add(hostname);
+    if (isApprovedBrowserHost(hostname, this.approvedHosts)) return true;
+    const approvalDomain = browserApprovalDomain(hostname);
+    const approved = await this.options.approveExternalDomain(approvalDomain);
+    if (approved) this.approvedHosts.add(approvalDomain);
     return approved;
   }
 

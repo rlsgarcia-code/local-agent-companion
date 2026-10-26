@@ -56,10 +56,24 @@ export function isAllowedBrowserResource(value: string, allowExternal: boolean, 
     const url = new URL(value);
     if (!url.username && !url.password && ["http:", "https:", "ws:", "wss:"].includes(url.protocol)) {
       if (isLoopbackHostname(url.hostname)) return true;
-      return allowExternal && url.protocol === "https:" && approvedHosts.has(url.hostname.toLowerCase());
+      return allowExternal && url.protocol === "https:" && isApprovedBrowserHost(url.hostname, approvedHosts);
     }
   } catch { return false; }
   return false;
+}
+
+/** Use a registrable-domain bucket so a site does not prompt for every subdomain. */
+export function browserApprovalDomain(value: string): string {
+  const hostname = value.includes("://") ? new URL(value).hostname : value;
+  const normalized = hostname.toLowerCase().replace(/\.$/, "");
+  if (normalized === "localhost" || normalized.includes(":") || /^\d+(?:\.\d+){3}$/.test(normalized)) return normalized;
+  const labels = normalized.split(".").filter(Boolean);
+  return labels.length > 2 ? labels.slice(-2).join(".") : normalized;
+}
+
+export function isApprovedBrowserHost(hostname: string, approvedHosts: ReadonlySet<string>): boolean {
+  const normalized = hostname.toLowerCase().replace(/\.$/, "");
+  return [...approvedHosts].some((approved) => normalized === approved || normalized.endsWith(`.${approved}`));
 }
 
 export function browserLaunchAttempts(
