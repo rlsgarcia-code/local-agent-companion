@@ -1200,12 +1200,13 @@ export class DevelopmentAgent implements vscode.Disposable {
               mode,
               changes: completionReviewChanges(pendingChanges.changes, sensitiveValues),
               omittedChanges: pendingChanges.omitted,
-              evidence: evidenceSnapshot
+              evidence: evidenceSnapshot,
+              responseLanguage
             }), sensitiveValues))
           ], { signal: controller.signal, callbacks: [usage] });
-          const review = parseCompletionReview(redactSensitiveText(reviewResponse.text, sensitiveValues));
+          const review = parseCompletionReview(redactSensitiveText(reviewResponse.text, sensitiveValues), responseLanguage);
           onEvent({ type: "verification", review });
-          answer += completionReviewAppendix(review);
+          answer += completionReviewAppendix(review, responseLanguage);
         } catch (error) {
           if (controller.signal.aborted) throw error;
           const detail = safeErrorMessage(error, sensitiveValues);
@@ -1215,7 +1216,9 @@ export class DevelopmentAgent implements vscode.Disposable {
             title: "Independent completion review unavailable",
             detail
           });
-          answer += "\n\nIndependent verification\nThe additional completion review could not be completed. The implementation evidence above remains available in Review run.";
+          answer += responseLanguage === "en"
+            ? "\n\nIndependent verification\nThe additional completion review could not be completed. The implementation evidence above remains available in Review run."
+            : "\n\nVerificação independente\nA revisão adicional da conclusão não pôde ser concluída. As evidências da implementação continuam disponíveis em Revisar execução.";
         }
       }
       if (goal) {

@@ -46,8 +46,10 @@ test("parses bounded verifier JSON and appends only actionable review", () => {
     risks: ["Responsive state may regress."],
     unverified: ["Narrow viewport"]
   }));
-  assert.match(completionReviewAppendix(attention), /Independent verification/);
-  assert.match(completionReviewAppendix(attention), /Narrow viewport/);
+  assert.match(completionReviewAppendix(attention, "en"), /Independent verification/);
+  assert.match(completionReviewAppendix(attention, "en"), /Narrow viewport/);
+  assert.match(completionReviewAppendix(attention, "pt-BR"), /Verificação independente/);
+  assert.match(completionReviewAppendix(attention, "pt-BR"), /Não verificado/);
 });
 
 test("keeps the completion review prompt evidence-only and bounded", () => {
@@ -57,9 +59,11 @@ test("keeps the completion review prompt evidence-only and bounded", () => {
     mode: "execute",
     changes: [{ path: "src/app.ts", kind: "modified" }],
     omittedChanges: 0,
-    evidence: emptyEvidence
+    evidence: emptyEvidence,
+    responseLanguage: "pt-BR"
   });
   assert.match(prompt, /Use only the supplied evidence/);
+  assert.match(prompt, /Responda exclusivamente em português do Brasil/);
   assert.match(prompt, /src\/app\.ts/);
   assert.ok(prompt.length < 40_000);
 });
