@@ -2,6 +2,19 @@ import type { LaunchOptions } from "playwright-core";
 
 export type LocalBrowserChannel = "auto" | "msedge" | "chrome";
 
+export function normalizeBrowserUrl(value: string, allowExternal: boolean): string {
+  if (!allowExternal) return normalizeLocalBrowserUrl(value);
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 2_048 || /[\r\n\0]/.test(trimmed)) throw new Error("Browser URL must be a bounded single-line URL.");
+  let url: URL;
+  try { url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`); }
+  catch { throw new Error("Enter a valid HTTPS URL."); }
+  if (url.protocol !== "https:" || url.username || url.password || isPrivateHost(url.hostname)) {
+    throw new Error("External browser access requires a credential-free HTTPS URL on a public host.");
+  }
+  return url.toString();
+}
+
 export function normalizeLocalBrowserUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > 2_048 || /[\r\n\0]/.test(trimmed)) {
@@ -36,6 +49,19 @@ export function isAllowedLocalBrowserResource(value: string): boolean {
   }
 }
 
+export function isAllowedBrowserResource(value: string, allowExternal: boolean, approvedHosts: ReadonlySet<string>): boolean {
+  if (value === "about:blank" || value.startsWith("data:")) return true;
+  if (value.startsWith("blob:")) return isAllowedBrowserResource(value.slice(5), allowExternal, approvedHosts);
+  try {
+    const url = new URL(value);
+    if (!url.username && !url.password && ["http:", "https:", "ws:", "wss:"].includes(url.protocol)) {
+      if (isLoopbackHostname(url.hostname)) return true;
+      return allowExternal && url.protocol === "https:" && approvedHosts.has(url.hostname.toLowerCase());
+    }
+  } catch { return false; }
+  return false;
+}
+
 export function browserLaunchAttempts(
   channel: LocalBrowserChannel,
   executablePath?: string,
@@ -58,4 +84,12 @@ function isHttpLoopbackUrl(url: URL): boolean {
 
 function isLoopbackHostname(hostname: string): boolean {
   return ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "[::]"].includes(hostname.toLowerCase());
+}
+
+function isPrivateHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  if (isLoopbackHostname(normalized) || normalized.endsWith(".local") || normalized.endsWith(".internal")) return true;
+  if (/^(10|127)\./.test(normalized) || /^192\.168\./.test(normalized)) return true;
+  const match = /^172\.(\d+)\./.exec(normalized);
+  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
 }

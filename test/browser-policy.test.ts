@@ -2,9 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   browserLaunchAttempts,
+  isAllowedBrowserResource,
   isAllowedLocalBrowserResource,
+  normalizeBrowserUrl,
   normalizeLocalBrowserUrl
 } from "../src/browser-policy";
+
+test("keeps external browser access explicit, HTTPS-only, and host-scoped", () => {
+  assert.equal(normalizeBrowserUrl("https://example.com/docs", true), "https://example.com/docs");
+  assert.throws(() => normalizeBrowserUrl("https://example.com", false), /restricted|localhost/);
+  assert.throws(() => normalizeBrowserUrl("http://example.com", true), /HTTPS/);
+  assert.throws(() => normalizeBrowserUrl("https://127.0.0.1:3000", true), /public host/);
+  assert.equal(isAllowedBrowserResource("https://example.com/app.js", true, new Set(["example.com"])), true);
+  assert.equal(isAllowedBrowserResource("https://cdn.example.com/app.js", true, new Set(["example.com"])), false);
+  assert.equal(isAllowedBrowserResource("https://example.com/app.js", false, new Set(["example.com"])), false);
+});
 
 test("accepts only credential-free loopback browser URLs", () => {
   assert.equal(normalizeLocalBrowserUrl("localhost:3000/app"), "http://localhost:3000/app");

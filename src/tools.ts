@@ -11,7 +11,7 @@ import {
   LocalBrowserSession,
   type BrowserInteraction
 } from "./browser";
-import { normalizeLocalBrowserUrl } from "./browser-policy";
+import { normalizeBrowserUrl } from "./browser-policy";
 import type { ChangeTracker } from "./change-tracker";
 import { evaluateCommandPolicy } from "./command-policy";
 import { isWorkspaceGlob, validateWorkspaceGlob } from "./glob-policy";
@@ -481,9 +481,9 @@ export class LocalToolHost {
         (input) => this.safe(() => this.openBrowser(input, signal)),
         {
           name: "browser_open",
-          description: "Open and inspect a running http(s) localhost application in an isolated local browser. Non-loopback requests are blocked. This also asks VS Code to show the same URL for the user.",
+          description: "Open and inspect a local app or, when explicitly enabled, a public HTTPS site in the visible browser. Each external domain requires user approval.",
           schema: z.object({
-            url: z.string().max(2_048).describe("Local app URL such as http://localhost:3000.")
+            url: z.string().max(2_048).describe("Local URL or public HTTPS URL when external access is enabled.")
           })
         }
       ),
@@ -557,19 +557,23 @@ export class LocalToolHost {
 
   private async openBrowser(input: Record<string, unknown>, signal: AbortSignal): Promise<string> {
     const browser = this.requireBrowser();
-    const url = normalizeLocalBrowserUrl(requiredString(input.url, "url"));
+    const url = normalizeBrowserUrl(requiredString(input.url, "url"), browser.externalAccess);
     if (!browser.hasApprovalFor(url)) {
-      const origin = new URL(url).origin;
+      const parsed = new URL(url);
+      const origin = parsed.origin;
+      const external = !["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname.toLowerCase());
       const approved = await requestLocalApproval(this.onEvent, {
-        prompt: "Allow the local agent to inspect and control this localhost application?",
-        action: "Allow local browser session",
+        prompt: external ? `Allow the agent to browse ${parsed.hostname}?` : "Allow the local agent to inspect and control this localhost application?",
+        action: external ? "Allow this domain" : "Allow local browser session",
         target: origin,
-        explanation: "The isolated session can reach loopback addresses only. Page text, console output, interactions, and screenshots may be sent to the configured model provider for this session. Downloads, password fields, service workers, and non-local HTTP/WebSocket requests are blocked.",
+        explanation: external
+          ? "The browser is visible. Page text, interactions, and screenshots may be sent to the configured model provider. This approval applies only to this domain during this run; redirects to other domains are blocked."
+          : "The isolated session can reach loopback addresses only. Page text, console output, interactions, and screenshots may be sent to the configured model provider for this session. Downloads, password fields, service workers, and non-local HTTP/WebSocket requests are blocked.",
         risk: "sensitive",
         sensitiveValues: this.sensitiveValues
       });
       if (!approved) {
-        return JSON.stringify({ denied: true, origin, message: "The user declined local browser access." });
+        return JSON.stringify({ denied: true, origin, message: external ? "The user declined external browser access." : "The user declined local browser access." });
       }
       browser.grantApproval(url);
     }

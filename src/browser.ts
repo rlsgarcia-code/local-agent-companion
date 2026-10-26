@@ -4,8 +4,8 @@ import type { Browser, BrowserContext, Page } from "playwright-core";
 import * as vscode from "vscode";
 import {
   browserLaunchAttempts,
-  isAllowedLocalBrowserResource,
-  normalizeLocalBrowserUrl,
+  isAllowedBrowserResource,
+  normalizeBrowserUrl,
   type LocalBrowserChannel
 } from "./browser-policy";
 import type { AgentUiEvent } from "./types";
@@ -21,6 +21,8 @@ export type LocalBrowserSessionOptions = {
   executablePath?: string;
   openPreview: boolean;
   liveMode: boolean;
+  externalAccess: boolean;
+  approveExternalDomain: (hostname: string) => Promise<boolean>;
   onEvent: (event: AgentUiEvent) => void;
   sanitizeText?: (value: string) => string;
 };
@@ -57,7 +59,7 @@ export class LocalBrowserSession implements vscode.Disposable {
   private context: BrowserContext | undefined;
   private page: Page | undefined;
   private approved = false;
-  private approvedOrigin: string | undefined;
+  private readonly approvedHosts = new Set<string>();
   private readonly consoleEntries: string[] = [];
   private readonly pageErrors: string[] = [];
   private readonly blockedRequests = new Set<string>();
@@ -77,26 +79,32 @@ export class LocalBrowserSession implements vscode.Disposable {
     this.onEvent = onEvent;
   }
 
+  public get externalAccess(): boolean {
+    return this.options.externalAccess;
+  }
+
   public setSanitizer(sanitizeText: (value: string) => string): void {
     this.sanitizeText = sanitizeText;
   }
 
-  public get origin(): string | undefined {
-    return this.approvedOrigin;
-  }
-
   public hasApprovalFor(url: string): boolean {
-    return this.approved && this.approvedOrigin === new URL(normalizeLocalBrowserUrl(url)).origin;
+    const normalized = normalizeBrowserUrl(url, this.options.externalAccess);
+    return this.approved && this.approvedHosts.has(new URL(normalized).hostname.toLowerCase());
   }
 
   public grantApproval(url: string): void {
     this.approved = true;
-    this.approvedOrigin = new URL(normalizeLocalBrowserUrl(url)).origin;
+    this.approvedHosts.add(new URL(normalizeBrowserUrl(url, this.options.externalAccess)).hostname.toLowerCase());
   }
 
   public async open(url: string, signal: AbortSignal): Promise<BrowserSnapshot> {
     this.bindCancellation(signal);
-    const normalizedUrl = normalizeLocalBrowserUrl(url);
+    const normalizedUrl = normalizeBrowserUrl(url, this.options.externalAccess);
+    const hostname = new URL(normalizedUrl).hostname.toLowerCase();
+    if (this.options.externalAccess && !this.approvedHosts.has(hostname)) {
+      if (!await this.options.approveExternalDomain(hostname)) throw new Error(`The user declined browser access to ${hostname}.`);
+      this.approvedHosts.add(hostname);
+    }
     if (!this.hasApprovalFor(normalizedUrl)) {
       throw new Error("This localhost browser origin has not been approved by the user.");
     }
@@ -257,7 +265,7 @@ export class LocalBrowserSession implements vscode.Disposable {
     this.context = undefined;
     this.browser = undefined;
     this.approved = false;
-    this.approvedOrigin = undefined;
+    this.approvedHosts.clear();
     this.resetEvidence();
     await browser?.close().catch(() => undefined);
     await rm(this.artifactDirectory, { recursive: true, force: true }).catch(() => undefined);
@@ -278,18 +286,15 @@ export class LocalBrowserSession implements vscode.Disposable {
     }), signal);
     await context.route("**/*", async (route) => {
       const requestUrl = route.request().url();
-      if (isAllowedLocalBrowserResource(requestUrl)) await route.continue();
-      else {
-        this.blockedRequests.add(redactedBlockedUrl(requestUrl));
-        await route.abort("blockedbyclient");
-      }
+      if (isAllowedBrowserResource(requestUrl, this.options.externalAccess, this.approvedHosts)) return route.continue();
+      if (this.options.externalAccess && await this.approveRedirectDomain(requestUrl)) return route.continue();
+      this.blockedRequests.add(redactedBlockedUrl(requestUrl));
+      await route.abort("blockedbyclient");
     });
     await context.routeWebSocket("**/*", async (route) => {
-      if (isAllowedLocalBrowserResource(route.url())) route.connectToServer();
-      else {
-        this.blockedRequests.add(redactedBlockedUrl(route.url()));
-        await route.close({ code: 1008, reason: "Local Agent Companion permits loopback WebSockets only" });
-      }
+      if (isAllowedBrowserResource(route.url(), this.options.externalAccess, this.approvedHosts)) return route.connectToServer();
+      this.blockedRequests.add(redactedBlockedUrl(route.url()));
+      await route.close({ code: 1008, reason: this.options.externalAccess ? "External domain was not approved" : "Local Agent Companion permits loopback WebSockets only" });
     });
     context.on("page", (openedPage) => {
       if (this.page && openedPage !== this.page) void openedPage.close().catch(() => undefined);
@@ -335,6 +340,17 @@ export class LocalBrowserSession implements vscode.Disposable {
     throw new Error(
       `Could not start an installed Chrome or Edge browser. No browser download or administrator access was attempted. ${errors.join(" | ")}`
     );
+  }
+
+  private async approveRedirectDomain(value: string): Promise<boolean> {
+    let url: URL;
+    try { url = new URL(value); } catch { return false; }
+    if (url.protocol !== "https:" || url.username || url.password) return false;
+    const hostname = url.hostname.toLowerCase();
+    if (this.approvedHosts.has(hostname)) return true;
+    const approved = await this.options.approveExternalDomain(hostname);
+    if (approved) this.approvedHosts.add(hostname);
+    return approved;
   }
 
   private locator(ref: string) {

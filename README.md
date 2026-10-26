@@ -409,7 +409,7 @@ O agente recebe ferramentas LangChain para abrir, inspecionar, clicar, preencher
 
 Quando houver um estado anterior significativo, o agente pode manter uma baseline somente durante o run e comparar o viewport final com ela. A imagem é efêmera; a revisão conserva apenas a observação textual redigida do modelo e as contagens de erros da página/console.
 
-A sessão usa perfil efêmero, bloqueia downloads, service workers, campos de senha e qualquer requisição HTTP, HTTPS ou WebSocket que não seja loopback. Recursos externos usados pela página, como fontes ou scripts em CDN, aparecem em `blockedRequests` e precisam ser servidos localmente para essa validação. A última captura fica no armazenamento privado da extensão e é substituída na próxima conferência; ao fechar a sessão, ela é apagada.
+ A sessão usa perfil efêmero, bloqueia downloads, service workers e campos de senha. Por padrão, qualquer requisição que não seja loopback é bloqueada. Se `localAgentCompanion.localBrowserExternalAccess` estiver explicitamente habilitado, o navegador permanece visível, aceita somente HTTPS em hosts públicos e solicita aprovação para cada domínio; redirecionamentos para domínios não aprovados são interrompidos. A última captura fica no armazenamento privado da extensão e é substituída na próxima conferência; ao fechar a sessão, ela é apagada.
 
 Em **Plan only**, o agente pode abrir, inspecionar e capturar a aplicação, mas não recebe a ferramenta de interação. O controle começa desligado; o ícone atualiza `localAgentCompanion.localBrowserToolsEnabled` somente para o workspace e fica indisponível durante uma execução. Desligá-lo fecha imediatamente a sessão isolada e remove todas as ferramentas de navegador do próximo run.
 
@@ -502,6 +502,7 @@ No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. 
 | `localAgentCompanion.standardRecursionLimit` | `200` | Limite LangGraph do runtime padrão; o Deep Agent usa o limite nativo alto. |
 | `localAgentCompanion.finalReviewMode` | `changes` | Segunda revisão pelo mesmo alias LiteLLM: `changes`, `always` ou `off`. |
 | `localAgentCompanion.localBrowserToolsEnabled` | `false` | Disponibiliza, após ativação pelo ícone do chat, ferramentas LangChain protegidas por aprovação para aplicações em loopback. |
+| `localAgentCompanion.localBrowserExternalAccess` | `false` | Permite solicitar navegação HTTPS externa em navegador visível. Cada domínio exige aprovação separada; hosts privados, credenciais e redirecionamentos não aprovados são bloqueados. |
 | `localAgentCompanion.localBrowserChannel` | `auto` | Usa Edge primeiro no Windows e Chrome primeiro nas demais plataformas, com fallback entre ambos. |
 | `localAgentCompanion.localBrowserExecutablePath` | vazio | Caminho absoluto opcional para um navegador Chromium corporativo já instalado. |
 | `localAgentCompanion.localBrowserOpenPreview` | `true` | Abre para o usuário a mesma URL local que está sendo validada na sessão isolada. |

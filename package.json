@@ -383,7 +383,13 @@
           "type": "boolean",
           "default": false,
           "scope": "resource",
-          "description": "Allow the agent to request approval-gated LangChain tools for inspecting and visually checking applications on localhost. Toggle this from the browser icon in the sidebar. Non-loopback browser traffic is blocked."
+          "description": "Allow the agent to request approval-gated LangChain tools for inspecting and visually checking applications on localhost. Toggle this from the browser icon in the sidebar."
+        },
+        "localAgentCompanion.localBrowserExternalAccess": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Allow the agent to request access to public HTTPS sites in a visible browser. Disabled by default; each domain requires a separate approval and redirects to other domains are blocked."
         },
         "localAgentCompanion.localBrowserChannel": {
           "type": "string",
