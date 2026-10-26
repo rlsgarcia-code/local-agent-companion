@@ -37,7 +37,12 @@
     "onView:localAgentCompanion.chat",
     "onCommand:localAgentCompanion.open",
     "onCommand:localAgentCompanion.newThread",
-    "onCommand:localAgentCompanion.configureLiteLlm"
+    "onCommand:localAgentCompanion.configureLiteLlm",
+    "onCommand:localAgentCompanion.openMcpConnections",
+    "onCommand:localAgentCompanion.configureMcpCatalogs",
+    "onCommand:localAgentCompanion.refreshMcpCatalogs",
+    "onCommand:localAgentCompanion.searchMcpCatalog",
+    "onCommand:localAgentCompanion.generateMcpCatalogItem"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -93,6 +98,26 @@
       {
         "command": "localAgentCompanion.clearLiteLlmKey",
         "title": "Local Agent Companion: Remove Current Provider Key"
+      },
+      {
+        "command": "localAgentCompanion.openMcpConnections",
+        "title": "Local Agent Companion: Open MCP Connections"
+      },
+      {
+        "command": "localAgentCompanion.configureMcpCatalogs",
+        "title": "Local Agent Companion: Configure MCP Catalog Sources"
+      },
+      {
+        "command": "localAgentCompanion.refreshMcpCatalogs",
+        "title": "Local Agent Companion: Refresh MCP Catalogs"
+      },
+      {
+        "command": "localAgentCompanion.searchMcpCatalog",
+        "title": "Local Agent Companion: Ask the MCP Catalog"
+      },
+      {
+        "command": "localAgentCompanion.generateMcpCatalogItem",
+        "title": "Local Agent Companion: Generate MCP Catalog Item"
       }
     ],
     "menus": {

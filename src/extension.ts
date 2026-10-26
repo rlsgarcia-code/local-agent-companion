@@ -62,6 +62,41 @@ export function activate(context: vscode.ExtensionContext): void {
       if (secretName) await context.secrets.delete(secretName);
       await agent.reloadProviderConfiguration();
       void vscode.window.showInformationMessage(`${modelProviderLabel(provider)} key removed from Secret Storage.`);
+    }),
+    vscode.commands.registerCommand("localAgentCompanion.openMcpConnections", async () => {
+      try {
+        await provider.openMcpConnections();
+      } catch (error) {
+        void vscode.window.showErrorMessage(safeErrorMessage(error));
+      }
+    }),
+    vscode.commands.registerCommand("localAgentCompanion.configureMcpCatalogs", async () => {
+      try {
+        await provider.configureMcpCatalogs();
+      } catch (error) {
+        void vscode.window.showErrorMessage(safeErrorMessage(error));
+      }
+    }),
+    vscode.commands.registerCommand("localAgentCompanion.refreshMcpCatalogs", async () => {
+      try {
+        await provider.refreshMcpCatalogs();
+      } catch (error) {
+        void vscode.window.showErrorMessage(safeErrorMessage(error));
+      }
+    }),
+    vscode.commands.registerCommand("localAgentCompanion.searchMcpCatalog", async () => {
+      try {
+        await provider.searchMcpCatalogFromCommand();
+      } catch (error) {
+        void vscode.window.showErrorMessage(safeErrorMessage(error));
+      }
+    }),
+    vscode.commands.registerCommand("localAgentCompanion.generateMcpCatalogItem", async () => {
+      try {
+        await provider.generateMcpCatalogItemFromClipboard();
+      } catch (error) {
+        void vscode.window.showErrorMessage(safeErrorMessage(error));
+      }
     })
   );
 }

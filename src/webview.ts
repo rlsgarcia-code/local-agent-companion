@@ -843,6 +843,39 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
+  /** Command Palette entry points for the MCP features exposed in the sidebar. */
+  public async openMcpConnections(): Promise<void> {
+    await this.configureMcpConnections();
+  }
+
+  public async configureMcpCatalogs(): Promise<void> {
+    await this.assertProviderConfigurationEditable();
+    await this.agent.configureMcpCatalogSources();
+    void vscode.window.showInformationMessage("MCP catalog source selection saved. Refresh the enabled catalogs when ready.");
+  }
+
+  public async refreshMcpCatalogs(): Promise<void> {
+    await this.assertProviderConfigurationEditable();
+    const result = await this.agent.refreshMcpCatalogs();
+    const failures = result.sources.filter((source) => source.error);
+    void vscode.window.showInformationMessage(
+      `MCP catalogs refreshed: ${result.entries.length} entries${failures.length ? ` · ${failures.length} source(s) failed` : ""}.`
+    );
+  }
+
+  public async searchMcpCatalogFromCommand(): Promise<void> {
+    await this.searchMcpCatalog();
+  }
+
+  public async generateMcpCatalogItemFromClipboard(): Promise<void> {
+    const source = await vscode.env.clipboard.readText();
+    if (!source.trim()) {
+      void vscode.window.showInformationMessage("Copy MCP connection instructions first, then run this command again.");
+      return;
+    }
+    await this.generateMcpCatalogItem(source, []);
+  }
+
   private async generateMcpCatalogItem(text: string, images: readonly ImageAttachment[]): Promise<void> {
     const result = await this.agent.generateMcpCatalogItem(text, images);
     const document = await vscode.workspace.openTextDocument(result.path);
