@@ -4709,7 +4709,7 @@ function setBrowserControl(enabled, pending = false) {
   browserTakeControl.disabled = !browserLiveMode || !busy || browserControlPending;
   browserControl.setAttribute('aria-label', browserControlEnabled ? 'Configure browser session' : 'Enable browser session');
   browserControl.title = browserControlEnabled
-    ? `Browser session: ${browserExternalAccess ? 'external visible' : browserLiveMode ? 'local visible' : 'local hidden'}`
+    ? 'Browser session: ' + (browserExternalAccess ? 'external visible' : browserLiveMode ? 'local visible' : 'local hidden')
     : 'Browser session off — choose a mode';
 }
 
