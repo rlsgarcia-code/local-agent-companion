@@ -10,6 +10,7 @@ const agent = sources.get("src/agent.ts") ?? "";
 const semanticMemory = sources.get("src/semantic-memory.ts") ?? "";
 const gateway = sources.get("src/gateway.ts") ?? "";
 const chroma = sources.get("src/chroma.ts") ?? "";
+const mcpCatalog = sources.get("src/mcp-catalog.ts") ?? "";
 const processManager = sources.get("src/process-manager.ts") ?? "";
 
 function count(source: string, pattern: RegExp): number {
@@ -21,9 +22,11 @@ test("keeps direct source-level network calls inside the reviewed gateway and lo
     .filter(([, source]) => /\b(?:fetch|undiciFetch)\s*\(/.test(source))
     .map(([file]) => file)
     .sort();
-  assert.deepEqual(directNetworkCallFiles, ["src/agent.ts", "src/chroma.ts"]);
+  assert.deepEqual(directNetworkCallFiles, ["src/agent.ts", "src/chroma.ts", "src/mcp-catalog.ts"]);
   assert.equal(count(agent, /\bundiciFetch\s*\(/g), 1, "only the explicit model catalog may call undici directly");
   assert.match(chroma, /http:\/\/127\.0\.0\.1:/, "the remaining direct fetch must target local Chroma");
+  assert.match(mcpCatalog, /https:\/\/registry\.modelcontextprotocol\.io\/v0\.1\/servers/,
+    "the public MCP catalog must use the explicit official registry source");
   assert.match(processManager, /new URL\(normalizeLocalBrowserUrl\(urlText\)\)/,
     "managed-process readiness must validate loopback before using node:http");
 
@@ -37,6 +40,11 @@ test("keeps direct source-level network calls inside the reviewed gateway and lo
     if (file === "src/model-provider.ts") {
       assert.deepEqual(remoteDestinations, ["https://api.openai.com/v1"],
         "the optional OpenAI variant may hard-code only the official fixed API base");
+      continue;
+    }
+    if (file === "src/mcp-catalog.ts") {
+      assert.deepEqual(remoteDestinations, ["https://registry.modelcontextprotocol.io/v0.1/servers?limit=100"],
+        "the built-in public catalog must use only the official registry");
       continue;
     }
     assert.deepEqual(remoteDestinations, [], `${file} must not hard-code a remote network destination`);
@@ -63,7 +71,7 @@ test("keeps browser automation local and approval-gated", () => {
 });
 
 test("routes every LangChain model client through the exact-route gateway transport", () => {
-  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 3);
+  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 4);
   assert.equal(count(agent, /new OpenAIEmbeddings\s*\(/g), 1);
   assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g), 1);
 

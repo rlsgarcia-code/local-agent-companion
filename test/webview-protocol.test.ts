@@ -13,6 +13,10 @@ test("accepts the bounded commands emitted by the bundled sidebar", () => {
     { type: "send", text: "Review this", mode: "review" }
   );
   assert.deepEqual(
+    parseIncomingMessage({ type: "generateMcpCatalog", text: "Use this README", images: [] }),
+    { type: "generateMcpCatalog", text: "Use this README", images: [] }
+  );
+  assert.deepEqual(
     parseIncomingMessage({ type: "draftChanged", threadId: "thread-1", text: "draft" }),
     { type: "draftChanged", threadId: "thread-1", text: "draft" }
   );

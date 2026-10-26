@@ -88,6 +88,7 @@ import { agentRuntimeLabel, parseAgentRuntime } from "./runtime";
 import { parseResponseLanguage } from "./response-language";
 import { renderSafeMarkdown } from "./safe-markdown";
 import { isSensitiveWorkspacePath } from "./sensitive-files";
+import type { McpCatalogEntry } from "./mcp-catalog";
 import { createSupportBundle, serializeSupportBundle } from "./support-bundle";
 import type { ThreadSnapshot } from "./thread-state";
 import type {
@@ -424,6 +425,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "send":
         await this.send(message.text, parseRunMode(message.mode), Boolean(message.replacePending), undefined, message.images);
         break;
+      case "generateMcpCatalog":
+        await this.generateMcpCatalogItem(message.text, message.images ?? []);
+        break;
       case "createGoal":
         await this.createGoal(message.text, parseRunMode(message.mode), message.runtime, message.finalReview);
         break;
@@ -752,6 +756,26 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       const connections = await this.agent.mcpSnapshots();
       const selection = await vscode.window.showQuickPick([
         {
+          label: "$(list-selection) Configure MCP catalog sources",
+          description: "Choose which public or workspace catalogs may be searched",
+          value: "configure-catalogs"
+        },
+        {
+          label: "$(refresh) Refresh enabled MCP catalogs",
+          description: "Fetch metadata only; no server is contacted",
+          value: "refresh-catalogs"
+        },
+        {
+          label: "$(search) Ask the MCP catalog",
+          description: "Describe what you need in natural language",
+          value: "search-catalogs"
+        },
+        {
+          label: "$(sparkle) Generate catalog item from pasted instructions",
+          description: "Use /mcp-catalog in the composer to include text and screenshots",
+          value: "generate-catalog"
+        },
+        {
           label: "$(add) Add corporate MCP from clipboard",
           description: "Use the JSON template copied from the corporate catalog",
           value: "add-clipboard"
@@ -785,7 +809,19 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         ignoreFocusOut: true
       });
       if (!selection) return;
-      if (selection.value === "create-workspace") {
+      if (selection.value === "configure-catalogs") {
+        await this.agent.configureMcpCatalogSources();
+        void vscode.window.showInformationMessage("MCP catalog source selection saved. Refresh the enabled catalogs when ready.");
+      } else if (selection.value === "refresh-catalogs") {
+        const result = await this.agent.refreshMcpCatalogs();
+        const failures = result.sources.filter((source) => source.error);
+        void vscode.window.showInformationMessage(`MCP catalogs refreshed: ${result.entries.length} entries${failures.length ? ` · ${failures.length} source(s) failed` : ""}.`);
+      } else if (selection.value === "search-catalogs") {
+        await this.searchMcpCatalog();
+      } else if (selection.value === "generate-catalog") {
+        const source = await vscode.env.clipboard.readText();
+        await this.generateMcpCatalogItem(source, []);
+      } else if (selection.value === "create-workspace") {
         await this.createWorkspaceMcpTemplate();
       } else if (selection.value === "add-clipboard" || selection.value === "add-file" || selection.value === "add-workspace") {
         const source = selection.value === "add-clipboard"
@@ -804,6 +840,54 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       void vscode.window.showErrorMessage(message);
     } finally {
       await this.postMcpConnectionState();
+    }
+  }
+
+  private async generateMcpCatalogItem(text: string, images: readonly ImageAttachment[]): Promise<void> {
+    const result = await this.agent.generateMcpCatalogItem(text, images);
+    const document = await vscode.workspace.openTextDocument(result.path);
+    await vscode.window.showTextDocument(document, { preview: false });
+    const missing = Array.isArray(result.catalog.missingInputs) ? result.catalog.missingInputs.length : 0;
+    void vscode.window.showInformationMessage(
+      `MCP catalog item generated at ${vscode.workspace.asRelativePath(result.path)}${missing ? ` · ${missing} item(s) still need your input` : ""}`
+    );
+  }
+
+  private async searchMcpCatalog(): Promise<void> {
+    const query = await vscode.window.showInputBox({
+      title: "Ask the MCP catalog",
+      prompt: "Describe the work you want to support. Only enabled catalog metadata is searched.",
+      placeHolder: "e.g. I need read-only access to GitHub issues and technical documentation",
+      ignoreFocusOut: true
+    });
+    if (!query?.trim()) return;
+    const entries = await this.agent.searchMcpCatalog(query);
+    if (!entries.length) {
+      void vscode.window.showInformationMessage("No matching MCP metadata was found. Enable or refresh a catalog, then try a broader description.");
+      return;
+    }
+    const selected = await vscode.window.showQuickPick(entries.map((entry: McpCatalogEntry) => ({
+      label: entry.title || entry.name,
+      description: `${entry.sourceName}${entry.version ? ` · ${entry.version}` : ""}`,
+      detail: entry.description || "No description supplied by the catalog.",
+      entry
+    })), {
+      title: "MCP catalog recommendations",
+      placeHolder: "Select an entry to review its metadata",
+      ignoreFocusOut: true
+    });
+    if (selected) {
+      const detail = [
+        selected.entry.description || "No description supplied.",
+        `Source: ${selected.entry.sourceName}`,
+        selected.entry.version ? `Version: ${selected.entry.version}` : "Version: not declared",
+        selected.entry.repository ? `Repository: ${selected.entry.repository}` : "Repository: not declared",
+        "",
+        "This is metadata only. Review the server and generate/import a credential-free catalog item before connecting."
+      ].join("\n");
+      void vscode.window.showInformationMessage(detail, "Generate catalog item").then((choice) => {
+        if (choice === "Generate catalog item") void this.generateMcpCatalogItem(detail, []);
+      });
     }
   }
 
@@ -2687,6 +2771,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <button class="icon-button mcp-control" id="mcp-connections" type="button" title="Corporate MCP connections" aria-label="Manage corporate MCP connections" aria-pressed="false">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M7 3.25v4M13 3.25v4M5.25 7.25h9.5v1.25A4.75 4.75 0 0 1 10 13.25v3.5M7.25 16.75h5.5"></path></svg>
         </button>
+        <button class="icon-button" id="mcp-catalog" type="button" title="Generate MCP catalog item from text or image" aria-label="Generate MCP catalog item">✦</button>
         <button class="icon-button browser-control" id="browser-control" type="button" title="Browser control off — click to enable access to localhost apps" aria-label="Enable local browser control" aria-pressed="false">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2"></rect><path d="M3 7.25h14"></path><circle cx="5.25" cy="5.55" r=".65"></circle><circle cx="7.35" cy="5.55" r=".65"></circle></svg>
         </button>
@@ -3703,6 +3788,7 @@ const embeddingModelAliases = document.getElementById('embedding-model-aliases')
 const newThreadButton = document.getElementById('new-thread');
 const branchThreadButton = document.getElementById('branch-thread');
 const mcpConnections = document.getElementById('mcp-connections');
+const mcpCatalog = document.getElementById('mcp-catalog');
 const browserControl = document.getElementById('browser-control');
 const browserLiveControl = document.getElementById('browser-live-control');
 const agentRuntime = document.getElementById('runtime');
@@ -4502,6 +4588,7 @@ function setBusy(value) {
   newThreadButton.disabled = false;
   branchThreadButton.disabled = locked;
   mcpConnections.disabled = locked || mcpConnectionsPending;
+  mcpCatalog.disabled = locked;
   browserControl.disabled = locked || browserControlPending;
   threadsToggle.disabled = false;
   briefToggle.disabled = locked;
@@ -5028,8 +5115,10 @@ function submit() {
   const typedText = prompt.value.trim();
   if ((!typedText && imageAttachmentDrafts.length === 0) || busy) return;
   const text = typedText || 'Analyze the attached image(s) and describe the relevant details.';
-  if (typedText && handleQuickCommand(typedText)) {
+  if (typedText && handleQuickCommand(typedText, imageAttachmentDrafts)) {
     prompt.value = '';
+    imageAttachmentDrafts = [];
+    renderImageAttachments();
     resizePrompt();
     updatePromptTokenEstimate();
     return;
@@ -5064,8 +5153,19 @@ function submit() {
   persistDraftNow();
 }
 
-function handleQuickCommand(text) {
+function handleQuickCommand(text, images = []) {
   const command = text.trim().toLowerCase();
+  if (command === '/mcp-catalog' || command.startsWith('/mcp-catalog ')) {
+    const instructions = text.trim().slice('/mcp-catalog'.length).trim();
+    vscode.postMessage({
+      type: 'generateMcpCatalog',
+      text: instructions || 'Analyze the attached MCP documentation image(s).',
+      ...(images.length ? { images } : {})
+    });
+    status.textContent = 'Generating MCP catalog item';
+    announce(status.textContent);
+    return true;
+  }
   if (!['/status', '/resume', '/pause', '/evidence', '/env'].includes(command)) return false;
   if (command === '/env') {
     vscode.postMessage({ type: 'environmentCheck' });
@@ -5884,6 +5984,14 @@ mcpConnections.addEventListener('click', () => {
   if (mcpConnections.disabled) return;
   setMcpConnectionState({ count: mcpConnectionCount, enabled: mcpConnections.getAttribute('aria-pressed') === 'true' ? 1 : 0 }, true);
   vscode.postMessage({ type: 'openMcpConnections' });
+});
+mcpCatalog.addEventListener('click', () => {
+  if (mcpCatalog.disabled || busy || remoteRunActive) return;
+  prompt.value = prompt.value.trim() ? '/mcp-catalog ' + prompt.value : '/mcp-catalog ';
+  prompt.focus();
+  resizePrompt();
+  updatePromptTokenEstimate();
+  announce('MCP catalog mode enabled. Paste instructions or an image, then send.');
 });
 memoryToggle.addEventListener('click', () => memoryPanel.classList.contains('hidden') ? openMemoryCenter() : closeTopPanels());
 briefToggle.addEventListener('click', () => briefPanel.classList.contains('hidden') ? openTaskBrief() : closeTopPanels());

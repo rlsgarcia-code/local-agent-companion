@@ -78,6 +78,7 @@ import {
   type McpRunSession,
   type SaveMcpConnectionInput
 } from "./mcp-manager";
+import { isSecretMcpEnvironment, isSecretMcpHeader, parseMcpTemplate } from "./mcp-config";
 import type { McpConnectionSnapshot } from "./mcp-config";
 import { LocalProcessManager } from "./process-manager";
 import { LocalProjectIndex } from "./project-index";
@@ -111,6 +112,15 @@ import type {
   ThreadSnapshot
 } from "./thread-state";
 import { LocalToolHost } from "./tools";
+import {
+  defaultMcpCatalogSources,
+  fetchMcpCatalog,
+  MCP_CATALOG_ENTRIES_KEY,
+  MCP_CATALOG_SOURCES_KEY,
+  searchMcpCatalog,
+  type McpCatalogEntry,
+  type McpCatalogSource
+} from "./mcp-catalog";
 import type {
   AgentContextReceipt,
   AgentRuntime,
@@ -224,6 +234,79 @@ export class DevelopmentAgent implements vscode.Disposable {
     return this.corporateMcp.snapshots();
   }
 
+  public async mcpCatalogSources(): Promise<McpCatalogSource[]> {
+    const stored = this.extensionContext.globalState.get<McpCatalogSource[]>(MCP_CATALOG_SOURCES_KEY, defaultMcpCatalogSources);
+    return stored.slice(0, 20);
+  }
+
+  public async configureMcpCatalogSources(): Promise<McpCatalogSource[]> {
+    const current = await this.mcpCatalogSources();
+    const action = await vscode.window.showQuickPick([
+      { label: "$(list-selection) Select enabled sources", value: "select" },
+      { label: "$(add) Add a public catalog URL", value: "add" }
+    ], { title: "MCP catalog sources", ignoreFocusOut: true });
+    if (action?.value === "add") {
+      const name = await vscode.window.showInputBox({ title: "Catalog name", prompt: "A short name shown in the catalog selector.", ignoreFocusOut: true });
+      if (!name?.trim()) return current;
+      const url = await vscode.window.showInputBox({ title: "Catalog HTTPS URL", prompt: "The URL must return a JSON array or an object with a servers array.", ignoreFocusOut: true, validateInput: (value) => {
+        try {
+          const parsed = new URL(value.trim());
+          return parsed.protocol === "https:" ? undefined : "Use an HTTPS URL.";
+        } catch { return "Enter a complete HTTPS URL."; }
+      } });
+      if (!url?.trim()) return current;
+      const id = `custom-${crypto.randomUUID().slice(0, 12)}`;
+      const next = [...current, { id, name: name.trim().slice(0, 120), url: url.trim(), enabled: false, kind: "custom" as const }].slice(0, 20);
+      await this.extensionContext.globalState.update(MCP_CATALOG_SOURCES_KEY, next);
+      return next;
+    }
+    if (!action) return current;
+    const selected = await vscode.window.showQuickPick(current.map((source) => ({
+      label: source.enabled ? `$(check) ${source.name}` : `$(circle-outline) ${source.name}`,
+      description: source.url,
+      picked: source.enabled,
+      source
+    })), {
+      canPickMany: true,
+      title: "MCP catalog sources",
+      placeHolder: "Enable only catalogs you explicitly want included in searches",
+      ignoreFocusOut: true
+    });
+    if (!selected) return current;
+    const enabled = new Set(selected.map((item) => item.source.id));
+    const next = current.map((source) => ({ ...source, enabled: enabled.has(source.id), error: undefined }));
+    await this.extensionContext.globalState.update(MCP_CATALOG_SOURCES_KEY, next);
+    return next;
+  }
+
+  public async refreshMcpCatalogs(): Promise<{ sources: McpCatalogSource[]; entries: McpCatalogEntry[] }> {
+    const current = await this.mcpCatalogSources();
+    const next: McpCatalogSource[] = [];
+    const entries: McpCatalogEntry[] = [];
+    for (const source of current) {
+      if (!source.enabled) { next.push(source); continue; }
+      try {
+        const loaded = await fetchMcpCatalog(source);
+        entries.push(...loaded);
+        next.push({ ...source, updatedAt: Date.now(), error: undefined });
+      } catch (error) {
+        next.push({ ...source, error: safeErrorMessage(error) });
+      }
+    }
+    await this.extensionContext.globalState.update(MCP_CATALOG_SOURCES_KEY, next);
+    await this.extensionContext.globalState.update(MCP_CATALOG_ENTRIES_KEY, entries.slice(0, 20_000));
+    return { sources: next, entries };
+  }
+
+  public async mcpCatalogEntries(): Promise<McpCatalogEntry[]> {
+    return this.extensionContext.globalState.get<McpCatalogEntry[]>(MCP_CATALOG_ENTRIES_KEY, []);
+  }
+
+  public async searchMcpCatalog(query: string): Promise<McpCatalogEntry[]> {
+    const entries = await this.mcpCatalogEntries();
+    return searchMcpCatalog(entries, query);
+  }
+
   public saveMcpConnection(input: SaveMcpConnectionInput): Promise<McpConnectionSnapshot> {
     if (this.isRunning) throw new Error("Wait for the current run before changing MCP connections.");
     return this.corporateMcp.save(input);
@@ -257,6 +340,151 @@ export class DevelopmentAgent implements vscode.Disposable {
     } finally {
       await dispatcher?.close();
     }
+  }
+
+  /**
+   * Turn pasted MCP documentation (optionally with screenshots) into a
+   * reviewable, credential-free workspace catalog item. This is deliberately
+   * a model-assisted authoring operation: it never connects to or starts the
+   * described server.
+   */
+  public async generateMcpCatalogItem(
+    instructions: string,
+    images: readonly ImageAttachment[] = []
+  ): Promise<{ path: string; catalog: Record<string, unknown> }> {
+    if (this.isRunning) throw new Error("Wait for the current run before generating an MCP catalog item.");
+    const workspace = vscode.workspace.workspaceFolders?.[0];
+    if (!workspace) throw new Error("Open a workspace before generating an MCP catalog item.");
+    if (!vscode.workspace.isTrusted) throw new Error("Trust this workspace before generating an MCP catalog item.");
+    if (!instructions.trim() && !images.length) throw new Error("Paste MCP instructions or attach an image first.");
+
+    const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+    const provider = configuredModelProvider(configuration);
+    const explicit = modelProviderSettingIsExplicit(configuration);
+    const secretName = modelProviderSecret(provider);
+    const apiKey = secretName ? await this.extensionContext.secrets.get(secretName) : undefined;
+    const connection = validateModelConnection({
+      provider,
+      endpoint: explicit ? configuration.get<string>("liteLlmEndpoint", "") : modelProviderDefaultEndpoint(provider),
+      model: explicit ? configuration.get<string>("liteLlmModel", "") : "",
+      apiKey: apiKey ?? "",
+      authHeader: modelProviderAuthHeader(provider, configuration.get("liteLlmAuthHeader"))
+    });
+    const profile = connection.provider === "ollama"
+      ? { api: "chat_completions" as const, preset: "custom" as const }
+      : liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
+    if (connection.provider !== "ollama") validateLiteLlmModelProfile(connection.model, profile, true);
+    const api = connection.provider === "ollama" ? "chat_completions" as const : resolveLiteLlmModelApi(connection.model, profile);
+    const authentication = modelClientAuthentication(connection);
+    const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
+      ? await this.certificateAuthorities(workspace.uri.fsPath)
+      : undefined;
+    const dispatcher = certificateAuthorities ? new UndiciAgent({ connect: { ca: certificateAuthorities } }) : undefined;
+    try {
+      const model = api === "responses"
+        ? new ChatOpenAIResponses({
+            model: connection.model,
+            apiKey: authentication.apiKey,
+            streaming: false,
+            maxRetries: 1,
+            timeout: 90_000,
+            configuration: {
+              baseURL: responsesBaseUrl(connection, connection.model),
+              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+              fetch: gatewayFetch(responsesUrl(connection, connection.model), authentication.stripAuthorization, dispatcher)
+            }
+          })
+        : new ChatOpenAICompletions({
+            model: connection.model,
+            apiKey: authentication.apiKey,
+            streaming: false,
+            streamUsage: true,
+            maxRetries: 1,
+            timeout: 90_000,
+            ...(connection.provider === "ollama" ? {} : chatCompletionsModelOptions(profile)),
+            configuration: {
+              baseURL: chatCompletionsBaseUrl(connection),
+              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+              fetch: gatewayFetch(chatCompletionsUrl(connection), authentication.stripAuthorization, dispatcher)
+            }
+          });
+      const content: Array<
+        { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } }
+      > = [{
+        type: "text" as const,
+        text: instructions.trim() || "No text was supplied. Read the attached screenshot(s)."
+      }];
+      for (const image of images.slice(0, 4)) {
+        content.push({ type: "image_url" as const, image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
+      }
+      const response = await model.invoke([
+        new SystemMessage(`You are an MCP catalog author. Convert the supplied documentation and images into JSON only. Never connect to, install, or test an MCP. Never preserve live credentials. Return an object with catalogVersion: 1, name, description, sourceNotes, confidence, missingInputs, and mcpServers. mcpServers must use the portable format accepted by the Companion. Use type http with a complete HTTPS URL, or type stdio with command, args, and env. Use <secret:Human-readable title> for every credential and <input:Human-readable title> for every value the user must provide. Preserve exact package versions and argument order; never invent missing values and never use @latest. missingInputs must distinguish secret, input, and confirmation entries. If a detail is absent or ambiguous, leave a placeholder and explain it in missingInputs. tools may be an empty array when the documentation does not list a safe allowlist.`),
+        new HumanMessage({ content })
+      ], { signal: AbortSignal.timeout(90_000) });
+      const raw = response.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+      if (raw.length > 64_000) throw new Error("The generated MCP catalog item is too large.");
+      const generated = JSON.parse(raw) as Record<string, unknown>;
+      if (!generated || typeof generated !== "object" || !generated.mcpServers || typeof generated.mcpServers !== "object") {
+        throw new Error("The model did not return a valid mcpServers catalog.");
+      }
+      const normalizedServers = this.sanitizeGeneratedMcpServers(generated.mcpServers as Record<string, unknown>);
+      parseMcpTemplate(JSON.stringify({ mcpServers: normalizedServers }));
+      const serverName = Object.keys(normalizedServers)[0] || "mcp-server";
+      const catalog = {
+        catalogVersion: 1,
+        generatedAt: new Date().toISOString(),
+        name: typeof generated.name === "string" ? generated.name.trim().slice(0, 160) : serverName,
+        description: typeof generated.description === "string" ? redactSensitiveText(generated.description.trim().slice(0, 1_000), []) : "Model-generated MCP catalog item; review required.",
+        sourceNotes: Array.isArray(generated.sourceNotes)
+          ? generated.sourceNotes.filter((item): item is string => typeof item === "string").slice(0, 20).map((item) => redactSensitiveText(item.slice(0, 500), []))
+          : [],
+        confidence: typeof generated.confidence === "string" ? generated.confidence.slice(0, 200) : "Model-generated; review required",
+        missingInputs: Array.isArray(generated.missingInputs)
+          ? generated.missingInputs.slice(0, 50).flatMap((item) => {
+              if (!item || typeof item !== "object") return [];
+              const candidate = item as Record<string, unknown>;
+              const kind = candidate.kind === "secret" || candidate.kind === "input" || candidate.kind === "confirmation" ? candidate.kind : "confirmation";
+              const title = typeof candidate.title === "string" ? candidate.title.trim().slice(0, 160) : "Unspecified value";
+              const reason = typeof candidate.reason === "string" ? redactSensitiveText(candidate.reason.slice(0, 500), []) : "Confirm this value from the source documentation.";
+              return [{ kind, title, reason }];
+            })
+          : [],
+        mcpServers: normalizedServers
+      };
+      const slug = serverName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "mcp-server";
+      const directory = vscode.Uri.joinPath(workspace.uri, ".local-agent", "mcp", "catalog");
+      await vscode.workspace.fs.createDirectory(directory);
+      const destination = vscode.Uri.joinPath(directory, `${slug}.json`);
+      await vscode.workspace.fs.writeFile(destination, new TextEncoder().encode(`${JSON.stringify(catalog, null, 2)}\n`));
+      return { path: destination.fsPath, catalog };
+    } finally {
+      await dispatcher?.close();
+    }
+  }
+
+  private sanitizeGeneratedMcpServers(value: Record<string, unknown>): Record<string, unknown> {
+    const output: Record<string, unknown> = {};
+    for (const [rawName, rawServer] of Object.entries(value).slice(0, 20)) {
+      if (!rawServer || typeof rawServer !== "object") continue;
+      const server = { ...(rawServer as Record<string, unknown>) };
+      const headers = server.headers && typeof server.headers === "object" ? { ...(server.headers as Record<string, unknown>) } : undefined;
+      if (headers) for (const [name, entry] of Object.entries(headers)) {
+        if (typeof entry === "string" && isSecretMcpHeader(name) && !/^<(?:secret|input):[^<>]+>$/.test(entry.trim())) {
+          headers[name] = `<secret:${name} value>`;
+        }
+      }
+      if (headers) server.headers = headers;
+      const env = server.env && typeof server.env === "object" ? { ...(server.env as Record<string, unknown>) } : undefined;
+      if (env) for (const [name, entry] of Object.entries(env)) {
+        if (typeof entry === "string" && isSecretMcpEnvironment(name) && !/^<(?:secret|input):[^<>]+>$/.test(entry.trim())) {
+          env[name] = `<secret:${name} value>`;
+        }
+      }
+      if (env) server.env = env;
+      output[rawName.replace(/[\r\n\t\0]/g, " ").trim().slice(0, 100) || "mcp-server"] = server;
+    }
+    return output;
   }
 
   public async testMcpConnection(id: string): Promise<McpConnectionTest> {

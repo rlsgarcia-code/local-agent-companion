@@ -96,7 +96,11 @@ test("keeps corporate MCP onboarding native, secret-separated, and approval-gate
   const stdioSource = readFileSync("src/mcp-stdio.ts", "utf8");
   const transportSource = readFileSync("src/mcp-transport.ts", "utf8");
   assertMessageType("openMcpConnections");
+  assertMessageType("generateMcpCatalog");
   assert.match(source, /id="mcp-connections"[^>]*aria-pressed="false"/);
+  assert.match(source, /id="mcp-catalog"/);
+  assert.match(source, /Generate catalog item from pasted instructions/);
+  assert.match(source, /\/mcp-catalog/);
   assert.match(source, /Add corporate MCP from clipboard/);
   assert.match(source, /Add MCP from workspace templates/);
   assert.match(source, /vscode\.Uri\.joinPath\(folder\.uri, "\.local-agent", "mcp"\)/);

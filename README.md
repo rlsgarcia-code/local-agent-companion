@@ -23,7 +23,7 @@ POST/GET/DELETE <MCP_URL_EXATA>          # opcional, somente em conexões MCP co
 GET <REGISTRY_NPM_CORPORATIVO>           # opcional, realizado pelo npx aprovado para obter pacote fixado
 ```
 
-Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, ferramentas hospedadas, web search, descoberta pública de MCP, LangSmith, telemetria ou verificação de atualização. A instalação padrão não contém acesso habilitado à OpenAI Platform; a rota direta só é aceita pelo artefato OpenAI escolhido explicitamente.
+Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, ferramentas hospedadas, web search, descoberta pública silenciosa de MCP, LangSmith, telemetria ou verificação de atualização. Catálogos MCP públicos só são consultados depois de serem habilitados explicitamente pelo usuário; a instalação padrão não contém acesso habilitado à OpenAI Platform; a rota direta só é aceita pelo artefato OpenAI escolhido explicitamente.
 
 ## Capacidades
 
@@ -216,6 +216,16 @@ Um arquivo pode conter um ou vários servidores. Para deixar claro o que é conf
   }
 }
 ```
+
+### Catálogos MCP e consulta por linguagem natural
+
+O menu do plugue separa **catálogo** de **conexão**. Em **Configure MCP catalog sources**, o usuário escolhe explicitamente quais fontes podem ser pesquisadas. O catálogo oficial público do MCP (`https://registry.modelcontextprotocol.io/v0.1/servers`) vem desativado por padrão; fontes adicionais podem ser incluídas por uma URL HTTPS configurada pelo usuário. A atualização baixa somente metadados, rejeita redirecionamentos e não instala nem conecta servidores.
+
+Depois de atualizar uma fonte, use **Ask the MCP catalog** e descreva livremente o que procura. A consulta retorna candidatos do cache local dos catálogos habilitados, com nome, versão, origem, descrição e repositório quando declarados. Essa consulta é uma recomendação de metadados: não executa ferramentas, não abre endpoints MCP e não solicita credenciais.
+
+Para transformar documentação, README, JSON ou screenshot em um item reutilizável, clique em **✦** ou use `/mcp-catalog` no compositor. O modelo configurado pode combinar texto e imagens, mas o resultado é validado localmente e salvo sem credenciais em `.local-agent/mcp/catalog/<server-slug>.json`. Valores ausentes aparecem como `<input:Título>`; credenciais aparecem como `<secret:Título>` e só são coletadas posteriormente, durante a importação aprovada.
+
+O Registry oficial é um diretório público de metadados, ainda em evolução; a própria documentação descreve a API como somente leitura e recomenda que clientes e agregadores mantenham uma cópia local. A existência de um registro não constitui aprovação de segurança do servidor. Revise mantenedor, versão, transporte, permissões e ferramentas antes de importar uma conexão.
 
 O mesmo importador aceita o formato local oferecido pelo catálogo corporativo:
 
