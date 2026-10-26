@@ -53,6 +53,18 @@ test("does not create empty deltas and resets tool-only turns", async () => {
   assert.deepEqual(events, ["reset"]);
 });
 
+test("normalizes cumulative and repeated provider chunks", async () => {
+  const events: string[] = [];
+
+  await consumeAssistantMessageStreams(
+    messages({ chunks: ["Vamos", "Vamos também", "Vamos também ver", "Vamos também ver"] }),
+    async (delta) => { events.push(delta); },
+    async () => undefined
+  );
+
+  assert.deepEqual(events, ["Vamos", " também", " ver"]);
+});
+
 test("closes the current message lifecycle before propagating a stream failure", async () => {
   const events: string[] = [];
   async function* failingText(): AsyncIterable<string> {
