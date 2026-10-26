@@ -1366,6 +1366,42 @@ export class DevelopmentAgent implements vscode.Disposable {
     await this.saveThreadCollection(collection);
   }
 
+  public async branchThread(threadId?: string): Promise<void> {
+    if (this.isRunning) throw new Error("Wait for the current run to finish before branching a conversation.");
+    const collection = await this.threadCollection();
+    const sourceId = threadId || this.selectedThreadId || collection.activeThreadId;
+    const source = collection.threads.find((candidate) => candidate.id === sourceId);
+    if (!source) throw new Error("The conversation to branch no longer exists.");
+    if (source.recovery?.status === "running") {
+      throw new Error("Wait for this conversation to finish before creating a branch.");
+    }
+    const now = Date.now();
+    const maximumCharacters = vscode.workspace
+      .getConfiguration("localAgentCompanion")
+      .get<number>("maxConversationCharacters", 48_000);
+    const branch = createLocalThread(
+      crypto.randomUUID(),
+      now,
+      `Branch · ${source.title}`.slice(0, 80)
+    );
+    branch.messages = this.compactPersistedConversation(
+      source.messages.map((message) => ({
+        ...message,
+        id: crypto.randomUUID(),
+        runId: undefined,
+        completedAt: undefined
+      })),
+      maximumCharacters
+    );
+    branch.createdAt = source.createdAt;
+    branch.updatedAt = now;
+    collection.threads.unshift(branch);
+    collection.activeThreadId = branch.id;
+    this.selectedThreadId = branch.id;
+    this.contextCollector.clearPinned();
+    await this.saveThreadCollection(collection);
+  }
+
   public async selectThread(threadId: string): Promise<void> {
     const collection = this.isRunning && this.activeRunCollection
       ? this.activeRunCollection

@@ -435,6 +435,20 @@ O arquivo `.local-agent/memory.md` é a fonte de verdade da memória do projeto.
 
 Nunca armazene nele credenciais, tokens, dados pessoais, hipóteses, status transitório ou transcrições do chat.
 
+### Camadas de memória e estado
+
+O companion separa memória durável, histórico de conversa e estado transitório; nenhum deles deve ser confundido com o outro:
+
+- **Conhecimento do projeto**: `.local-agent/memory.md`, editável e versionável. Contém somente fatos, decisões, convenções, follow-ups e resumos confirmados.
+- **Histórico da thread**: projeção local limitada no `workspaceState` do VS Code. Mantém mensagens, título, estado de leitura, fixação e recuperação; não é copiado para `memory.md`.
+- **Rascunho**: texto por thread no `workspaceState`/estado da webview, até 50 mil caracteres; é temporário e não vira memória automaticamente.
+- **Registro de execução**: `.local-agent/threads/<thread-id>/runs/<run-id>.json`, com status, arquivos lidos, mudanças e evidências sanitizadas, sem conversa bruta, tokens ou segredos.
+- **Índice semântico**: vetores locais do Chroma derivados apenas de `memory.md`; o Markdown continua sendo a fonte de verdade e o índice pode ser recriado.
+- **Objetivos persistentes**: `.local-agent/goals/<goal-id>.json`, com critérios, marcos, evidências, iteração, diagnóstico de estagnação e próximo passo.
+- **Contexto do turno**: seleção do editor, arquivo ativo, diagnósticos, orientação do repositório e itens fixados; é reunido sob limite por execução e não é memória durável.
+
+No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. A ação **Copy** aparece em cada mensagem completa; **Branch current conversation** cria uma nova thread com o histórico visível copiado, sem copiar rascunho, recuperação ativa ou checkpoint do LangGraph.
+
 ## Segurança e privacidade
 
 - As chaves LiteLLM e OpenAI ficam separadas e exclusivamente no Secret Storage do VS Code; Ollama não usa chave.

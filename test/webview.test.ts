@@ -460,6 +460,9 @@ test("offers compact response actions without storing raw chat as memory", () =>
     /data-add-memory-message[\s\S]{0,500}type: 'remember',[\s\S]{0,120}messageSources/
   );
   assert.match(source, /timeline\.querySelectorAll\('\[data-add-memory-message\]'\)/);
+  assert.match(source, /id="branch-thread"/);
+  assert.match(source, /type: 'branchThread', id: activeThreadId/);
+  assert.match(source, /Memory layers and storage/);
 });
 
 test("keeps long conversations compact and reveals older complete turns incrementally", () => {

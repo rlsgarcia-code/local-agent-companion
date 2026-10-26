@@ -293,6 +293,16 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.post({ type: "reset", context, ...payload });
   }
 
+  private async branchThread(threadId?: string): Promise<void> {
+    try {
+      await this.agent.branchThread(threadId);
+      const [context, payload] = await Promise.all([this.contextState(), this.threadPayload()]);
+      this.post({ type: "reset", context, ...payload });
+    } catch (error) {
+      this.post({ type: "threadError", message: await this.safeError(error) });
+    }
+  }
+
   private async selectThread(threadId: string): Promise<void> {
     try {
       await this.agent.selectThread(threadId);
@@ -493,6 +503,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             message: await this.safeError(error)
           });
         }
+        break;
+      case "branchThread":
+        await this.branchThread(message.id);
         break;
       case "selectThread":
         await this.selectThread(message.id);
@@ -2679,6 +2692,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         </button>
         <button class="icon-button browser-live-control" id="browser-live-control" type="button" title="Live browser off" aria-label="Enable live browser" aria-pressed="false">◉</button>
         <button class="icon-button" id="threads-toggle" title="Local threads" aria-label="Local threads" aria-expanded="false" aria-controls="thread-panel">☷</button>
+        <button class="icon-button" id="branch-thread" title="Branch current conversation" aria-label="Branch current conversation">⑂</button>
         <button class="icon-button" id="new-thread" title="New thread" aria-label="New thread">＋</button>
       </div>
     </header>
@@ -2710,6 +2724,17 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         </div>
         <div class="memory-overview" id="memory-overview" role="status" aria-live="polite">Loading local memory…</div>
         <div class="memory-list" id="memory-list"></div>
+        <details class="memory-schema">
+          <summary>Memory layers and storage</summary>
+          <ul>
+            <li><strong>Project knowledge</strong> · <code>.local-agent/memory.md</code></li>
+            <li><strong>Thread history</strong> · local conversation state in VS Code workspace storage</li>
+            <li><strong>Drafts</strong> · per-thread temporary text in VS Code state, not a workspace file</li>
+            <li><strong>Execution register</strong> · <code>.local-agent/threads/&lt;thread&gt;/runs/&lt;run&gt;.json</code></li>
+            <li><strong>Semantic index</strong> · local Chroma vectors derived from project memory</li>
+            <li><strong>Goals</strong> · durable criteria and milestones in <code>.local-agent/goals/</code></li>
+          </ul>
+        </details>
         <div class="memory-actions">
           <button class="primary-action" id="memory-add" type="button">Add memory</button>
           <button class="secondary-action" id="memory-open-file" type="button">Open memory.md</button>
@@ -3246,6 +3271,10 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .memory-empty { padding: 16px 0; color: var(--muted); text-align: center; font-size: 10px; }
 .memory-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
 .memory-actions button { font-size: 9px; }
+.memory-schema { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.memory-schema summary { cursor: pointer; color: var(--vscode-foreground); font-weight: 600; }
+.memory-schema ul { margin: 8px 0 0; padding-left: 17px; line-height: 1.55; }
+.memory-schema code { color: var(--vscode-textPreformat-foreground); }
 .brief-panel { max-height: 72vh; overflow-y: auto; padding: 14px 18px 16px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--vscode-sideBar-background) 96%, var(--accent)); animation: reveal .16s ease-out; }
 .brief-intro { margin: 0 0 9px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .brief-field { display: grid; gap: 4px; margin-top: 9px; color: var(--vscode-foreground); font-size: 10px; }
@@ -3672,6 +3701,7 @@ const embeddingModel = document.getElementById('embedding-model');
 const embeddingEndpoint = document.getElementById('embedding-endpoint');
 const embeddingModelAliases = document.getElementById('embedding-model-aliases');
 const newThreadButton = document.getElementById('new-thread');
+const branchThreadButton = document.getElementById('branch-thread');
 const mcpConnections = document.getElementById('mcp-connections');
 const browserControl = document.getElementById('browser-control');
 const browserLiveControl = document.getElementById('browser-live-control');
@@ -3869,10 +3899,12 @@ function createMessageElement(message) {
   element.dataset.messageId = messageId;
   if (message.runId) element.dataset.runId = message.runId;
   messageSources.set(element, String(message.text || ''));
-  const actions = message.role === 'assistant' && messageStatus === 'complete'
-    ? '<div class="message-actions"><button type="button" data-copy-message aria-label="Copy agent response">Copy</button>' +
-      '<button type="button" data-add-memory-message aria-label="Add a confirmed project-memory entry from this response"' +
-      ((busy || remoteRunActive) ? ' disabled' : '') + '>Add memory…</button></div>'
+  const actions = messageStatus === 'complete'
+    ? '<div class="message-actions"><button type="button" data-copy-message aria-label="Copy message">Copy</button>' +
+      (message.role === 'assistant'
+        ? '<button type="button" data-add-memory-message aria-label="Add a confirmed project-memory entry from this response"' +
+          ((busy || remoteRunActive) ? ' disabled' : '') + '>Add memory…</button>'
+        : '') + '</div>'
     : '';
   const statusLabels = {
     streaming: 'responding',
@@ -4468,6 +4500,7 @@ function setBusy(value) {
   runControls.querySelector('summary').tabIndex = locked ? -1 : 0;
   if (locked) runControls.open = false;
   newThreadButton.disabled = false;
+  branchThreadButton.disabled = locked;
   mcpConnections.disabled = locked || mcpConnectionsPending;
   browserControl.disabled = locked || browserControlPending;
   threadsToggle.disabled = false;
@@ -5725,7 +5758,7 @@ timeline.addEventListener('click', event => {
   }
   const copyMessage = target?.closest('[data-copy-message]');
   if (copyMessage && !copyMessage.disabled) {
-    const message = copyMessage.closest('.message.assistant');
+    const message = copyMessage.closest('.message');
     const text = message ? messageSources.get(message) : '';
     copyMessage.disabled = true;
     copyMessage.textContent = 'Copying…';
@@ -5831,6 +5864,11 @@ newThreadButton.addEventListener('click', () => {
   newThreadButton.disabled = true;
   status.textContent = 'Starting a new thread';
   vscode.postMessage({ type: 'newThread' });
+});
+branchThreadButton.addEventListener('click', () => {
+  if (branchThreadButton.disabled || !activeThreadId) return;
+  branchThreadButton.disabled = true;
+  vscode.postMessage({ type: 'branchThread', id: activeThreadId });
 });
 browserControl.addEventListener('click', () => {
   if (browserControl.disabled) return;
@@ -6557,6 +6595,7 @@ window.addEventListener('message', ({ data }) => {
       appendRecovery(data.message, true, false);
       break;
     case 'threadError':
+      branchThreadButton.disabled = false;
       const threadActionError = document.createElement('div');
       threadActionError.className = 'error';
       threadActionError.setAttribute('role', 'alert');

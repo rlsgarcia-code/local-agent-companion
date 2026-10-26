@@ -17,6 +17,10 @@ test("accepts the bounded commands emitted by the bundled sidebar", () => {
     { type: "draftChanged", threadId: "thread-1", text: "draft" }
   );
   assert.deepEqual(
+    parseIncomingMessage({ type: "branchThread", id: "thread-1" }),
+    { type: "branchThread", id: "thread-1" }
+  );
+  assert.deepEqual(
     parseIncomingMessage({ type: "setLocalBrowserToolsEnabled", enabled: true }),
     { type: "setLocalBrowserToolsEnabled", enabled: true }
   );
