@@ -1354,7 +1354,8 @@ export class DevelopmentAgent implements vscode.Disposable {
           changeTracker,
           (request) => this.confirmDeepAgentMutation(mode, request, onEvent, sensitiveValues),
           sensitiveValues,
-          (filePath) => this.confirmSensitiveFileRead(filePath, onEvent, sensitiveValues)
+          (filePath) => this.confirmSensitiveFileRead(filePath, onEvent, sensitiveValues),
+          (kind, title, detail) => onEvent({ type: "activity", kind, title, ...(detail ? { detail } : {}) })
         );
         const permissions = mode === "plan"
           ? [{ operations: ["write"] as const, paths: ["/workspace/**"], mode: "deny" as const }]

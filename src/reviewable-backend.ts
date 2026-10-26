@@ -19,18 +19,30 @@ export type FilesystemMutationRequest = {
   filePath: string;
 };
 
+export type FilesystemActivitySink = (kind: string, title: string, detail?: string) => void;
+
 export class ReviewableFilesystemBackend extends FilesystemBackend {
   public constructor(
     options: { rootDir: string; virtualMode: boolean; maxFileSizeMb: number },
     private readonly tracker: ChangeTracker,
     private readonly approveMutation: (request: FilesystemMutationRequest) => Promise<boolean> = async (request) => request.operation !== "delete",
     private readonly sensitiveValues: readonly string[] = [],
-    private readonly approveSensitiveRead: (filePath: string) => Promise<boolean> = async () => false
+    private readonly approveSensitiveRead: (filePath: string) => Promise<boolean> = async () => false,
+    private readonly onActivity: FilesystemActivitySink = () => undefined
   ) {
     super(options);
   }
 
+  private activity(kind: string, title: string, detail?: string): void {
+    try {
+      this.onActivity(kind, title, detail);
+    } catch {
+      // Activity rendering is observational and must never affect the agent run.
+    }
+  }
+
   public override async read(filePath: string, offset?: number, limit?: number): Promise<ReadResult> {
+    this.activity("read", `Reading file · ${filePath}`);
     if (isSensitiveWorkspacePath(filePath) && !await this.approveSensitiveRead(filePath)) {
       return { error: `Sharing was not approved for potentially sensitive file ${filePath}.` };
     }
@@ -45,6 +57,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
   }
 
   public override async readRaw(filePath: string): Promise<ReadRawResult> {
+    this.activity("read", `Reading file · ${filePath}`);
     if (isSensitiveWorkspacePath(filePath) && !await this.approveSensitiveRead(filePath)) {
       return { error: `Sharing was not approved for potentially sensitive file ${filePath}.` };
     }
@@ -80,6 +93,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
     glob?: string | null,
     maxCount?: number | null
   ): Promise<GrepResult> {
+    this.activity("search", `Searching files · ${pattern}${glob ? ` · ${glob}` : ""}`);
     try {
       if (glob) validateWorkspaceGlob(glob);
     } catch (error) {
@@ -103,6 +117,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
   }
 
   public override async ls(dirPath: string): Promise<LsResult> {
+    this.activity("files", `Listing files · ${dirPath || "."}`);
     const result = await super.ls(dirPath);
     return {
       ...result,
@@ -111,6 +126,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
   }
 
   public override async glob(pattern: string, searchPath?: string): Promise<GlobResult> {
+    this.activity("search", `Searching files · ${pattern}${searchPath ? ` · ${searchPath}` : ""}`);
     try {
       validateWorkspaceGlob(pattern);
     } catch (error) {
@@ -124,6 +140,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
   }
 
   public override async write(filePath: string, content: string): Promise<WriteResult> {
+    this.activity("files", `Writing file · ${filePath}`);
     if (!await this.approveMutation({ operation: "write", filePath })) {
       return { error: `Writing was not approved for ${filePath}.` };
     }
@@ -139,6 +156,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
     newString: string,
     replaceAll = false
   ): Promise<EditResult> {
+    this.activity("files", `Editing file · ${filePath}`);
     if (!await this.approveMutation({ operation: "edit", filePath })) {
       return { error: `Editing was not approved for ${filePath}.` };
     }
@@ -149,6 +167,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
   }
 
   public override async delete(filePath: string): Promise<DeleteResult> {
+    this.activity("files", `Deleting file · ${filePath}`);
     if (!await this.approveMutation({ operation: "delete", filePath })) {
       return { error: `Deletion was not approved for ${filePath}.` };
     }
