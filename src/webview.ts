@@ -6624,6 +6624,10 @@ window.addEventListener('message', ({ data }) => {
       }
       break;
     case 'status':
+      // Approval dialogs suspend the model/tool loop, but the run is still
+      // cancellable. Keep the stop controls visible while the native approval
+      // prompt is being resolved instead of treating this status as idle.
+      if (data.label === 'Waiting for your approval' && !busy) setBusy(true);
       status.textContent = data.label;
       updateRunActivityStatus(data.label);
       if (busy) appendExecutionTimelineEvent('status', data.label);
