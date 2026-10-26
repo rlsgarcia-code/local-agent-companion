@@ -414,6 +414,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           liteLlm,
           browserControlEnabled: this.localBrowserToolsEnabled(),
           browserLiveMode: this.localBrowserLiveMode(),
+          browserExternalAccess: this.localBrowserExternalAccess(),
           mcpConnections: mcpConnectionState(mcpConnections)
         });
         if (this.connectionSettingsRequested) await this.postConnectionSettings();
@@ -619,6 +620,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         break;
       case "setLocalBrowserLiveMode":
         await this.setLocalBrowserLiveMode(message.enabled);
+        break;
+      case "setLocalBrowserExternalAccess":
+        await this.setLocalBrowserExternalAccess(message.enabled);
         break;
       case "setLocalBrowserManualControl":
         this.agent.setLocalBrowserManualControl(message.enabled);
@@ -1857,6 +1861,24 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       .get<boolean>("localBrowserLiveMode", false);
   }
 
+  private localBrowserExternalAccess(): boolean {
+    return vscode.workspace
+      .getConfiguration("localAgentCompanion")
+      .get<boolean>("localBrowserExternalAccess", false);
+  }
+
+  private async setLocalBrowserExternalAccess(enabled: boolean): Promise<void> {
+    try {
+      await this.assertProviderConfigurationEditable();
+      const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+      await configuration.update("localBrowserExternalAccess", enabled, vscode.ConfigurationTarget.Workspace);
+      if (enabled) await configuration.update("localBrowserToolsEnabled", true, vscode.ConfigurationTarget.Workspace);
+      this.postBrowserControlState();
+    } catch (error) {
+      this.post({ type: "browserControlError", enabled: this.localBrowserToolsEnabled(), liveMode: this.localBrowserLiveMode(), message: await this.safeError(error) });
+    }
+  }
+
   private async setLocalBrowserLiveMode(enabled: boolean): Promise<void> {
     try {
       await this.assertProviderConfigurationEditable();
@@ -1884,7 +1906,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private postBrowserControlState(): void {
     const enabled = this.localBrowserToolsEnabled();
     if (!enabled) void this.agent.setLocalBrowserToolsEnabled(false);
-    this.post({ type: "browserControlChanged", enabled, liveMode: this.localBrowserLiveMode() });
+    this.post({ type: "browserControlChanged", enabled, liveMode: this.localBrowserLiveMode(), externalAccess: this.localBrowserExternalAccess() });
   }
 
   private async saveLiteLlmSettings(message: Extract<IncomingMessage, { type: "saveLiteLlm" }>): Promise<void> {
@@ -2805,10 +2827,17 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M7 3.25v4M13 3.25v4M5.25 7.25h9.5v1.25A4.75 4.75 0 0 1 10 13.25v3.5M7.25 16.75h5.5"></path></svg>
         </button>
         <button class="icon-button" id="mcp-catalog" type="button" title="Generate MCP catalog item from text or image" aria-label="Generate MCP catalog item">✦</button>
-        <button class="icon-button browser-control" id="browser-control" type="button" title="Browser control off — click to enable access to localhost apps" aria-label="Enable local browser control" aria-pressed="false">
+        <details class="browser-session-menu" id="browser-session-menu">
+        <summary class="icon-button browser-control" id="browser-control" title="Browser session" aria-label="Configure browser session" aria-pressed="false">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2"></rect><path d="M3 7.25h14"></path><circle cx="5.25" cy="5.55" r=".65"></circle><circle cx="7.35" cy="5.55" r=".65"></circle></svg>
-        </button>
-        <button class="icon-button browser-live-control" id="browser-live-control" type="button" title="Live browser off" aria-label="Enable live browser" aria-pressed="false">◉</button>
+        </summary>
+        <div class="browser-session-options" role="menu" aria-label="Browser session modes">
+          <button type="button" data-browser-mode="off" role="menuitem"><strong>Off</strong><small>No browser tools</small></button>
+          <button type="button" data-browser-mode="local-hidden" role="menuitem"><strong>Local · hidden</strong><small>Loopback apps without a visible window</small></button>
+          <button type="button" data-browser-mode="local-visible" role="menuitem"><strong>Local · visible</strong><small>Watch and take control of local apps</small></button>
+          <button type="button" data-browser-mode="external-visible" role="menuitem"><strong>External · visible</strong><small>Public HTTPS sites with domain approval</small></button>
+        </div>
+        </details>
         <button class="icon-button" id="threads-toggle" title="Local threads" aria-label="Local threads" aria-expanded="false" aria-controls="thread-panel">☷</button>
         <button class="icon-button" id="branch-thread" title="Branch current conversation" aria-label="Branch current conversation">⑂</button>
         <button class="icon-button" id="new-thread" title="New thread" aria-label="New thread">＋</button>
@@ -3302,7 +3331,14 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .mcp-control.attention::after { background: var(--vscode-editorWarning-foreground); }
 .browser-control[aria-pressed="true"] { color: var(--accent); opacity: 1; background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .browser-live-control[aria-pressed="true"] { color: var(--accent); opacity: 1; background: color-mix(in srgb, var(--accent) 11%, transparent); }
-.browser-live-control { font-size: 13px; }
+.browser-session-menu { position: relative; }
+.browser-session-menu > summary { list-style: none; }
+.browser-session-menu > summary::-webkit-details-marker { display: none; }
+.browser-session-options { position: absolute; right: 0; top: 34px; z-index: 20; width: 218px; padding: 5px; border: 1px solid var(--line); border-radius: 6px; background: var(--vscode-editorWidget-background); box-shadow: 0 8px 24px color-mix(in srgb, #000 35%, transparent); }
+.browser-session-options button { display: grid; gap: 1px; width: 100%; padding: 7px 8px; border: 0; border-radius: 4px; color: var(--vscode-foreground); background: transparent; text-align: left; cursor: pointer; }
+.browser-session-options button:hover { background: var(--vscode-list-hoverBackground); }
+.browser-session-options strong { font-size: 11px; }
+.browser-session-options small { color: var(--muted); font-size: 9px; }
 .browser-control[aria-pressed="true"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--vscode-sideBar-background); }
 .browser-control.pending { opacity: .45; }
 .activity-dock { min-height: 43px; border-top: 1px solid var(--line); background: var(--vscode-sideBar-background); position: relative; }
@@ -3823,7 +3859,7 @@ const branchThreadButton = document.getElementById('branch-thread');
 const mcpConnections = document.getElementById('mcp-connections');
 const mcpCatalog = document.getElementById('mcp-catalog');
 const browserControl = document.getElementById('browser-control');
-const browserLiveControl = document.getElementById('browser-live-control');
+const browserSessionMenu = document.getElementById('browser-session-menu');
 const agentRuntime = document.getElementById('runtime');
 const autonomyMode = document.getElementById('mode');
 const finalReviewMode = document.getElementById('final-review-mode');
@@ -3857,6 +3893,7 @@ const providerDrafts = {};
 let browserControlEnabled = false;
 let browserControlPending = false;
 let browserLiveMode = false;
+let browserExternalAccess = false;
 let browserManualControl = false;
 let mcpConnectionCount = 0;
 let mcpConnectionsPending = false;
@@ -4665,25 +4702,20 @@ function setBrowserControl(enabled, pending = false) {
     : 'Browser control off — click to enable access to localhost apps';
   browserControl.classList.toggle('pending', browserControlPending);
   browserControl.disabled = busy || remoteRunActive || browserControlPending;
-  browserLiveControl.disabled = busy || remoteRunActive || browserControlPending;
+  browserSessionMenu.querySelectorAll('button').forEach(button => { button.disabled = busy || remoteRunActive || browserControlPending; });
   browserTakeControl.classList.toggle('hidden', !browserLiveMode || !busy);
   browserTakeControl.setAttribute('aria-pressed', String(browserManualControl));
   browserTakeControl.textContent = browserManualControl ? 'Return control' : 'Take control';
   browserTakeControl.disabled = !browserLiveMode || !busy || browserControlPending;
-  browserLiveControl.setAttribute('aria-pressed', String(browserLiveMode));
-  browserLiveControl.setAttribute('aria-label', browserLiveMode ? 'Disable live browser' : 'Enable live browser');
-  browserLiveControl.title = browserLiveMode
-    ? 'Live browser on — next local validation is visible and interactive'
-    : 'Live browser off — click to watch the agent in a visible browser window';
+  browserControl.setAttribute('aria-label', browserControlEnabled ? 'Configure browser session' : 'Enable browser session');
+  browserControl.title = browserControlEnabled
+    ? `Browser session: ${browserExternalAccess ? 'external visible' : browserLiveMode ? 'local visible' : 'local hidden'}`
+    : 'Browser session off — choose a mode';
 }
 
 function setBrowserLiveMode(enabled) {
   browserLiveMode = Boolean(enabled);
-  browserLiveControl.setAttribute('aria-pressed', String(browserLiveMode));
-  browserLiveControl.setAttribute('aria-label', browserLiveMode ? 'Disable live browser' : 'Enable live browser');
-  browserLiveControl.title = browserLiveMode
-    ? 'Live browser on — next local validation is visible and interactive'
-    : 'Live browser off — click to watch the agent in a visible browser window';
+  setBrowserControl(browserControlEnabled, browserControlPending);
 }
 
 function setBrowserManualControl(enabled) {
@@ -6012,10 +6044,23 @@ browserControl.addEventListener('click', () => {
   setBrowserControl(browserControlEnabled, true);
   vscode.postMessage({ type: 'setLocalBrowserToolsEnabled', enabled: !browserControlEnabled });
 });
-browserLiveControl.addEventListener('click', () => {
-  if (browserLiveControl.disabled) return;
-  setBrowserLiveMode(!browserLiveMode);
-  vscode.postMessage({ type: 'setLocalBrowserLiveMode', enabled: browserLiveMode });
+browserSessionMenu.addEventListener('click', event => {
+  const button = event.target instanceof Element ? event.target.closest('[data-browser-mode]') : null;
+  if (!button || button.disabled) return;
+  const mode = button.getAttribute('data-browser-mode');
+  browserSessionMenu.open = false;
+  if (mode === 'off') {
+    vscode.postMessage({ type: 'setLocalBrowserToolsEnabled', enabled: false });
+    return;
+  }
+  const external = mode === 'external-visible';
+  const visible = mode !== 'local-hidden';
+  setBrowserControl(true, true);
+  browserExternalAccess = external;
+  setBrowserLiveMode(visible);
+  vscode.postMessage({ type: 'setLocalBrowserToolsEnabled', enabled: true });
+  vscode.postMessage({ type: 'setLocalBrowserLiveMode', enabled: visible });
+  vscode.postMessage({ type: 'setLocalBrowserExternalAccess', enabled: external });
 });
 mcpConnections.addEventListener('click', () => {
   if (mcpConnections.disabled) return;
@@ -6301,6 +6346,8 @@ window.addEventListener('message', ({ data }) => {
       document.getElementById('workspace').textContent = data.workspace;
       responseLanguage.value = data.responseLanguage === 'en' ? 'en' : 'pt-BR';
       setBrowserLiveMode(Boolean(data.browserLiveMode));
+      browserExternalAccess = Boolean(data.browserExternalAccess);
+      setBrowserControl(Boolean(data.browserControlEnabled));
       setBrowserManualControl(false);
       setBrowserControl(Boolean(data.browserControlEnabled));
       setMcpConnectionState(data.mcpConnections || {});
@@ -6470,6 +6517,7 @@ window.addEventListener('message', ({ data }) => {
       timeline.appendChild(runtimeError);
       break;
     case 'browserControlChanged':
+      if (typeof data.externalAccess === 'boolean') browserExternalAccess = data.externalAccess;
       setBrowserLiveMode(Boolean(data.liveMode));
       setBrowserControl(Boolean(data.enabled));
       if (data.message) {
