@@ -100,6 +100,10 @@
         "title": "Local Agent Companion: Remove Current Provider Key"
       },
       {
+        "command": "localAgentCompanion.configureBrowserAccess",
+        "title": "Local Agent Companion: Configure Browser Access"
+      },
+      {
         "command": "localAgentCompanion.openMcpConnections",
         "title": "Local Agent Companion: Open MCP Connections"
       },

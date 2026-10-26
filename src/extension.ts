@@ -63,6 +63,33 @@ export function activate(context: vscode.ExtensionContext): void {
       await agent.reloadProviderConfiguration();
       void vscode.window.showInformationMessage(`${modelProviderLabel(provider)} key removed from Secret Storage.`);
     }),
+    vscode.commands.registerCommand("localAgentCompanion.configureBrowserAccess", async () => {
+      const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+      const enabled = configuration.get<boolean>("localBrowserExternalAccess", false);
+      const choice = await vscode.window.showQuickPick([
+        {
+          label: "$(globe) Enable external browser access",
+          description: "Visible browser · HTTPS public sites · approval per domain",
+          value: true
+        },
+        {
+          label: "$(lock) Keep external browser access disabled",
+          description: "Allow loopback/local sites only",
+          value: false
+        }
+      ], {
+        title: "Local Agent Companion: Browser access",
+        placeHolder: enabled ? "External access is currently enabled" : "External access is currently disabled"
+      });
+      if (!choice) return;
+      await configuration.update("localBrowserExternalAccess", choice.value, vscode.ConfigurationTarget.Workspace);
+      if (choice.value) {
+        await configuration.update("localBrowserToolsEnabled", true, vscode.ConfigurationTarget.Workspace);
+        void vscode.window.showInformationMessage("External browser access enabled. Each new domain will require approval during the visible run.");
+      } else {
+        void vscode.window.showInformationMessage("External browser access disabled. The agent can use loopback sites only.");
+      }
+    }),
     vscode.commands.registerCommand("localAgentCompanion.openMcpConnections", async () => {
       try {
         await provider.openMcpConnections();
