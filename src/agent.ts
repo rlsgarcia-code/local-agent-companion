@@ -1244,6 +1244,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         responseLanguage,
         context,
         Boolean(browserSession),
+        Boolean(browserSession?.externalAccess),
         mcpSession.tools.map((availableTool) => availableTool.name),
         goal,
         journalHistory,
@@ -1982,6 +1983,7 @@ export class DevelopmentAgent implements vscode.Disposable {
     responseLanguage: ResponseLanguage,
     context: string,
     browserEnabled: boolean,
+    browserExternalAccess: boolean,
     mcpToolNames: readonly string[],
     goal?: GoalRecord,
     journalHistory: readonly ThreadJournalRecord[] = [],
@@ -2006,7 +2008,7 @@ export class DevelopmentAgent implements vscode.Disposable {
 - When multiple read-only inspections are independent, emit their tool calls in the same model turn so the runtime can execute them concurrently. Keep writes, commands, browser actions, memory updates, approvals, and dependent steps ordered.`;
     const browserGuidance = browserEnabled
       ? `- UI completion gate: when a request changes a visible web interface and the application can run locally, do not declare the task complete until you open it with browser_open, inspect the affected flow with browser_inspect, exercise that flow with browser_interact in an executable mode, and run browser_visual_check after the final change when the selected model accepts images. Capture a pre-change baseline with browser_capture_baseline and use browser_compare when the same meaningful state is available before and after. For responsive or layout work, also inspect a narrow viewport. Treat page errors and unexpected console errors as failed validation.
-- Use element references from the latest inspection for browser_interact. Browser tools require explicit session approval. External browsing is available only when the workspace setting explicitly enables it; it is always visible, requires approval for each domain, blocks redirects to unapproved domains, and must never enter passwords.
+- Use element references from the latest inspection for browser_interact. Browser tools require explicit session approval. ${browserExternalAccess ? "External browsing is ENABLED for this run: use browser_open for public HTTPS sites when the request needs current web information, then wait for domain approval instead of claiming that internet access is unavailable. The browser is visible, redirects to unapproved domains remain blocked, and passwords must never be entered." : "External browsing is DISABLED for this run. Do not claim to browse public sites; continue with local evidence and state that external access must be enabled."}
 - If the browser is unavailable, approval is declined, the local server cannot run, or image input is unsupported, continue with the available structural evidence and state exactly what remains unverified. Never claim visual success from source code alone.`
       : "- Local browser validation is disabled for this workspace. Do not claim that you opened, interacted with, or visually verified the application.";
     const mcpGuidance = mcpToolNames.length
