@@ -1399,7 +1399,11 @@ export class DevelopmentAgent implements vscode.Disposable {
         ]);
         resultMessages = result.messages as BaseMessage[];
       }
-      let answer = finalAssistantText(resultMessages);
+      // Some OpenAI-compatible LiteLLM adapters expose the final assistant
+      // text in the streamed message but omit it (or expose only content
+      // blocks) from the resolved result messages. Prefer the canonical
+      // result, then recover the text already received by the UI stream.
+      let answer = finalAssistantText(resultMessages) || streamedAssistantText.trim();
       controller.signal.throwIfAborted();
       if (!answer) {
         throw new Error(`${agentRuntimeLabel(runtime)} completed without a final assistant message.`);
