@@ -14,7 +14,9 @@ test("keeps external browser access explicit, HTTPS-only, and host-scoped", () =
   assert.throws(() => normalizeBrowserUrl("http://example.com", true), /HTTPS/);
   assert.throws(() => normalizeBrowserUrl("https://127.0.0.1:3000", true), /public host/);
   assert.equal(isAllowedBrowserResource("https://example.com/app.js", true, new Set(["example.com"])), true);
-  assert.equal(isAllowedBrowserResource("https://cdn.example.com/app.js", true, new Set(["example.com"])), false);
+  // Approval is stored at the registrable-domain level so redirects/assets
+  // on the same public site do not prompt once per subdomain.
+  assert.equal(isAllowedBrowserResource("https://cdn.example.com/app.js", true, new Set(["example.com"])), true);
   assert.equal(isAllowedBrowserResource("https://example.com/app.js", false, new Set(["example.com"])), false);
 });
 

@@ -2326,6 +2326,7 @@ function conversationWindowMiddleware(maximumCharacters: number) {
 }
 
 function finalAssistantText(state: unknown, seen = new Set<unknown>()): string {
+  if (typeof state === "string") return state.trim();
   if (!state || typeof state !== "object" || seen.has(state)) return "";
   seen.add(state);
   const messages: unknown[] | undefined = Array.isArray(state)
