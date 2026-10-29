@@ -71,6 +71,27 @@ test("detects tool calls nested in LangChain run output", async () => {
   assert.deepEqual(events, ["delta:Vou consultar os arquivos.", "reset"]);
 });
 
+test("does not reset a final turn because an earlier graph message used a tool", async () => {
+  const events: string[] = [];
+  const nested: AsyncIterable<StreamedAssistantMessage> = (async function* () {
+    yield {
+      text: text("A revisão foi concluída."),
+      output: Promise.resolve({ messages: [
+        { additional_kwargs: { tool_calls: [{ name: "read_file" }] } },
+        { type: "ai", content: "A revisão foi concluída." }
+      ] })
+    };
+  })();
+
+  await consumeAssistantMessageStreams(
+    nested,
+    async (delta) => { events.push(`delta:${delta}`); },
+    async (toolTurn) => { if (toolTurn) events.push("reset"); }
+  );
+
+  assert.deepEqual(events, ["delta:A revisão foi concluída."]);
+});
+
 test("normalizes cumulative and repeated provider chunks", async () => {
   const events: string[] = [];
 

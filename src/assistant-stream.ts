@@ -17,7 +17,11 @@ function containsToolCalls(value: unknown, seen = new Set<unknown>()): boolean {
   const record = value as Record<string, unknown>;
   if (Array.isArray(record.tool_calls) && record.tool_calls.length > 0) return true;
   if (Array.isArray(record.toolCalls) && record.toolCalls.length > 0) return true;
-  return containsToolCalls(record.messages, seen)
+  // Some runtimes resolve every streamed event to the full graph state. Do
+  // not classify a final assistant turn as a tool turn just because an older
+  // message in that state used a tool; only the current/last message matters.
+  const messages = Array.isArray(record.messages) ? record.messages : undefined;
+  return (messages?.length ? containsToolCalls(messages[messages.length - 1], seen) : false)
     || containsToolCalls(record.message, seen)
     || containsToolCalls(record.additional_kwargs, seen);
 }

@@ -1255,6 +1255,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       onEvent({ type: "status", label: `${agentRuntimeLabel(runtime)} is thinking` });
       const assistantCreatedAt = Date.now();
       let streamedAssistantText = "";
+      let lastCompletedAssistantTurn = "";
       let pendingAssistantDelta = "";
       let streamSequence = 0;
       let assistantStreamVisible = false;
@@ -1334,6 +1335,9 @@ export class DevelopmentAgent implements vscode.Disposable {
       };
       const finishAssistantModelTurn = async (toolTurn: boolean): Promise<void> => {
         await flushAssistantDelta();
+        if (!toolTurn && streamedAssistantText.trim()) {
+          lastCompletedAssistantTurn = streamedAssistantText.trim();
+        }
         if (toolTurn) await resetTransientAssistant();
       };
       const invocationConfig = {
@@ -1377,7 +1381,10 @@ export class DevelopmentAgent implements vscode.Disposable {
           { ...invocationConfig, version: "v3" as const }
         );
         const [result] = await Promise.all([
-          run.output,
+          // v3 exposes the final graph state through `values`; unlike a
+          // provider-specific message payload, this is the agent's canonical
+          // terminal state.
+          run.values,
           consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn)
         ]);
         resultMessages = result.messages as BaseMessage[];
@@ -1394,7 +1401,7 @@ export class DevelopmentAgent implements vscode.Disposable {
           { ...invocationConfig, version: "v3" as const }
         );
         const [result] = await Promise.all([
-          run.output,
+          run.values,
           consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn)
         ]);
         resultMessages = result.messages as BaseMessage[];
@@ -1403,7 +1410,9 @@ export class DevelopmentAgent implements vscode.Disposable {
       // text in the streamed message but omit it (or expose only content
       // blocks) from the resolved result messages. Prefer the canonical
       // result, then recover the text already received by the UI stream.
-      let answer = finalAssistantText(resultMessages) || streamedAssistantText.trim();
+      let answer = finalAssistantText(resultMessages)
+        || lastCompletedAssistantTurn
+        || streamedAssistantText.trim();
       controller.signal.throwIfAborted();
       if (!answer) {
         throw new Error(`${agentRuntimeLabel(runtime)} completed without a final assistant message.`);
@@ -2312,10 +2321,31 @@ function conversationWindowMiddleware(maximumCharacters: number) {
   });
 }
 
-function finalAssistantText(messages: BaseMessage[]): string {
+function finalAssistantText(messages: unknown): string {
+  if (!Array.isArray(messages)) return "";
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message?.type === "ai" && message.text.trim()) return message.text.trim();
+    if (!message || typeof message !== "object") continue;
+    const record = message as Record<string, unknown>;
+    const serializedId = Array.isArray(record.id) ? record.id.at(-1) : undefined;
+    const type = record.type ?? record.role
+      ?? (serializedId === "AIMessage" ? "ai" : serializedId === "HumanMessage" ? "human" : undefined);
+    if (type !== "ai" && type !== "assistant") continue;
+    const serializedKwargs = record.kwargs && typeof record.kwargs === "object"
+      ? record.kwargs as Record<string, unknown>
+      : undefined;
+    const content = record.content ?? serializedKwargs?.content;
+    const text = typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content.map((block) => {
+          if (typeof block === "string") return block;
+          if (!block || typeof block !== "object") return "";
+          const value = block as Record<string, unknown>;
+          return value.type === "text" && typeof value.text === "string" ? value.text : "";
+        }).join("")
+        : typeof record.text === "string" ? record.text : "";
+    if (text.trim()) return text.trim();
   }
   return "";
 }
