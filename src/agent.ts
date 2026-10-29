@@ -1348,7 +1348,11 @@ export class DevelopmentAgent implements vscode.Disposable {
         signal: controller.signal,
         callbacks: [usage]
       };
-      let resultMessages: BaseMessage[];
+      // Keep the complete terminal state, rather than narrowing it to
+      // `state.messages` immediately. LangGraph v3 exposes both `values` and
+      // `output`; provider/Deep Agent adapters can serialize messages inside
+      // either shape. The final-answer extractor handles both forms.
+      let resultState: unknown;
       if (runtime === "deep") {
         const workspaceBackend = new ReviewableFilesystemBackend(
           {
@@ -1387,7 +1391,7 @@ export class DevelopmentAgent implements vscode.Disposable {
           run.values,
           consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn)
         ]);
-        resultMessages = result.messages as BaseMessage[];
+        resultState = result;
       } else {
         const agent = createAgent({
           model,
@@ -1404,13 +1408,13 @@ export class DevelopmentAgent implements vscode.Disposable {
           run.values,
           consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn)
         ]);
-        resultMessages = result.messages as BaseMessage[];
+        resultState = result;
       }
       // Some OpenAI-compatible LiteLLM adapters expose the final assistant
       // text in the streamed message but omit it (or expose only content
       // blocks) from the resolved result messages. Prefer the canonical
       // result, then recover the text already received by the UI stream.
-      let answer = finalAssistantText(resultMessages)
+      let answer = finalAssistantText(resultState)
         || lastCompletedAssistantTurn
         || streamedAssistantText.trim();
       controller.signal.throwIfAborted();
@@ -2321,8 +2325,15 @@ function conversationWindowMiddleware(maximumCharacters: number) {
   });
 }
 
-function finalAssistantText(messages: unknown): string {
-  if (!Array.isArray(messages)) return "";
+function finalAssistantText(state: unknown, seen = new Set<unknown>()): string {
+  if (!state || typeof state !== "object" || seen.has(state)) return "";
+  seen.add(state);
+  const messages: unknown[] | undefined = Array.isArray(state)
+    ? state
+    : Array.isArray((state as Record<string, unknown>).messages)
+      ? (state as Record<string, unknown>).messages as unknown[]
+      : undefined;
+  if (!messages) return "";
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || typeof message !== "object") continue;
@@ -2346,6 +2357,18 @@ function finalAssistantText(messages: unknown): string {
         }).join("")
         : typeof record.text === "string" ? record.text : "";
     if (text.trim()) return text.trim();
+  }
+  // A serialized graph state can wrap the message list in `kwargs` or an
+  // adapter-specific `output` object. Follow only those known containers so
+  // an old tool-call message cannot be mistaken for the final answer.
+  const record = !Array.isArray(state) ? state as Record<string, unknown> : undefined;
+  if (record?.kwargs) {
+    const text = finalAssistantText(record.kwargs, seen);
+    if (text) return text;
+  }
+  if (record?.output) {
+    const text = finalAssistantText(record.output, seen);
+    if (text) return text;
   }
   return "";
 }
