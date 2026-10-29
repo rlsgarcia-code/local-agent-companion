@@ -19,6 +19,7 @@ import * as vscode from "vscode";
 import { z } from "zod";
 import { requiresLocalApproval } from "./autonomy";
 import { consumeAssistantMessageStreams } from "./assistant-stream";
+import { extractFinalAssistantText } from "./assistant-final";
 import { LocalBrowserSession } from "./browser";
 import type { LocalBrowserChannel } from "./browser-policy";
 import { importedGatewayCaPath, readImportedGatewayCa, storeImportedGatewayCa } from "./certificate";
@@ -1414,7 +1415,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       // text in the streamed message but omit it (or expose only content
       // blocks) from the resolved result messages. Prefer the canonical
       // result, then recover the text already received by the UI stream.
-      let answer = finalAssistantText(resultState)
+      let answer = extractFinalAssistantText(resultState)
         || lastCompletedAssistantTurn
         || streamedAssistantText.trim();
       controller.signal.throwIfAborted();
@@ -2323,55 +2324,6 @@ function conversationWindowMiddleware(maximumCharacters: number) {
       };
     }
   });
-}
-
-function finalAssistantText(state: unknown, seen = new Set<unknown>()): string {
-  if (typeof state === "string") return state.trim();
-  if (!state || typeof state !== "object" || seen.has(state)) return "";
-  seen.add(state);
-  const messages: unknown[] | undefined = Array.isArray(state)
-    ? state
-    : Array.isArray((state as Record<string, unknown>).messages)
-      ? (state as Record<string, unknown>).messages as unknown[]
-      : undefined;
-  if (!messages) return "";
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!message || typeof message !== "object") continue;
-    const record = message as Record<string, unknown>;
-    const serializedId = Array.isArray(record.id) ? record.id.at(-1) : undefined;
-    const type = record.type ?? record.role
-      ?? (serializedId === "AIMessage" ? "ai" : serializedId === "HumanMessage" ? "human" : undefined);
-    if (type !== "ai" && type !== "assistant") continue;
-    const serializedKwargs = record.kwargs && typeof record.kwargs === "object"
-      ? record.kwargs as Record<string, unknown>
-      : undefined;
-    const content = record.content ?? serializedKwargs?.content;
-    const text = typeof content === "string"
-      ? content
-      : Array.isArray(content)
-        ? content.map((block) => {
-          if (typeof block === "string") return block;
-          if (!block || typeof block !== "object") return "";
-          const value = block as Record<string, unknown>;
-          return value.type === "text" && typeof value.text === "string" ? value.text : "";
-        }).join("")
-        : typeof record.text === "string" ? record.text : "";
-    if (text.trim()) return text.trim();
-  }
-  // A serialized graph state can wrap the message list in `kwargs` or an
-  // adapter-specific `output` object. Follow only those known containers so
-  // an old tool-call message cannot be mistaken for the final answer.
-  const record = !Array.isArray(state) ? state as Record<string, unknown> : undefined;
-  if (record?.kwargs) {
-    const text = finalAssistantText(record.kwargs, seen);
-    if (text) return text;
-  }
-  if (record?.output) {
-    const text = finalAssistantText(record.output, seen);
-    if (text) return text;
-  }
-  return "";
 }
 
 function memoryReferencePreviews(memory: string): string[] {
