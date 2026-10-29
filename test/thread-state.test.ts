@@ -177,6 +177,38 @@ test("preserves a bounded partial assistant response for interrupted-run recover
   });
 });
 
+test("replaces an unfinished failed request when a new follow-up is typed", () => {
+  const thread = createLocalThread("active", 10, "Review");
+  thread.messages.push(
+    { id: "previous-user", role: "user", content: "Review the code", createdAt: 20 },
+    { id: "completed-assistant", role: "assistant", content: "I found two issues.", createdAt: 21 },
+    { id: "failed-user", role: "user", content: "Apply the fixes", createdAt: 22 }
+  );
+  thread.recovery = {
+    id: "run-failed",
+    status: "failed",
+    mode: "execute",
+    runtime: "deep",
+    startedAt: 22,
+    updatedAt: 23
+  };
+
+  const prior = stageThreadRequest(thread, "Now update the tests", {
+    now: 30,
+    createId: () => "new-user"
+  });
+
+  assert.deepEqual(prior.map((message) => message.content), [
+    "Review the code",
+    "I found two issues."
+  ]);
+  assert.deepEqual(thread.messages.map((message) => message.content), [
+    "Review the code",
+    "I found two issues.",
+    "Now update the tests"
+  ]);
+});
+
 test("normalizes stable run metadata on completed assistant messages", () => {
   const collection = normalizeThreadCollection({
     version: 1,

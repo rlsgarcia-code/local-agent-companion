@@ -139,11 +139,22 @@ export function stageThreadRequest(
 ): ThreadMessage[] {
   const now = options.now ?? Date.now();
   const createId = options.createId ?? (() => crypto.randomUUID());
-  const priorMessages = options.replacePendingUser
+  const pendingRecovery = thread.recovery?.status === "failed"
+    || thread.recovery?.status === "cancelled"
+    || thread.recovery?.status === "interrupted";
+  // A failed/cancelled request is not a completed conversational turn. If
+  // the user types a new request instead of pressing Retry/Edit, replace that
+  // orphaned user message rather than replaying it alongside the new intent.
+  // This prevents a missing final assistant message from making the next run
+  // repeat the previous review forever.
+  const replaceUnfinishedUser = !options.replacePendingUser
+    && pendingRecovery
+    && thread.messages.at(-1)?.role === "user";
+  const priorMessages = options.replacePendingUser || replaceUnfinishedUser
     ? thread.messages.slice(0, -1)
     : [...thread.messages];
 
-  if (options.replacePendingUser) {
+  if (options.replacePendingUser || replaceUnfinishedUser) {
     const pending = thread.messages.at(-1);
     if (!pending || pending.role !== "user") {
       throw new Error("There is no unfinished request to retry in this thread.");
