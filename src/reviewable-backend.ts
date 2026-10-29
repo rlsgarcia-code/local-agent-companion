@@ -28,7 +28,8 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
     private readonly approveMutation: (request: FilesystemMutationRequest) => Promise<boolean> = async (request) => request.operation !== "delete",
     private readonly sensitiveValues: readonly string[] = [],
     private readonly approveSensitiveRead: (filePath: string) => Promise<boolean> = async () => false,
-    private readonly onActivity: FilesystemActivitySink = () => undefined
+    private readonly onActivity: FilesystemActivitySink = () => undefined,
+    private readonly onSuccessfulRead: (filePath: string) => void = () => undefined
   ) {
     super(options);
   }
@@ -47,6 +48,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
       return { error: `Sharing was not approved for potentially sensitive file ${filePath}.` };
     }
     const result = await super.read(filePath, offset, limit);
+    if (!result.error) this.onSuccessfulRead(filePath);
     return {
       ...result,
       ...(result.error ? { error: redactSensitiveText(result.error, this.sensitiveValues) } : {}),
@@ -62,6 +64,7 @@ export class ReviewableFilesystemBackend extends FilesystemBackend {
       return { error: `Sharing was not approved for potentially sensitive file ${filePath}.` };
     }
     const result = await super.readRaw(filePath);
+    if (!result.error && result.data) this.onSuccessfulRead(filePath);
     if (!result.data) {
       return result.error
         ? { ...result, error: redactSensitiveText(result.error, this.sensitiveValues) }

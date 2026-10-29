@@ -19,7 +19,7 @@ import * as vscode from "vscode";
 import { z } from "zod";
 import { requiresLocalApproval } from "./autonomy";
 import { consumeAssistantMessageStreams } from "./assistant-stream";
-import { extractFinalAssistantText } from "./assistant-final";
+import { extractFinalAssistantText, hasTerminalAssistantMessage } from "./assistant-final";
 import { LocalBrowserSession } from "./browser";
 import type { LocalBrowserChannel } from "./browser-policy";
 import { importedGatewayCaPath, readImportedGatewayCa, storeImportedGatewayCa } from "./certificate";
@@ -91,6 +91,7 @@ import { appendAgentLog } from "./agent-log";
 import { parseResponseLanguage, responseLanguageInstruction, type ResponseLanguage } from "./response-language";
 import { SemanticProjectMemory } from "./semantic-memory";
 import { ThreadJournal, type ThreadJournalRecord } from "./thread-journal";
+import { completionGateResult, createTaskCompletionMiddleware } from "./task-completion";
 import {
   ReviewableFilesystemBackend,
   type FilesystemMutationRequest
@@ -1349,6 +1350,42 @@ export class DevelopmentAgent implements vscode.Disposable {
         signal: controller.signal,
         callbacks: [usage]
       };
+      let observedWorkspaceRead = false;
+      let mutationDenied = false;
+      const completionGate = createTaskCompletionMiddleware({
+        model: images.length ? model : evaluatorModel ?? model,
+        mode,
+        responseLanguage,
+        conversation: conversation.messages.map((message) => ({
+          role: message.role,
+          content: redactSensitiveText(message.content, sensitiveValues)
+        })),
+        currentImages: images,
+        tracker: changeTracker,
+        signal: controller.signal,
+        callbacks: [usage],
+        sensitiveValues,
+        hasObservedRead: () => observedWorkspaceRead || evidence.snapshot().filesRead.length > 0,
+        approvalWasDenied: () => mutationDenied,
+        onContract: (contract) => onEvent({
+          type: "activity",
+          kind: "goal",
+          title: responseLanguage === "en"
+            ? `Interpreted task · ${{ answer: "answer", plan: "plan", workspace_change: "workspace change", uncertain: "clarification needed" }[contract.outcome]}`
+            : `Tarefa interpretada · ${{ answer: "resposta", plan: "plano", workspace_change: "alteração de arquivos", uncertain: "precisa esclarecer" }[contract.outcome]}`,
+          detail: redactSensitiveText(contract.objective, sensitiveValues)
+        }),
+        onRetry: async (attempt) => {
+          await resetTransientAssistant();
+          lastCompletedAssistantTurn = "";
+          onEvent({
+            type: "status",
+            label: responseLanguage === "en"
+              ? `Continuing implementation after evidence check (${attempt}/2)`
+              : `Continuando a implementação após verificar as evidências (${attempt}/2)`
+          });
+        }
+      });
       // Keep the complete terminal state, rather than narrowing it to
       // `state.messages` immediately. LangGraph v3 exposes both `values` and
       // `output`; provider/Deep Agent adapters can serialize messages inside
@@ -1362,10 +1399,15 @@ export class DevelopmentAgent implements vscode.Disposable {
             maxFileSizeMb: 1.5
           },
           changeTracker,
-          (request) => this.confirmDeepAgentMutation(mode, request, onEvent, sensitiveValues),
+          async (request) => {
+            const approved = await this.confirmDeepAgentMutation(mode, request, onEvent, sensitiveValues);
+            if (!approved) mutationDenied = true;
+            return approved;
+          },
           sensitiveValues,
           (filePath) => this.confirmSensitiveFileRead(filePath, onEvent, sensitiveValues),
-          (kind, title, detail) => onEvent({ type: "activity", kind, title, ...(detail ? { detail } : {}) })
+          (kind, title, detail) => onEvent({ type: "activity", kind, title, ...(detail ? { detail } : {}) }),
+          () => { observedWorkspaceRead = true; }
         );
         const permissions = mode === "plan"
           ? [{ operations: ["write"] as const, paths: ["/workspace/**"], mode: "deny" as const }]
@@ -1379,6 +1421,7 @@ export class DevelopmentAgent implements vscode.Disposable {
           systemPrompt,
           backend,
           permissions,
+          middleware: [completionGate],
           checkpointer: this.checkpointer
         });
         const run = await agent.streamEvents(
@@ -1390,7 +1433,8 @@ export class DevelopmentAgent implements vscode.Disposable {
           // provider-specific message payload, this is the agent's canonical
           // terminal state.
           run.values,
-          consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn)
+          consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn,
+            (stream) => !stream.node?.startsWith("TaskCompletionGate."))
         ]);
         resultState = result;
       } else {
@@ -1398,7 +1442,7 @@ export class DevelopmentAgent implements vscode.Disposable {
           model,
           tools: [...toolHost.tools(mode, controller.signal), ...mcpSession.tools],
           systemPrompt,
-          middleware: [conversationWindowMiddleware(maxConversationCharacters)],
+          middleware: [conversationWindowMiddleware(maxConversationCharacters), completionGate],
           checkpointer: this.checkpointer
         });
         const run = await agent.streamEvents(
@@ -1407,20 +1451,28 @@ export class DevelopmentAgent implements vscode.Disposable {
         );
         const [result] = await Promise.all([
           run.values,
-          consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn)
+          consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn,
+            (stream) => !stream.node?.startsWith("TaskCompletionGate."))
         ]);
         resultState = result;
       }
-      // Some OpenAI-compatible LiteLLM adapters expose the final assistant
-      // text in the streamed message but omit it (or expose only content
-      // blocks) from the resolved result messages. Prefer the canonical
-      // result, then recover the text already received by the UI stream.
+      // A LiteLLM adapter may omit text from a terminal AI state. Recover
+      // streamed text only when that terminal state is still an assistant
+      // turn; an earlier analysis cannot mask a later tool-only termination.
       let answer = extractFinalAssistantText(resultState)
-        || lastCompletedAssistantTurn
-        || streamedAssistantText.trim();
+        || (hasTerminalAssistantMessage(resultState) ? lastCompletedAssistantTurn || streamedAssistantText.trim() : "");
       controller.signal.throwIfAborted();
       if (!answer) {
         throw new Error(`${agentRuntimeLabel(runtime)} completed without a final assistant message.`);
+      }
+      const gate = completionGateResult(resultState);
+      if (!gate.completionOutcome) {
+        throw new Error("The agent completed without a task-completion verdict.");
+      }
+      if (gate.completionOutcome === "incomplete") {
+        answer += responseLanguage === "en"
+          ? `\n\nTask incomplete: ${gate.completionReason ?? "The intended result was not verified."}`
+          : `\n\nTarefa incompleta: ${gate.completionReason ?? "O resultado pretendido não foi verificado."}`;
       }
       const pendingChanges = changeTracker.finalize();
       journalChangedFiles = pendingChanges.changes.map((change) => ({ path: change.path, kind: change.kind }));
@@ -1508,7 +1560,7 @@ export class DevelopmentAgent implements vscode.Disposable {
       this.finishRunHeartbeat(runId);
       delete conversation.recovery;
       await this.saveThreadCollection(collection);
-      outcome = "completed";
+      outcome = gate.completionOutcome === "complete" ? "completed" : "failed";
       onEvent({
         type: "assistant",
         id: assistantMessageId,
@@ -2082,7 +2134,7 @@ ${operatingMode}
 
 Conversation handling:
 - Interpret the newest user message together with the preceding conversation. A short follow-up such as “apply those criticisms” may rely on the earlier review to define the actual task; preserve that relationship instead of treating the message as an isolated request.
-- If the conversation already contains a completed review and the follow-up asks to apply, fix, implement, or adjust based on it, implement those changes and validate them. Do not repeat the completed review unless the user explicitly asks for another review.
+- If an earlier review defines needed changes and the newest turn requests that outcome, carry out and validate those changes. Do not repeat the completed review unless the user requests another review.
 - “ASK FIRST” controls approval before mutations; it does not make an implementation follow-up read-only. Ask for approval at the mutation boundary, then continue the requested implementation.
 
 Mutation completion contract:

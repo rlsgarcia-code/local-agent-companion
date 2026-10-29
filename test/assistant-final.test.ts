@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractFinalAssistantText } from "../src/assistant-final";
+import { extractFinalAssistantText, hasTerminalAssistantMessage } from "../src/assistant-final";
 
 test("extracts the final assistant message from canonical graph state", () => {
   assert.equal(extractFinalAssistantText({
@@ -24,4 +24,16 @@ test("extracts serialized and wrapped adapter output without replaying old turns
 
 test("returns a plain final output string", () => {
   assert.equal(extractFinalAssistantText("A final response"), "A final response");
+});
+
+test("does not promote an earlier analysis when the graph ends on a tool or tool call", () => {
+  const toolLast = { messages: [
+    { type: "ai", content: "I will implement this." },
+    { type: "tool", content: "The edit failed." }
+  ] };
+  assert.equal(extractFinalAssistantText(toolLast), "");
+  assert.equal(hasTerminalAssistantMessage(toolLast), false);
+  const pendingCall = { messages: [{ type: "ai", content: "Editing...", tool_calls: [{ name: "edit_file" }] }] };
+  assert.equal(extractFinalAssistantText(pendingCall), "");
+  assert.equal(hasTerminalAssistantMessage(pendingCall), false);
 });

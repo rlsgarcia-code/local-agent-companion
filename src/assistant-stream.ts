@@ -1,6 +1,7 @@
 export type StreamedAssistantMessage = {
   text: AsyncIterable<string>;
   output: PromiseLike<unknown>;
+  node?: string;
 };
 
 /**
@@ -29,9 +30,15 @@ function containsToolCalls(value: unknown, seen = new Set<unknown>()): boolean {
 export async function consumeAssistantMessageStreams(
   streams: AsyncIterable<StreamedAssistantMessage>,
   onDelta: (delta: string) => Promise<void>,
-  onMessageEnd: (toolTurn: boolean) => Promise<void>
+  onMessageEnd: (toolTurn: boolean) => Promise<void>,
+  shouldExpose: (stream: StreamedAssistantMessage) => boolean = () => true
 ): Promise<void> {
   for await (const stream of streams) {
+    if (!shouldExpose(stream)) {
+      for await (const _delta of stream.text) { /* Drain hidden middleware output. */ }
+      await stream.output;
+      continue;
+    }
     let toolTurn = false;
     let observedText = "";
     try {
