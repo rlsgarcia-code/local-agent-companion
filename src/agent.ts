@@ -2066,6 +2066,11 @@ ${mcpGuidance}
 
 ${operatingMode}
 
+Conversation handling:
+- Interpret the newest user message together with the preceding conversation. A short follow-up such as “apply those criticisms” may rely on the earlier review to define the actual task; preserve that relationship instead of treating the message as an isolated request.
+- If the conversation already contains a completed review and the follow-up asks to apply, fix, implement, or adjust based on it, implement those changes and validate them. Do not repeat the completed review unless the user explicitly asks for another review.
+- “ASK FIRST” controls approval before mutations; it does not make an implementation follow-up read-only. Ask for approval at the mutation boundary, then continue the requested implementation.
+
 Current editor context (ephemeral; do not treat it as conversation history):
 ${context}
 
