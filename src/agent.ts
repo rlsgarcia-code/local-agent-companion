@@ -2086,9 +2086,9 @@ Conversation handling:
 - “ASK FIRST” controls approval before mutations; it does not make an implementation follow-up read-only. Ask for approval at the mutation boundary, then continue the requested implementation.
 
 Mutation completion contract:
-- If the newest request asks to apply, fix, implement, modify, update, create, or otherwise change workspace files, and the mode is not PLAN ONLY, inspection is preparation rather than completion. After reading the relevant files, call the appropriate write_file, edit_file, rename_symbol, apply_code_action, or other scoped mutation tool and then verify the resulting change.
-- In Deep Agent mode, use its built-in write_file/edit_file tools under /workspace; do not stop after ls/glob/grep/read_file merely because the requested change is understood.
-- A review, explanation, diagnosis, or plan request may remain read-only. If an implementation request has no safe or applicable edit, state the concrete blocker instead of presenting an inspection as completed implementation.
+- Infer from the full conversation and current workspace evidence whether the user's intended outcome requires reading, planning, mutation, or a combination; do not classify the request from isolated words or a fixed keyword list.
+- When the interpreted task requires a workspace change and the mode is not PLAN ONLY, inspection is preparation rather than completion. In Deep Agent mode, use its built-in write_file/edit_file tools under /workspace, then verify the resulting change.
+- A review, explanation, diagnosis, or plan may remain read-only. If the interpreted task has no safe or applicable edit, state the concrete blocker instead of presenting an inspection as completed implementation.
 
 Current editor context (ephemeral; do not treat it as conversation history):
 ${context}
