@@ -29,6 +29,13 @@ const tracker = (changes: number): ChangeTracker => ({
 
 test("parses a semantic task contract, rejecting malformed model output", () => {
   assert.equal(parseTaskContract('```json\n{"outcome":"workspace_change","objective":"Apply review","reason":"Follow-up","acceptanceCriteria":[]}\n```').outcome, "workspace_change");
+  const criteria = Array.from({ length: 6 }, (_, index) => `Criterion ${index + 1}`);
+  assert.deepEqual(parseTaskContract(JSON.stringify({
+    outcome: "workspace_change",
+    objective: "Complete a complex change",
+    reason: "The request has several requirements.",
+    acceptanceCriteria: criteria
+  })).acceptanceCriteria, criteria);
   assert.throws(() => parseTaskContract("No JSON"), /task contract/);
   assert.throws(() => parseTaskContract('{"outcome":"unknown","objective":"x","reason":"x","acceptanceCriteria":[]}'));
   assert.equal(parseTaskVerdict('{"verdict":"needs_work","reason":"No diff"}').verdict, "needs_work");

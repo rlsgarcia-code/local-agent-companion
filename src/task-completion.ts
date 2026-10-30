@@ -14,7 +14,9 @@ const contractSchema = z.object({
   outcome: z.enum(["answer", "plan", "workspace_change", "uncertain"]),
   objective: z.string().min(1).max(1_000),
   reason: z.string().max(1_000).default(""),
-  acceptanceCriteria: z.array(z.string().min(1).max(500)).max(5).default([])
+  // The model may identify more than five legitimate criteria for a complex
+  // request. A presentation limit must not abort the agent before it starts.
+  acceptanceCriteria: z.array(z.string().min(1).max(500)).default([])
 });
 
 const verdictSchema = z.object({
