@@ -29,6 +29,15 @@ test("accepts the bounded commands emitted by the bundled sidebar", () => {
     { type: "setLocalBrowserToolsEnabled", enabled: true }
   );
   assert.deepEqual(parseIncomingMessage({ type: "openMcpConnections" }), { type: "openMcpConnections" });
+  assert.deepEqual(parseIncomingMessage({ type: "recommendOllamaModels" }), { type: "recommendOllamaModels" });
+  assert.deepEqual(
+    parseIncomingMessage({ type: "setOllamaPublicCatalogEnabled", enabled: true }),
+    { type: "setOllamaPublicCatalogEnabled", enabled: true }
+  );
+  assert.deepEqual(
+    parseIncomingMessage({ type: "pullOllamaModels", models: ["qwen3-coder:30b", "deepseek-r1:14b"] }),
+    { type: "pullOllamaModels", models: ["qwen3-coder:30b", "deepseek-r1:14b"] }
+  );
   assert.deepEqual(
     parseIncomingMessage({ type: "selectFinalReview", mode: "changes" }),
     { type: "selectFinalReview", mode: "changes" }
@@ -70,6 +79,8 @@ test("rejects unknown, incomplete, and extra-field messages", () => {
   assert.equal(parseIncomingMessage({ type: "send", text: "x", mode: "unsafe" }), undefined);
   assert.equal(parseIncomingMessage({ type: "setLocalBrowserToolsEnabled", enabled: "yes" }), undefined);
   assert.equal(parseIncomingMessage({ type: "openMcpConnections", template: "secret" }), undefined);
+  assert.equal(parseIncomingMessage({ type: "pullOllamaModels", models: [] }), undefined);
+  assert.equal(parseIncomingMessage({ type: "setOllamaPublicCatalogEnabled", enabled: "yes" }), undefined);
   assert.equal(parseIncomingMessage({ type: "selectFinalReview", mode: "sometimes" }), undefined);
 });
 

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none'">
+    <title>Local Companion</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="drag-region"></div>
+        <header class="brand">
+          <div class="brand-mark"><span></span></div>
+          <div><strong>Companion</strong><small>LOCAL / OLLAMA</small></div>
+        </header>
+        <button class="new-thread" id="new-thread"><span>＋</span> Nova conversa</button>
+        <nav class="thread-list" id="thread-list" aria-label="Conversas"></nav>
+        <footer class="sidebar-footer">
+          <button class="workspace-button" id="workspace-button">
+            <span class="workspace-icon">⌁</span>
+            <span><small>WORKSPACE</small><strong id="workspace-label">Escolher projeto</strong></span>
+          </button>
+          <div class="ollama-status"><i id="ollama-dot"></i><span id="ollama-label">Verificando Ollama…</span></div>
+        </footer>
+      </aside>
+
+      <main class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">CONVERSA ATIVA</p>
+            <h1 id="thread-title">Nova conversa</h1>
+          </div>
+          <div class="header-actions">
+            <button class="icon-button" id="refresh-button" title="Atualizar Ollama" aria-label="Atualizar Ollama">↻</button>
+            <button class="icon-button context-button" id="context-button" title="Abrir contexto visual" aria-label="Abrir contexto visual">▣</button>
+            <button class="runtime-button" id="runtime-button"><span class="runtime-glyph">◇</span><span id="runtime-label">Agente padrão</span><b>⌄</b></button>
+            <button class="model-button" id="model-button"><i></i><span id="model-label">Modelo local</span><b>⌄</b></button>
+          </div>
+        </header>
+
+        <div class="conversation-stage">
+          <section class="conversation" id="conversation" aria-live="polite">
+            <div class="welcome" id="welcome">
+              <div class="orbital-mark"><div></div><span>&lt;/&gt;</span></div>
+              <p class="eyebrow">SEU PROJETO, NA SUA MÁQUINA</p>
+              <h2>O que vamos construir?</h2>
+              <p>Escolha uma pasta, conecte um modelo Ollama e trabalhe com o código sem enviar o projeto para fora do Mac.</p>
+              <div class="prompt-row">
+                <button data-prompt="Explique a arquitetura deste projeto e indique por onde começar.">Entender o projeto</button>
+                <button data-prompt="Revise as mudanças atuais e aponte riscos concretos.">Revisar mudanças</button>
+                <button data-prompt="Encontre um problema importante neste projeto e proponha uma correção.">Encontrar um problema</button>
+              </div>
+            </div>
+          </section>
+          <button class="jump-latest hidden" id="jump-latest" aria-label="Ir para a atividade mais recente">Atividade recente ↓</button>
+        </div>
+
+        <section class="composer-wrap">
+          <div class="composer">
+            <textarea id="prompt" rows="1" placeholder="Peça uma análise, alteração ou investigação…"></textarea>
+            <div class="composer-footer">
+              <div class="mode-control" id="mode-control" aria-label="Modo de autonomia">
+                <button data-mode="plan">Plano</button>
+                <button data-mode="review" class="active">Revisar</button>
+                <button data-mode="execute">Auto edits</button>
+              </div>
+              <div class="send-actions">
+                <button class="cancel-button hidden" id="cancel-button">Interromper</button>
+                <span id="composer-hint">Enter para enviar · Shift+Enter para nova linha</span>
+                <button class="send-button" id="send-button" aria-label="Enviar">↑</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector">
+        <div class="inspector-resizer" id="inspector-resizer" aria-hidden="true"></div>
+        <div class="inspector-head">
+          <div>
+            <nav class="inspector-modes" aria-label="Painel lateral">
+              <button class="active" data-inspector-mode="activity">EXECUÇÃO</button>
+              <button data-inspector-mode="context">CONTEXTO <span id="context-count">0</span></button>
+            </nav>
+            <h2 id="run-state">Pronto</h2>
+          </div>
+          <div class="inspector-head-actions">
+            <span class="pulse" id="run-pulse"></span>
+            <button class="context-close hidden" id="context-close" aria-label="Fechar contexto">×</button>
+          </div>
+        </div>
+        <div class="inspector-scroll" id="activity-view">
+          <section class="setup-panel" id="setup-panel">
+            <p class="section-label">INÍCIO RÁPIDO</p>
+            <h3>Ollama local</h3>
+            <p id="setup-copy">Conecte o Ollama e escolha um modelo para começar.</p>
+            <button class="primary-action" id="setup-action">Verificar novamente</button>
+          </section>
+          <section class="activity-panel">
+            <div class="section-heading"><span>AÇÕES DO AGENTE</span><small id="activity-count">0 eventos</small></div>
+            <div class="activity-list" id="activity-list"><p class="empty-copy">A leitura de arquivos, buscas, alterações e comandos aparecerão aqui.</p></div>
+          </section>
+          <section class="changes-panel hidden" id="changes-panel">
+            <div class="section-heading"><span>ARQUIVOS ALTERADOS</span><small id="changes-count"></small></div>
+            <div class="change-list" id="change-list"></div>
+          </section>
+        </div>
+        <section class="context-view hidden" id="context-view" aria-label="Contexto visual">
+          <form class="context-open" id="context-open-form">
+            <input id="context-input" maxlength="2048" autocomplete="off" placeholder="URL, localhost ou pesquisa" aria-label="Abrir contexto">
+            <button type="submit" aria-label="Abrir nova aba">＋</button>
+          </form>
+          <div class="context-policy">
+            <button id="context-external-toggle"><i></i><span>Internet bloqueada</span></button>
+            <small>Localhost permanece local. Internet pede aprovação por domínio.</small>
+          </div>
+          <div class="context-tabs" id="context-tabs" role="tablist" aria-label="Abas de contexto"></div>
+          <div class="context-toolbar">
+            <div class="context-nav">
+              <button id="context-back" aria-label="Voltar">←</button>
+              <button id="context-forward" aria-label="Avançar">→</button>
+              <button id="context-reload" aria-label="Recarregar">↻</button>
+            </div>
+            <span id="context-address">Nenhuma aba aberta</span>
+            <button class="context-include" id="context-include">Usar no agente</button>
+          </div>
+          <div class="context-browser-host" id="context-browser-host">
+            <div class="context-empty" id="context-empty">
+              <div class="context-empty-mark"><span></span></div>
+              <strong>Páginas ao lado do trabalho</strong>
+              <span>Abra um localhost, uma URL HTTPS ou descreva o que deseja pesquisar.</span>
+              <small>Marque “Usar no agente” somente nas abas que devem entrar no próximo pedido.</small>
+            </div>
+          </div>
+        </section>
+        <footer class="privacy-note"><span>◉</span><p><strong id="privacy-title">Local por padrão</strong><br><span id="privacy-copy">Projeto e conversas permanecem neste Mac.</span></p></footer>
+      </aside>
+    </div>
+
+    <div class="popover hidden" id="model-popover">
+      <div class="popover-head"><strong>Modelos Ollama</strong><button id="close-models">×</button></div>
+      <section class="model-advisor">
+        <div class="advisor-heading"><span><small>CONFIGURAÇÃO ADAPTATIVA</small><strong>Recomendação para esta máquina</strong></span><button id="recommend-models">Analisar</button></div>
+        <label class="catalog-opt-in"><input id="public-catalog-toggle" type="checkbox"><span>Incluir catálogo público do projeto</span></label>
+        <button class="text-action hidden" id="refresh-public-catalog">Atualizar catálogo agora</button>
+        <div class="recommendation hidden" id="recommendation" aria-live="polite">
+          <p id="recommendation-machine"></p>
+          <div id="recommendation-roles"></div>
+          <p id="recommendation-downloads"></p>
+          <ul id="recommendation-warnings"></ul>
+          <div class="recommendation-actions">
+            <button id="apply-recommendation">Aplicar configuração</button>
+            <button id="pull-recommended">Baixar ausentes</button>
+            <button id="reanalyze-models">Reanalisar</button>
+          </div>
+        </div>
+      </section>
+      <p class="section-divider">EXECUTOR INSTALADO</p>
+      <div id="model-list" class="model-list"></div>
+      <div class="pull-form"><input id="pull-model-input" value="qwen3-coder:30b" aria-label="Modelo para baixar"><button id="pull-model-button">Baixar</button></div>
+      <p class="pull-progress" id="pull-progress"></p>
+    </div>
+
+    <div class="popover runtime-popover hidden" id="runtime-popover">
+      <div class="popover-head"><strong>Runtime do agente</strong><button id="close-runtimes">×</button></div>
+      <button class="runtime-option" data-runtime="standard">
+        <span class="runtime-option-mark">→</span>
+        <span><strong>Agente padrão</strong><small>Execução direta e focada para tarefas cotidianas.</small></span>
+      </button>
+      <button class="runtime-option" data-runtime="deep">
+        <span class="runtime-option-mark">◇</span>
+        <span><strong>Deep Agent</strong><small>Planejamento, subagentes e contexto para trabalho multietapa.</small></span>
+      </button>
+      <p class="runtime-note">O runtime define como o agente pensa. As permissões continuam controladas por Plano, Revisar e Auto edits.</p>
+    </div>
+
+    <div class="modal-backdrop hidden" id="approval-modal">
+      <div class="approval-dialog" role="dialog" aria-modal="true" aria-labelledby="approval-title">
+        <div class="approval-symbol">!</div>
+        <p class="eyebrow">APROVAÇÃO LOCAL</p>
+        <h2 id="approval-title"></h2>
+        <pre id="approval-detail"></pre>
+        <div class="dialog-actions"><button id="deny-approval">Cancelar</button><button class="primary-action" id="allow-approval"></button></div>
+      </div>
+    </div>
+
+    <div class="toast hidden" id="toast"></div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

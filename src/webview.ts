@@ -39,6 +39,13 @@ import {
   OLLAMA_CATALOG_SNAPSHOT_DATE,
   OLLAMA_RECOMMENDED_SETUP
 } from "./ollama-catalog";
+import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "./ollama-public-catalog";
+import {
+  detectMachineProfile,
+  mergeOllamaCandidates,
+  OllamaRecommendationEngine,
+  type OllamaRecommendationPlan
+} from "./ollama-recommendation";
 import type {
   LiteLlmAuthHeader,
   LiteLlmModelCapabilities,
@@ -171,8 +178,19 @@ type LiteLlmSettingsSnapshot = {
   ollamaCatalog: typeof OLLAMA_CATALOG;
   ollamaRecommendedSetup: typeof OLLAMA_RECOMMENDED_SETUP;
   ollamaCatalogSnapshotDate: string;
+  ollamaPublicCatalogEnabled: boolean;
+  ollamaRecommendation?: OllamaRecommendationPlan;
   finalReviewMode: "off" | "changes" | "always";
 };
+
+function parsePersistedOllamaRecommendation(value: unknown): OllamaRecommendationPlan | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Partial<OllamaRecommendationPlan>;
+  if ((record.source !== "baseline" && record.source !== "advisor")
+    || !record.roles || typeof record.roles.executor !== "string"
+    || !Array.isArray(record.requiredPulls) || !Array.isArray(record.warnings)) return undefined;
+  return record as OllamaRecommendationPlan;
+}
 
 export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
@@ -181,6 +199,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private sendPending = false;
   private readonly resumedGoals = new Set<string>();
   private readonly disposables: vscode.Disposable[] = [];
+  private publicOllamaCatalog: PublicOllamaCatalog | undefined;
+  private lastOllamaRecommendation: OllamaRecommendationPlan | undefined;
 
   public constructor(
     private readonly extensionContext: vscode.ExtensionContext,
@@ -189,6 +209,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     private readonly memory: ProjectMemory,
     private readonly changeReview: ChangeReviewManager
   ) {
+    this.lastOllamaRecommendation = parsePersistedOllamaRecommendation(
+      this.extensionContext.workspaceState.get("localAgentCompanion.ollamaRecommendation")
+    );
     this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor(() => this.postContextState()),
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -600,8 +623,17 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "listModels":
         await this.listModels(message.endpoint, message.apiKey);
         break;
-      case "pullOllamaRecommended":
-        await this.pullOllamaRecommendedModels();
+      case "recommendOllamaModels":
+        await this.recommendOllamaModels();
+        break;
+      case "setOllamaPublicCatalogEnabled":
+        await this.setOllamaPublicCatalogEnabled(message.enabled);
+        break;
+      case "refreshOllamaPublicCatalog":
+        await this.refreshOllamaPublicCatalog();
+        break;
+      case "pullOllamaModels":
+        await this.pullOllamaModels(message.models);
         break;
       case "selectRuntime":
         await this.selectRuntime(message.runtime);
@@ -689,6 +721,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       ollamaCatalog: OLLAMA_CATALOG,
       ollamaRecommendedSetup: OLLAMA_RECOMMENDED_SETUP,
       ollamaCatalogSnapshotDate: OLLAMA_CATALOG_SNAPSHOT_DATE,
+      ollamaPublicCatalogEnabled: configuration.get<boolean>("ollamaPublicCatalogEnabled", false),
+      ...(this.lastOllamaRecommendation ? { ollamaRecommendation: this.lastOllamaRecommendation } : {}),
       finalReviewMode: parseFinalReviewMode(configuration.get("finalReviewMode"))
     };
   }
@@ -1758,19 +1792,81 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  private async pullOllamaRecommendedModels(): Promise<void> {
+  private async recommendOllamaModels(): Promise<void> {
+    try {
+      const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+      if (configuredModelProvider(configuration) !== "ollama") throw new Error("Select the Ollama provider before requesting a machine recommendation.");
+      const endpoint = configuration.get<string>("liteLlmEndpoint", "") || modelProviderDefaultEndpoint("ollama");
+      const catalog = await this.agent.listModels(endpoint, "");
+      const installed = catalog.models.map((name) => ({
+        name,
+        size: catalog.ollamaMetadata?.[name]?.sizeBytes,
+        capabilities: catalog.ollamaMetadata?.[name]?.capabilities,
+        contextLength: catalog.ollamaMetadata?.[name]?.contextLength
+      }));
+      const candidates = mergeOllamaCandidates({
+        bundled: OLLAMA_CATALOG,
+        ...(configuration.get<boolean>("ollamaPublicCatalogEnabled", false) && this.publicOllamaCatalog
+          ? { publicCatalog: this.publicOllamaCatalog }
+          : {}),
+        installed
+      });
+      const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? this.extensionContext.globalStorageUri.fsPath;
+      const machine = await detectMachineProfile(workspacePath);
+      const advisor = configuration.get<string>("liteLlmModel", "").trim();
+      this.lastOllamaRecommendation = await new OllamaRecommendationEngine().recommend({
+        machine,
+        candidates,
+        supportedRoles: ["executor", "planner", "evaluator", "vision", "embedding"],
+        advisorModel: advisor,
+        ...(advisor ? { invokeAdvisor: (prompt: string) => this.agent.invokeOllamaAdvisor(endpoint, advisor, prompt) } : {})
+      });
+      await this.extensionContext.workspaceState.update("localAgentCompanion.ollamaRecommendation", this.lastOllamaRecommendation);
+      this.post({ type: "ollamaRecommendationReady", plan: this.lastOllamaRecommendation });
+    } catch (error) {
+      this.post({ type: "ollamaRecommendationError", message: await this.safeError(error) });
+    }
+  }
+
+  private async setOllamaPublicCatalogEnabled(enabled: boolean): Promise<void> {
+    try {
+      await this.assertProviderConfigurationEditable();
+      const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+      if (configuredModelProvider(configuration) !== "ollama") throw new Error("The public Ollama catalog is available only with the Ollama provider.");
+      await configuration.update("ollamaPublicCatalogEnabled", enabled, vscode.ConfigurationTarget.Global);
+      if (!enabled) this.publicOllamaCatalog = undefined;
+      this.post({ type: "ollamaPublicCatalogChanged", enabled });
+    } catch (error) {
+      this.post({ type: "ollamaRecommendationError", message: await this.safeError(error) });
+    }
+  }
+
+  private async refreshOllamaPublicCatalog(): Promise<void> {
+    try {
+      const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+      if (configuredModelProvider(configuration) !== "ollama" || !configuration.get<boolean>("ollamaPublicCatalogEnabled", false)) {
+        throw new Error("Enable the public Ollama catalog before refreshing it.");
+      }
+      this.publicOllamaCatalog = await fetchPublicOllamaCatalog();
+      this.post({ type: "ollamaPublicCatalogRefreshed", message: `${this.publicOllamaCatalog.models.length} public candidates loaded manually.` });
+      await this.recommendOllamaModels();
+    } catch (error) {
+      this.post({ type: "ollamaRecommendationError", message: await this.safeError(error) });
+    }
+  }
+
+  private async pullOllamaModels(models: string[]): Promise<void> {
+    const allowed = new Set(this.lastOllamaRecommendation?.requiredPulls ?? []);
+    if (!models.length || models.some((model) => !allowed.has(model) || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model))) {
+      this.post({ type: "ollamaRecommendationError", message: "Analyze this machine again before pulling the selected models." });
+      return;
+    }
     const terminal = vscode.window.createTerminal({ name: "Ollama recommended models" });
     terminal.show(true);
-    const models = [...new Set([
-      OLLAMA_RECOMMENDED_SETUP.executor,
-      OLLAMA_RECOMMENDED_SETUP.planner,
-      OLLAMA_RECOMMENDED_SETUP.vision,
-      OLLAMA_RECOMMENDED_SETUP.embedding
-    ])];
     // Send one ordered shell line: concurrent sendText calls can be dropped while
     // the first large model is still occupying the terminal process.
     terminal.sendText(models.map((model) => `ollama pull ${model}`).join(" && "), true);
-    this.post({ type: "toast", message: "Ollama model pulls started in the terminal." });
+    this.post({ type: "toast", message: "Explicit Ollama model pulls started in the terminal." });
   }
 
   private async postConnectionSettings(): Promise<void> {
@@ -3002,8 +3098,17 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         </div>
         <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-label="Agent cognitive roles">
           <div class="brief-actions ollama-agent-actions">
-            <button class="secondary-action" id="ollama-recommended" type="button">Use recommended setup</button>
-            <button class="secondary-action" id="ollama-pull-recommended" type="button">Pull recommended models</button>
+            <button class="secondary-action" id="ollama-recommended" type="button">Recommend for this machine</button>
+            <button class="secondary-action hidden" id="ollama-apply-recommendation" type="button">Apply recommendation</button>
+            <button class="secondary-action hidden" id="ollama-pull-recommended" type="button">Pull missing models</button>
+          </div>
+          <label class="ollama-public-catalog"><input id="ollama-public-catalog" type="checkbox" /> Include public project catalog</label>
+          <button class="link-action hidden" id="ollama-refresh-public-catalog" type="button">Refresh public catalog now</button>
+          <div class="ollama-recommendation hidden" id="ollama-recommendation" role="status" aria-live="polite">
+            <strong id="ollama-recommendation-machine"></strong>
+            <div id="ollama-recommendation-roles"></div>
+            <small id="ollama-recommendation-downloads"></small>
+            <ul id="ollama-recommendation-warnings"></ul>
           </div>
           <div class="ollama-agent-flow" aria-label="Agent cognitive flow">
             <span>Understand</span><i>→</i><span>Plan</span><i>→</i><span>Act</span><i>→</i><span>Perceive</span><i>→</i><span>Evaluate</span><i>→</i><span>Remember</span>
@@ -3500,6 +3605,14 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .settings-subheading { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); }
 .ollama-role-setup { margin-top: 12px; padding: 11px; border: 1px solid var(--line); border-radius: 5px; background: color-mix(in srgb, var(--vscode-editor-background) 72%, var(--accent) 3%); }
 .ollama-role-setup h4 { margin: 3px 0 2px; color: var(--vscode-foreground); font-size: 12px; }
+.ollama-public-catalog { display: flex; align-items: center; gap: 6px; margin: 9px 0 2px; color: var(--muted); font-size: 9px; }
+.ollama-public-catalog input { accent-color: var(--accent); }
+.ollama-recommendation { display: grid; gap: 7px; margin: 9px 0; padding: 9px; border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--vscode-sideBar-background) 94%, var(--accent)); }
+.ollama-recommendation > strong { font-size: 10px; }
+.ollama-recommendation-role { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 2px 7px; padding-top: 5px; border-top: 1px solid var(--line); font-size: 9px; }
+.ollama-recommendation-role b { color: var(--muted); }
+.ollama-recommendation-role small { grid-column: 2; color: var(--muted); }
+.ollama-recommendation ul { margin: 0; padding-left: 16px; color: var(--vscode-editorWarning-foreground); font-size: 9px; }
 .ollama-agent-flow { display: flex; align-items: center; gap: 4px; overflow-x: auto; margin: 10px 0 2px; padding: 7px 6px; color: var(--vscode-foreground); font: 600 9px var(--vscode-editor-font-family); white-space: nowrap; }
 .ollama-agent-flow span { padding: 3px 5px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .ollama-agent-flow i { color: var(--muted); font-style: normal; }
@@ -3807,6 +3920,14 @@ const ollamaPlannerModel = document.getElementById('ollama-planner-model');
 const ollamaEvaluatorModel = document.getElementById('ollama-evaluator-model');
 const ollamaRecommended = document.getElementById('ollama-recommended');
 const ollamaPullRecommended = document.getElementById('ollama-pull-recommended');
+const ollamaApplyRecommendation = document.getElementById('ollama-apply-recommendation');
+const ollamaPublicCatalog = document.getElementById('ollama-public-catalog');
+const ollamaRefreshPublicCatalog = document.getElementById('ollama-refresh-public-catalog');
+const ollamaRecommendation = document.getElementById('ollama-recommendation');
+const ollamaRecommendationMachine = document.getElementById('ollama-recommendation-machine');
+const ollamaRecommendationRoles = document.getElementById('ollama-recommendation-roles');
+const ollamaRecommendationDownloads = document.getElementById('ollama-recommendation-downloads');
+const ollamaRecommendationWarnings = document.getElementById('ollama-recommendation-warnings');
 const ollamaCatalogNote = document.getElementById('ollama-catalog-note');
 const ollamaModelAliases = document.getElementById('ollama-model-aliases');
 const liteLlmModelAliases = document.getElementById('litellm-model-aliases');
@@ -3889,6 +4010,7 @@ let availableModelProviders = ['litellm'];
 let providerKeyStates = { litellm: false, ollama: false, openai: false };
 let ollamaMetadataCatalog = {};
 let ollamaRecommendedSetup = {};
+let currentOllamaRecommendation = null;
 const providerDrafts = {};
 let browserControlEnabled = false;
 let browserControlPending = false;
@@ -3954,6 +4076,12 @@ function createRunSummary() {
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function formatBytes(value) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return (value / Math.pow(1024, index)).toFixed(index > 1 ? 1 : 0) + ' ' + units[index];
 }
 
 function normalizeBriefState(value) {
@@ -5351,6 +5479,9 @@ function fillLiteLlmSettings(liteLlm) {
   ollamaPlannerModel.value = liteLlm.ollamaPlannerModel || '';
   ollamaEvaluatorModel.value = liteLlm.ollamaEvaluatorModel || '';
   ollamaRecommendedSetup = liteLlm.ollamaRecommendedSetup || {};
+  ollamaPublicCatalog.checked = Boolean(liteLlm.ollamaPublicCatalogEnabled);
+  ollamaRefreshPublicCatalog.classList.toggle('hidden', !ollamaPublicCatalog.checked);
+  renderOllamaRecommendation(liteLlm.ollamaRecommendation || null);
   renderOllamaCatalog(liteLlm.ollamaCatalog || [], liteLlm.ollamaCatalogSnapshotDate || '');
   profileTarget = 'chat';
   const knownModels = [...new Set([...loadedModelCatalog, ...Object.keys(liteLlmModelProfiles)])].sort();
@@ -6213,22 +6344,57 @@ ollamaLoadModels.addEventListener('click', () => {
     apiKey: ''
   });
 });
+function renderOllamaRecommendation(plan) {
+  currentOllamaRecommendation = plan || null;
+  ollamaRecommendation.classList.toggle('hidden', !plan);
+  ollamaApplyRecommendation.classList.toggle('hidden', !plan);
+  ollamaPullRecommended.classList.toggle('hidden', !plan || !(plan.requiredPulls || []).length);
+  ollamaRecommended.textContent = plan ? 'Reanalyze with local model' : 'Recommend for this machine';
+  if (!plan) return;
+  ollamaRecommendationMachine.textContent = plan.machineSummary + ' · ' + (plan.source === 'advisor' ? 'local AI analysis' : 'baseline estimate');
+  const labels = { executor: 'Executor', planner: 'Planner', evaluator: 'Evaluator', vision: 'Vision', embedding: 'Embedding' };
+  ollamaRecommendationRoles.innerHTML = Object.entries(plan.roles || {}).map(([role, model]) =>
+    '<div class="ollama-recommendation-role"><b>' + escapeHtml(labels[role] || role) + '</b><span>' + escapeHtml(model) + '</span><small>' +
+    escapeHtml((plan.rationaleByRole || {})[role] || 'Compatible with the detected machine profile.') + '</small></div>'
+  ).join('');
+  ollamaRecommendationDownloads.textContent = (plan.requiredPulls || []).length
+    ? plan.requiredPulls.length + ' missing · ' + formatBytes(Number(plan.downloadBytes || 0)) + ' estimated download'
+    : 'All recommended models are installed.';
+  ollamaRecommendationWarnings.innerHTML = (plan.warnings || []).map(warning => '<li>' + escapeHtml(warning) + '</li>').join('');
+}
 ollamaRecommended.addEventListener('click', () => {
-  const setup = ollamaRecommendedSetup;
-  liteLlmModel.value = setup.executor || 'qwen3-coder:30b';
-  visionModel.value = setup.vision || 'qwen3-vl:8b';
-  ollamaPlannerModel.value = setup.planner || 'gpt-oss:20b';
-  ollamaEvaluatorModel.value = setup.evaluator || 'gpt-oss:20b';
-  embeddingModel.value = setup.embedding || 'nomic-embed-text:latest';
+  liteLlmSettingsError.classList.add('hidden');
+  ollamaRecommended.disabled = true;
+  ollamaRecommended.textContent = 'Analyzing…';
+  vscode.postMessage({ type: 'recommendOllamaModels' });
+});
+ollamaApplyRecommendation.addEventListener('click', () => {
+  const setup = currentOllamaRecommendation && currentOllamaRecommendation.roles;
+  if (!setup) return;
+  liteLlmModel.value = setup.executor || '';
+  visionModel.value = setup.vision || '';
+  ollamaPlannerModel.value = setup.planner || '';
+  ollamaEvaluatorModel.value = setup.evaluator || '';
+  embeddingModel.value = setup.embedding || '';
   semanticMemoryEnabled.checked = true;
   profileTarget = 'chat';
   fillModelProfile(liteLlmModel.value, {}, true);
   previewModelCompatibility();
   markConnectionEdited();
-  announce('Recommended Ollama roles applied. Review and save the connection.');
+  announce('Recommended Ollama roles applied to editable fields. Review and save the connection.');
 });
 ollamaPullRecommended.addEventListener('click', () => {
-  vscode.postMessage({ type: 'pullOllamaRecommended' });
+  if (currentOllamaRecommendation && currentOllamaRecommendation.requiredPulls.length) {
+    vscode.postMessage({ type: 'pullOllamaModels', models: currentOllamaRecommendation.requiredPulls });
+  }
+});
+ollamaPublicCatalog.addEventListener('change', () => {
+  ollamaRefreshPublicCatalog.classList.toggle('hidden', !ollamaPublicCatalog.checked);
+  vscode.postMessage({ type: 'setOllamaPublicCatalogEnabled', enabled: ollamaPublicCatalog.checked });
+});
+ollamaRefreshPublicCatalog.addEventListener('click', () => {
+  ollamaRefreshPublicCatalog.disabled = true;
+  vscode.postMessage({ type: 'refreshOllamaPublicCatalog' });
 });
 liteLlmModel.addEventListener('change', () => {
   profileTarget = 'chat';
@@ -6428,6 +6594,29 @@ window.addEventListener('message', ({ data }) => {
       liteLlmSettingsError.textContent = data.message;
       liteLlmSettingsError.classList.remove('hidden');
       openLiteLlmSettings();
+      break;
+    case 'ollamaRecommendationReady':
+      ollamaRecommended.disabled = false;
+      renderOllamaRecommendation(data.plan);
+      status.textContent = data.plan && data.plan.source === 'advisor' ? 'Local model recommendation ready' : 'Baseline recommendation ready';
+      announce(status.textContent + '. Review before applying.');
+      break;
+    case 'ollamaRecommendationError':
+      ollamaRecommended.disabled = false;
+      ollamaRecommended.textContent = currentOllamaRecommendation ? 'Reanalyze with local model' : 'Recommend for this machine';
+      ollamaRefreshPublicCatalog.disabled = false;
+      liteLlmSettingsError.textContent = data.message;
+      liteLlmSettingsError.classList.remove('hidden');
+      break;
+    case 'ollamaPublicCatalogChanged':
+      ollamaPublicCatalog.checked = Boolean(data.enabled);
+      ollamaRefreshPublicCatalog.classList.toggle('hidden', !data.enabled);
+      status.textContent = data.enabled ? 'Public Ollama catalog enabled; refresh it manually when wanted' : 'Public Ollama catalog disabled';
+      break;
+    case 'ollamaPublicCatalogRefreshed':
+      ollamaRefreshPublicCatalog.disabled = false;
+      status.textContent = data.message;
+      announce(data.message);
       break;
     case 'connectionTestStarted':
       connectionTestButton.disabled = true;

@@ -1,0 +1,38 @@
+appId: dev.localagent.companion
+productName: Local Companion
+electronVersion: 45.2.1
+artifactName: Local-Companion-${version}-${arch}.${ext}
+directories:
+  output: ../release/desktop
+files:
+  - "**/*"
+  - "!*.map"
+  - LICENSE
+mac:
+  category: public.app-category.developer-tools
+  icon: icon.png
+  identity: null
+  hardenedRuntime: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+dmg:
+  title: Local Companion
+  window:
+    width: 560
+    height: 380
+  contents:
+    - x: 160
+      y: 185
+    - x: 400
+      y: 185
+      type: link
+      path: /Applications
+npmRebuild: false
+asar: true

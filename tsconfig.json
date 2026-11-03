@@ -11,5 +11,5 @@
     "noUncheckedIndexedAccess": true,
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "esbuild.mjs"]
+  "include": ["src/**/*.ts", "desktop/**/*.ts", "esbuild.mjs"]
 }

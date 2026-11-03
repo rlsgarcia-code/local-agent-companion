@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-03",
+  "models": [
+    {
+      "alias": "qwen2.5-coder:7b",
+      "label": "Qwen2.5 Coder 7B",
+      "sizeBytes": 5046586573,
+      "contextTokens": 32000,
+      "capabilities": ["tools", "coding"],
+      "roles": ["executor", "planner"]
+    },
+    {
+      "alias": "qwen3-coder:30b",
+      "label": "Qwen3 Coder 30B",
+      "sizeBytes": 20401094656,
+      "contextTokens": 256000,
+      "capabilities": ["tools", "coding", "long context"],
+      "roles": ["executor", "planner"]
+    },
+    {
+      "alias": "qwen3-vl:8b",
+      "label": "Qwen3 VL 8B",
+      "sizeBytes": 6657199309,
+      "contextTokens": 256000,
+      "capabilities": ["vision", "tools", "OCR"],
+      "roles": ["vision"]
+    },
+    {
+      "alias": "qwen3-vl:32b",
+      "label": "Qwen3 VL 32B",
+      "sizeBytes": 22548578304,
+      "contextTokens": 256000,
+      "capabilities": ["vision", "tools", "OCR"],
+      "roles": ["vision", "planner"]
+    },
+    {
+      "alias": "gpt-oss:20b",
+      "label": "GPT-OSS 20B",
+      "sizeBytes": 15032385536,
+      "contextTokens": 128000,
+      "capabilities": ["tools", "thinking", "structured output"],
+      "roles": ["planner", "evaluator"]
+    },
+    {
+      "alias": "qwen3:30b",
+      "label": "Qwen3 30B",
+      "sizeBytes": 20401094656,
+      "contextTokens": 256000,
+      "capabilities": ["tools", "thinking", "general"],
+      "roles": ["planner", "evaluator"]
+    },
+    {
+      "alias": "deepseek-r1:32b",
+      "label": "DeepSeek R1 32B",
+      "sizeBytes": 21474836480,
+      "contextTokens": 128000,
+      "capabilities": ["thinking", "structured output", "long context"],
+      "roles": ["planner", "evaluator"]
+    },
+    {
+      "alias": "deepseek-r1:14b",
+      "label": "DeepSeek R1 14B",
+      "sizeBytes": 9663676416,
+      "contextTokens": 128000,
+      "capabilities": ["thinking", "structured output"],
+      "roles": ["planner", "evaluator"]
+    },
+    {
+      "alias": "deepseek-coder-v2:16b",
+      "label": "DeepSeek Coder V2 16B",
+      "sizeBytes": 9556302234,
+      "contextTokens": 160000,
+      "capabilities": ["coding", "long context"],
+      "roles": ["planner", "evaluator"]
+    },
+    {
+      "alias": "nomic-embed-text:latest",
+      "label": "Nomic Embed Text",
+      "sizeBytes": 322122547,
+      "contextTokens": 8000,
+      "capabilities": ["embeddings"],
+      "roles": ["embedding"]
+    }
+  ]
+}

@@ -17,9 +17,18 @@ export type OllamaCatalogEntry = {
   description: string;
 };
 
-export const OLLAMA_CATALOG_SNAPSHOT_DATE = "2026-10-25";
+export const OLLAMA_CATALOG_SNAPSHOT_DATE = "2026-11-03";
 
 export const OLLAMA_CATALOG: readonly OllamaCatalogEntry[] = [
+  {
+    pull: "qwen2.5-coder:7b",
+    label: "Qwen2.5 Coder 7B",
+    size: "4.7 GB",
+    context: "32K",
+    capabilities: ["tools", "coding"],
+    roles: ["executor", "planner"],
+    description: "Compact tool-capable coding executor for machines that cannot comfortably run the 30B baseline."
+  },
   {
     pull: "qwen3-coder:30b",
     label: "Qwen3 Coder 30B",
@@ -64,6 +73,33 @@ export const OLLAMA_CATALOG: readonly OllamaCatalogEntry[] = [
     capabilities: ["tools", "thinking", "general"],
     roles: ["planner", "evaluator"],
     description: "General-purpose reasoning alternative."
+  },
+  {
+    pull: "deepseek-r1:32b",
+    label: "DeepSeek R1 32B",
+    size: "20 GB",
+    context: "128K",
+    capabilities: ["thinking", "structured output", "long context"],
+    roles: ["planner", "evaluator"],
+    description: "Reasoning-focused planner and independent evaluator for machines with ample unified memory."
+  },
+  {
+    pull: "deepseek-r1:14b",
+    label: "DeepSeek R1 14B",
+    size: "9 GB",
+    context: "128K",
+    capabilities: ["thinking", "structured output"],
+    roles: ["planner", "evaluator"],
+    description: "Lighter reasoning model for planning and evidence review."
+  },
+  {
+    pull: "deepseek-coder-v2:16b",
+    label: "DeepSeek Coder V2 16B",
+    size: "8.9 GB",
+    context: "160K",
+    capabilities: ["coding", "long context"],
+    roles: ["planner", "evaluator"],
+    description: "Code-oriented analysis model; use as executor only when the installed build verifies tool support."
   },
   {
     pull: "nomic-embed-text:latest",

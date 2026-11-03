@@ -153,6 +153,7 @@ export type ModelCatalogResult = {
 
 export type OllamaModelMetadata = {
   model: string;
+  sizeBytes?: number;
   capabilities: string[];
   parameters: string[];
   thinking?: { values: Array<boolean | string>; default: boolean | string };
@@ -628,6 +629,36 @@ export class DevelopmentAgent implements vscode.Disposable {
     }
   }
 
+  public async invokeOllamaAdvisor(endpointInput: string, modelName: string, prompt: string): Promise<string> {
+    const provider = configuredModelProvider(vscode.workspace.getConfiguration("localAgentCompanion"));
+    if (provider !== "ollama") throw new Error("Adaptive Ollama recommendations are available only in the Ollama provider.");
+    const connection = validateModelConnection({
+      provider: "ollama",
+      endpoint: endpointInput,
+      model: modelName,
+      apiKey: "",
+      authHeader: "authorization"
+    });
+    const authentication = modelClientAuthentication(connection);
+    const model = new ChatOpenAICompletions({
+      model: connection.model,
+      apiKey: authentication.apiKey,
+      streaming: false,
+      streamUsage: true,
+      maxRetries: 1,
+      timeout: 90_000,
+      configuration: {
+        baseURL: chatCompletionsBaseUrl(connection),
+        fetch: gatewayFetch(chatCompletionsUrl(connection), authentication.stripAuthorization, undefined)
+      }
+    });
+    const response = await model.invoke([
+      new SystemMessage("You are a local Ollama setup advisor. Return only the requested JSON object."),
+      new HumanMessage(prompt)
+    ], { signal: AbortSignal.timeout(90_000) });
+    return response.text;
+  }
+
   private async listOllamaModels(endpointInput: string): Promise<ModelCatalogResult> {
     const endpoint = normalizeOllamaEndpoint(endpointInput);
     const tagsUrl = ollamaTagsUrl(endpoint);
@@ -642,16 +673,20 @@ export class DevelopmentAgent implements vscode.Disposable {
     if (!response.ok) {
       throw new Error(`Ollama model listing failed with HTTP ${response.status}. Start Ollama and try again.`);
     }
-    const payload = await response.json() as { models?: Array<{ name?: unknown }> };
+    const payload = await response.json() as { models?: Array<{ name?: unknown; size?: unknown; modified_at?: unknown }> };
     const models = (payload.models ?? [])
       .map((model) => typeof model.name === "string" ? model.name.trim() : "")
       .filter((model): model is string => Boolean(model))
       .slice(0, 500);
-    if (!models.length) {
-      throw new Error("Ollama is running, but no local models were found. Install a model and try again.");
-    }
     const uniqueModels = [...new Set(models)].sort();
     const ollamaMetadata = await this.discoverOllamaMetadata(endpoint, uniqueModels);
+    for (const item of payload.models ?? []) {
+      if (typeof item.name !== "string") continue;
+      const metadata = ollamaMetadata[item.name];
+      if (!metadata) continue;
+      if (typeof item.size === "number") metadata.sizeBytes = item.size;
+      if (typeof item.modified_at === "string") metadata.modifiedAt = item.modified_at;
+    }
     const embeddingModels = uniqueModels.filter((name) => ollamaMetadata[name]?.capabilities.includes("embedding"));
     return { models: uniqueModels, embeddingModels, ollamaMetadata };
   }

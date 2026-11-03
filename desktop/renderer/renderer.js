@@ -1,0 +1,672 @@
+const appState = {
+  snapshot: null,
+  activities: [],
+  changes: [],
+  draftMessages: new Map(),
+  approval: null,
+  inspectorMode: "activity"
+};
+
+const SCROLL_STICK_THRESHOLD = 48;
+let conversationPinnedToBottom = true;
+let readerAnchorLocked = false;
+let unseenConversationUpdates = 0;
+const countedUnseenMessages = new Set();
+
+const el = Object.fromEntries([
+  "thread-list", "new-thread", "workspace-button", "workspace-label", "ollama-dot", "ollama-label",
+  "thread-title", "refresh-button", "model-button", "model-label", "conversation", "welcome", "prompt",
+  "runtime-button", "runtime-label", "runtime-popover", "close-runtimes", "context-button",
+  "jump-latest",
+  "mode-control", "cancel-button", "send-button", "run-state", "run-pulse", "setup-panel", "setup-copy",
+  "setup-action", "activity-count", "activity-list", "changes-panel", "changes-count", "change-list",
+  "activity-view", "context-view", "context-count", "context-close", "inspector-resizer", "context-open-form", "context-input",
+  "context-external-toggle", "context-tabs", "context-back", "context-forward", "context-reload",
+  "context-address", "context-include", "context-browser-host", "context-empty",
+  "privacy-title", "privacy-copy",
+  "model-popover", "close-models", "model-list", "pull-model-input", "pull-model-button", "pull-progress",
+  "recommend-models", "public-catalog-toggle", "refresh-public-catalog", "recommendation", "recommendation-machine",
+  "recommendation-roles", "recommendation-downloads", "recommendation-warnings", "apply-recommendation", "pull-recommended", "reanalyze-models",
+  "approval-modal", "approval-title", "approval-detail", "deny-approval", "allow-approval", "toast"
+].map((id) => [id, document.getElementById(id)]));
+
+initialize().catch(showError);
+
+async function initialize() {
+  appState.snapshot = await window.companion.snapshot();
+  render();
+  const contextObserver = new ResizeObserver(syncContextBounds);
+  contextObserver.observe(el["context-browser-host"]);
+  window.addEventListener("resize", syncContextBounds);
+  window.companion.onEvent(handleEvent);
+  window.companion.onApproval(showApproval);
+  window.companion.onPullProgress((progress) => {
+    el["pull-progress"].textContent = progress.error || progress.line;
+  });
+}
+
+function handleEvent(event) {
+  let conversationEffect = null;
+  if (event.type === "snapshot") appState.snapshot = event.snapshot;
+  if (event.type === "context-snapshot") appState.snapshot.context = event.snapshot;
+  if (event.type === "run-start") {
+    appState.activities = [];
+    appState.changes = [];
+    appState.snapshot.running = true;
+    const thread = appState.snapshot.threads.find((candidate) => candidate.id === event.threadId);
+    if (thread && !thread.messages.some((message) => message.id === event.message.id)) {
+      thread.messages.push(event.message);
+      thread.updatedAt = Date.now();
+      if (thread.messages.filter((message) => message.role === "user").length === 1) {
+        thread.title = event.message.text.replace(/\s+/g, " ").trim().slice(0, 48) || "Nova conversa";
+      }
+    }
+    appState.draftMessages.set(event.threadId, { id: event.assistantMessageId, role: "assistant", text: "", status: "streaming", createdAt: Date.now(), executionSteps: [] });
+    conversationEffect = { type: "anchor-request", messageId: event.message.id };
+  }
+  if (event.type === "assistant-delta") {
+    const draft = appState.draftMessages.get(event.threadId) || { id: event.messageId, role: "assistant", text: "", status: "streaming", createdAt: Date.now(), executionSteps: [] };
+    draft.id = event.messageId;
+    draft.text += event.delta;
+    appState.draftMessages.set(event.threadId, draft);
+    conversationEffect = { type: "stream", messageId: event.messageId };
+  }
+  if (event.type === "assistant-step") {
+    const draft = appState.draftMessages.get(event.threadId);
+    if (draft) {
+      draft.executionSteps ||= [];
+      const existing = draft.executionSteps.findIndex((step) => step.id === event.step.id);
+      if (existing >= 0) draft.executionSteps.splice(existing, 1, event.step);
+      else draft.executionSteps.push(event.step);
+    }
+  }
+  if (event.type === "assistant-reset") {
+    const draft = appState.draftMessages.get(event.threadId);
+    if (draft) {
+      const text = stripProtocolMarkers(draft.text).trim();
+      draft.executionSteps ||= [];
+      if (text && draft.executionSteps.at(-1)?.text !== text) {
+        draft.executionSteps.push({ id: crypto.randomUUID(), text, createdAt: Date.now() });
+      }
+      draft.text = "";
+    }
+  }
+  if (event.type === "assistant-complete") {
+    appState.draftMessages.delete(event.threadId);
+    appState.changes = event.changes;
+    const thread = appState.snapshot.threads.find((candidate) => candidate.id === event.threadId);
+    if (thread && !thread.messages.some((message) => message.id === event.message.id)) thread.messages.push(event.message);
+    conversationEffect = { type: "complete", messageId: event.message.id };
+  }
+  if (event.type === "activity") {
+    const existing = appState.activities.findIndex((activity) => activity.id === event.activity.id);
+    if (existing >= 0) appState.activities.splice(existing, 1, { ...appState.activities[existing], ...event.activity });
+    else appState.activities.unshift(event.activity);
+    appState.activities = appState.activities.slice(0, 40);
+  }
+  if (event.type === "run-error") {
+    appState.draftMessages.delete(event.threadId);
+    showError(event.message);
+  }
+  if (event.type === "run-done") {
+    appState.snapshot.running = false;
+    readerAnchorLocked = false;
+  }
+  render(conversationEffect);
+}
+
+function render(conversationEffect = null) {
+  const snapshot = appState.snapshot;
+  if (!snapshot) return;
+  const active = snapshot.threads.find((thread) => thread.id === snapshot.activeThreadId) || snapshot.threads[0];
+  el["workspace-label"].textContent = snapshot.workspacePath ? basename(snapshot.workspacePath) : "Escolher projeto";
+  el["workspace-label"].title = snapshot.workspacePath || "";
+  el["ollama-dot"].classList.toggle("online", snapshot.ollama.connected);
+  el["ollama-label"].textContent = snapshot.ollama.connected
+    ? `Ollama ${snapshot.ollama.version || "conectado"}`
+    : "Ollama desconectado";
+  el["model-label"].textContent = snapshot.modelRoles?.executor || "Escolher modelo";
+  el["runtime-label"].textContent = snapshot.agentRuntime === "deep" ? "Deep Agent" : "Agente padrão";
+  el["thread-title"].textContent = active?.title || "Nova conversa";
+  el["thread-list"].replaceChildren(...snapshot.threads.map(threadButton));
+  renderConversation(active, conversationEffect);
+  renderModels();
+  renderRecommendation();
+  renderInspector();
+  renderContext();
+  document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === snapshot.mode));
+  document.querySelectorAll("[data-runtime]").forEach((button) => button.classList.toggle("active", button.dataset.runtime === snapshot.agentRuntime));
+  el["cancel-button"].classList.toggle("hidden", !snapshot.running);
+  el["send-button"].disabled = snapshot.running;
+  const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
+  el["run-state"].textContent = appState.inspectorMode === "context"
+    ? activeContext?.title || "Páginas e pesquisa"
+    : snapshot.running ? "Agente trabalhando" : "Pronto";
+  el["run-pulse"].classList.toggle("active", snapshot.running || (appState.inspectorMode === "context" && activeContext?.status === "loading"));
+}
+
+function threadButton(thread) {
+  const button = document.createElement("button");
+  button.className = `thread-item${thread.id === appState.snapshot.activeThreadId ? " active" : ""}`;
+  button.textContent = thread.title;
+  const small = document.createElement("small");
+  small.textContent = relativeTime(thread.updatedAt);
+  button.append(small);
+  button.addEventListener("click", async () => {
+    appState.snapshot = await window.companion.selectThread(thread.id);
+    render({ type: "reset" });
+  });
+  return button;
+}
+
+function renderConversation(thread, effect) {
+  const messages = [...(thread?.messages || [])];
+  const draft = thread ? appState.draftMessages.get(thread.id) : null;
+  if (draft) messages.push(draft);
+  el.welcome.classList.toggle("hidden", messages.length > 0);
+  const existing = new Map([...el.conversation.querySelectorAll(".message")].map((node) => [node.dataset.messageId, node]));
+  const existingStepGroups = new Map([...el.conversation.querySelectorAll(".run-steps")].map((node) => [node.dataset.messageId, node]));
+  const desiredIds = new Set(messages.map((message) => message.id));
+  for (const [id, node] of existing) if (!desiredIds.has(id)) node.remove();
+  for (const [id, node] of existingStepGroups) if (!desiredIds.has(id)) node.remove();
+  let position = el.welcome.nextSibling;
+  for (const message of messages) {
+    const steps = message.role === "assistant" && Array.isArray(message.executionSteps) ? message.executionSteps : [];
+    let stepGroup = existingStepGroups.get(message.id);
+    if (steps.length) {
+      if (!stepGroup) stepGroup = createExecutionStepsElement(message.id);
+      updateExecutionStepsElement(stepGroup, steps, message.status === "streaming");
+      if (stepGroup !== position) el.conversation.insertBefore(stepGroup, position);
+      position = stepGroup.nextSibling;
+    } else {
+      stepGroup?.remove();
+    }
+    let article = existing.get(message.id);
+    if (!article) article = createMessageElement(message);
+    updateMessageElement(article, message);
+    if (article !== position) el.conversation.insertBefore(article, position);
+    position = article.nextSibling;
+  }
+  applyConversationEffect(effect);
+}
+
+function createExecutionStepsElement(messageId) {
+  const details = document.createElement("details");
+  details.className = "run-steps";
+  details.dataset.messageId = messageId;
+  const summary = document.createElement("summary");
+  const label = document.createElement("span");
+  label.className = "run-steps-label";
+  const count = document.createElement("small");
+  count.className = "run-steps-count";
+  summary.append(label, count);
+  const list = document.createElement("div");
+  list.className = "run-steps-list";
+  details.append(summary, list);
+  return details;
+}
+
+function updateExecutionStepsElement(details, steps, streaming) {
+  details.classList.toggle("live", streaming);
+  const label = details.querySelector(".run-steps-label");
+  const count = details.querySelector(".run-steps-count");
+  label.textContent = streaming ? "Etapas da execução · em andamento" : "Etapas da execução";
+  count.textContent = `${steps.length} ${steps.length === 1 ? "etapa" : "etapas"}`;
+  const signature = steps.map((step) => `${step.id}:${step.text.length}`).join("|");
+  if (details.dataset.signature === signature) return;
+  details.dataset.signature = signature;
+  const list = details.querySelector(".run-steps-list");
+  list.replaceChildren(...steps.map((step, index) => {
+    const item = document.createElement("section");
+    item.className = "run-step";
+    const meta = document.createElement("div");
+    meta.className = "run-step-meta";
+    const title = document.createElement("strong");
+    title.textContent = `Etapa ${index + 1}`;
+    const time = document.createElement("time");
+    time.dateTime = new Date(step.createdAt).toISOString();
+    time.textContent = new Date(step.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    meta.append(title, time);
+    const content = document.createElement("p");
+    content.textContent = stripProtocolMarkers(step.text);
+    item.append(meta, content);
+    return item;
+  }));
+}
+
+function createMessageElement(message) {
+  const article = document.createElement("article");
+  article.dataset.messageId = message.id;
+  const label = document.createElement("div");
+  label.className = "message-label";
+  const content = document.createElement("div");
+  content.className = "message-content";
+  article.append(label, content);
+  return article;
+}
+
+function updateMessageElement(article, message) {
+  article.className = `message ${message.role}${message.status === "streaming" ? " streaming" : ""}${message.status === "failed" ? " failed" : ""}`;
+  const label = article.querySelector(".message-label");
+  const content = article.querySelector(".message-content");
+  const nextLabel = message.role === "user" ? "VOCÊ" : message.status === "streaming" ? "COMPANION · RESPONDENDO" : "COMPANION";
+  const nextText = (message.role === "assistant" ? stripProtocolMarkers(message.text) : message.text) || (message.status === "streaming" ? "Pensando…" : "");
+  if (label.textContent !== nextLabel) label.textContent = nextLabel;
+  if (content.textContent !== nextText) content.textContent = nextText;
+}
+
+function conversationIsNearBottom() {
+  return el.conversation.scrollHeight - el.conversation.scrollTop - el.conversation.clientHeight <= SCROLL_STICK_THRESHOLD;
+}
+
+function renderJumpLatest() {
+  const visible = !conversationPinnedToBottom && unseenConversationUpdates > 0;
+  el["jump-latest"].classList.toggle("hidden", !visible);
+  if (visible) el["jump-latest"].textContent = unseenConversationUpdates === 1 ? "1 nova atualização ↓" : `${unseenConversationUpdates} novas atualizações ↓`;
+}
+
+function resetConversationScroll() {
+  conversationPinnedToBottom = true;
+  readerAnchorLocked = false;
+  unseenConversationUpdates = 0;
+  countedUnseenMessages.clear();
+  renderJumpLatest();
+}
+
+function scrollConversationToBottom() {
+  requestAnimationFrame(() => {
+    el.conversation.scrollTop = el.conversation.scrollHeight;
+    resetConversationScroll();
+  });
+}
+
+function applyConversationEffect(effect) {
+  if (!effect) return;
+  if (effect.type === "reset") {
+    scrollConversationToBottom();
+    return;
+  }
+  if (effect.type === "anchor-request") {
+    requestAnimationFrame(() => {
+      const request = el.conversation.querySelector(`[data-message-id="${CSS.escape(effect.messageId)}"]`);
+      if (request) el.conversation.scrollTop = Math.max(0, request.offsetTop - 20);
+      conversationPinnedToBottom = false;
+      readerAnchorLocked = true;
+      unseenConversationUpdates = 0;
+      countedUnseenMessages.clear();
+      renderJumpLatest();
+    });
+    return;
+  }
+  if (effect.type === "stream") {
+    if (conversationPinnedToBottom && !readerAnchorLocked) {
+      requestAnimationFrame(() => { el.conversation.scrollTop = el.conversation.scrollHeight; });
+    } else if (!countedUnseenMessages.has(effect.messageId)) {
+      countedUnseenMessages.add(effect.messageId);
+      unseenConversationUpdates += 1;
+      renderJumpLatest();
+    }
+  }
+}
+
+function renderModels() {
+  const { models } = appState.snapshot.ollama;
+  el["model-list"].replaceChildren(...(models.length ? models.map((model) => {
+    const button = document.createElement("button");
+    button.className = `model-option${model.name === appState.snapshot.modelRoles?.executor ? " active" : ""}`;
+    const text = document.createElement("span");
+    text.textContent = model.name;
+    const size = document.createElement("small");
+    size.textContent = formatBytes(model.size);
+    button.append(text, size);
+    button.addEventListener("click", async () => {
+      appState.snapshot = await window.companion.setModel(model.name);
+      el["model-popover"].classList.add("hidden");
+      render();
+    });
+    return button;
+  }) : [paragraph("Nenhum modelo instalado.", "empty-copy")]));
+}
+
+function renderInspector() {
+  const snapshot = appState.snapshot;
+  const hasWorkspace = Boolean(snapshot.workspacePath);
+  const selectedInstalled = snapshot.ollama.models.some((model) => model.name === snapshot.modelRoles?.executor);
+  el["setup-panel"].classList.toggle("hidden", hasWorkspace && snapshot.ollama.connected && selectedInstalled);
+  if (!snapshot.ollama.connected) {
+    el["setup-copy"].textContent = "Inicie o Ollama neste Mac. O Companion acessa apenas o endpoint local 127.0.0.1.";
+    el["setup-action"].textContent = "Verificar novamente";
+  } else if (!hasWorkspace) {
+    el["setup-copy"].textContent = "Escolha a pasta do projeto que o agente poderá ler e alterar.";
+    el["setup-action"].textContent = "Escolher workspace";
+  } else {
+    el["setup-copy"].textContent = `O modelo ${snapshot.modelRoles?.executor} ainda não está instalado localmente.`;
+    el["setup-action"].textContent = "Baixar modelo recomendado";
+  }
+  el["activity-count"].textContent = `${appState.activities.length} evento${appState.activities.length === 1 ? "" : "s"}`;
+  el["activity-list"].replaceChildren(...(appState.activities.length ? appState.activities.map((activity) => {
+    const item = document.createElement("div");
+    item.className = `activity-item ${activity.status}`;
+    item.dataset.kind = activity.kind;
+    const icon = document.createElement("span");
+    icon.className = "activity-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = activityIcon(activity.kind);
+    const body = document.createElement("div");
+    body.className = "activity-body";
+    const heading = document.createElement("div");
+    heading.className = "activity-title";
+    const title = document.createElement("strong");
+    title.textContent = activity.title;
+    const status = document.createElement("small");
+    status.textContent = activity.status === "active" ? "em andamento" : activity.status === "failed" ? "falhou" : "concluído";
+    heading.append(title, status);
+    body.append(heading);
+    if (activity.detail) body.append(paragraph(activity.detail));
+    item.append(icon, body);
+    return item;
+  }) : [paragraph("A leitura de arquivos, buscas, alterações e comandos aparecerão aqui.", "empty-copy")]));
+  el["changes-panel"].classList.toggle("hidden", !appState.changes.length);
+  el["changes-count"].textContent = String(appState.changes.length);
+  el["change-list"].replaceChildren(...appState.changes.map((change) => {
+    const item = document.createElement("div");
+    item.className = "change-item";
+    const mark = document.createElement("i");
+    mark.textContent = change.kind === "created" ? "+" : change.kind === "deleted" ? "−" : "~";
+    const name = document.createElement("span");
+    name.textContent = change.path;
+    item.append(mark, name);
+    return item;
+  }));
+}
+
+function renderRecommendation() {
+  const snapshot = appState.snapshot;
+  const plan = snapshot.lastRecommendation;
+  el["public-catalog-toggle"].checked = Boolean(snapshot.ollamaPublicCatalogEnabled);
+  el["refresh-public-catalog"].classList.toggle("hidden", !snapshot.ollamaPublicCatalogEnabled);
+  el.recommendation.classList.toggle("hidden", !plan);
+  if (!plan) return;
+  el["recommendation-machine"].textContent = `${plan.machineSummary} · ${plan.source === "advisor" ? `análise por ${plan.advisorModel}` : "estimativa inicial"}`;
+  const labels = { executor: "Executor", planner: "Planner", evaluator: "Evaluator", vision: "Vision", embedding: "Embedding" };
+  el["recommendation-roles"].replaceChildren(...Object.entries(plan.roles).map(([role, model]) => {
+    const row = document.createElement("div");
+    row.className = "recommendation-role";
+    const label = document.createElement("strong");
+    label.textContent = labels[role] || role;
+    const value = document.createElement("input");
+    value.value = model;
+    value.dataset.roleModel = role;
+    value.setAttribute("aria-label", `${labels[role] || role} model`);
+    const reason = document.createElement("small");
+    reason.textContent = plan.rationaleByRole?.[role] || "Seleção compatível com o perfil detectado.";
+    row.append(label, value, reason);
+    return row;
+  }));
+  el["recommendation-downloads"].textContent = plan.requiredPulls.length
+    ? `${plan.requiredPulls.length} ausente(s) · ${formatBytes(plan.downloadBytes)} de download estimado`
+    : "Todos os modelos recomendados já estão instalados.";
+  el["recommendation-warnings"].replaceChildren(...(plan.warnings || []).map((warning) => {
+    const item = document.createElement("li"); item.textContent = warning; return item;
+  }));
+  el["pull-recommended"].disabled = !plan.requiredPulls.length;
+}
+
+function renderContext() {
+  const context = appState.snapshot.context || { externalAccess: false, tabs: [] };
+  const active = context.tabs.find((tab) => tab.id === context.activeTabId);
+  const contextVisible = appState.inspectorMode === "context";
+  document.querySelector(".app-shell").classList.toggle("context-mode", contextVisible);
+  document.querySelectorAll("[data-inspector-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.inspectorMode === appState.inspectorMode);
+  });
+  el["activity-view"].classList.toggle("hidden", contextVisible);
+  el["context-view"].classList.toggle("hidden", !contextVisible);
+  el["context-close"].classList.toggle("hidden", !contextVisible);
+  el["context-button"].classList.toggle("active", contextVisible);
+  el["privacy-title"].textContent = contextVisible ? "Contexto sob controle" : "Local por padrão";
+  el["privacy-copy"].textContent = contextVisible ? "Só abas marcadas entram no próximo pedido." : "Projeto e conversas permanecem neste Mac.";
+  el["context-count"].textContent = String(context.tabs.length);
+  el["context-external-toggle"].classList.toggle("active", context.externalAccess);
+  el["context-external-toggle"].querySelector("span").textContent = context.externalAccess ? "Internet permitida nesta sessão" : "Internet bloqueada";
+  el["context-tabs"].replaceChildren(...context.tabs.map(contextTabButton));
+  el["context-empty"].classList.toggle("hidden", Boolean(active));
+  el["context-address"].textContent = active ? contextAddress(active.url) : "Nenhuma aba aberta";
+  el["context-address"].title = active?.url || "";
+  el["context-back"].disabled = !active?.canGoBack;
+  el["context-forward"].disabled = !active?.canGoForward;
+  el["context-reload"].disabled = !active;
+  el["context-include"].disabled = !active || active.status !== "ready";
+  el["context-include"].classList.toggle("active", Boolean(active?.included));
+  el["context-include"].textContent = active?.included ? "No contexto ✓" : "Usar no agente";
+  el["context-include"].title = active?.included
+    ? "Esta página será anexada ao próximo pedido"
+    : "Anexar o texto visível desta página ao próximo pedido";
+  requestAnimationFrame(syncContextBounds);
+}
+
+function contextTabButton(tab) {
+  const item = document.createElement("div");
+  item.className = `context-tab${tab.id === appState.snapshot.context.activeTabId ? " active" : ""}${tab.included ? " included" : ""}`;
+  item.setAttribute("role", "presentation");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "context-tab-select";
+  button.setAttribute("role", "tab");
+  button.setAttribute("aria-selected", String(tab.id === appState.snapshot.context.activeTabId));
+  const kind = document.createElement("small");
+  kind.textContent = tab.kind === "local" ? "LOCAL" : tab.kind === "search" ? "BUSCA" : "WEB";
+  const title = document.createElement("span");
+  title.textContent = tab.title;
+  const status = document.createElement("i");
+  status.className = tab.status;
+  status.title = tab.error || tab.status;
+  button.append(kind, title, status);
+  button.addEventListener("click", () => performContextAction(() => window.companion.selectContextTab(tab.id)));
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "context-tab-close";
+  close.setAttribute("aria-label", `Fechar ${tab.title}`);
+  close.textContent = "×";
+  close.addEventListener("click", () => performContextAction(() => window.companion.closeContextTab(tab.id)));
+  item.append(button, close);
+  return item;
+}
+
+function updateContext(snapshot) {
+  appState.snapshot.context = snapshot;
+  render();
+}
+
+async function performContextAction(action) {
+  try {
+    updateContext(await action());
+  } catch (error) {
+    showError(error);
+  }
+}
+
+function setInspectorMode(mode) {
+  appState.inspectorMode = mode;
+  render();
+}
+
+function contextAddress(value) {
+  try {
+    const url = new URL(value);
+    return `${url.host}${url.pathname === "/" ? "" : url.pathname}`;
+  } catch {
+    return value;
+  }
+}
+
+function syncContextBounds() {
+  if (!appState.snapshot) return;
+  const active = appState.snapshot.context?.tabs.some((tab) => tab.id === appState.snapshot.context.activeTabId);
+  const visible = appState.inspectorMode === "context" && Boolean(active) && !el["context-view"].classList.contains("hidden");
+  const rect = el["context-browser-host"].getBoundingClientRect();
+  void window.companion.setContextBounds({
+    x: Math.round(rect.left),
+    y: Math.round(rect.top),
+    width: Math.max(0, Math.round(rect.width)),
+    height: Math.max(0, Math.round(rect.height)),
+    visible
+  });
+}
+
+async function send() {
+  const text = el.prompt.value.trim();
+  if (!text || appState.snapshot.running) return;
+  el.prompt.value = "";
+  resizePrompt();
+  try {
+    await window.companion.send({ text, threadId: appState.snapshot.activeThreadId });
+  } catch (error) {
+    showError(error.message || String(error));
+  }
+}
+
+function showApproval(request) {
+  appState.approval = request;
+  el["approval-title"].textContent = request.title;
+  el["approval-detail"].textContent = request.detail;
+  el["allow-approval"].textContent = request.confirmLabel;
+  el["approval-modal"].classList.remove("hidden");
+}
+
+async function answerApproval(approved) {
+  if (!appState.approval) return;
+  const { id } = appState.approval;
+  appState.approval = null;
+  el["approval-modal"].classList.add("hidden");
+  await window.companion.answerApproval(id, approved);
+}
+
+function showError(error) {
+  el.toast.textContent = error instanceof Error ? error.message : String(error);
+  el.toast.classList.remove("hidden");
+  clearTimeout(showError.timer);
+  showError.timer = setTimeout(() => el.toast.classList.add("hidden"), 5500);
+}
+
+function resizePrompt() {
+  el.prompt.style.height = "auto";
+  el.prompt.style.height = `${Math.min(el.prompt.scrollHeight, 180)}px`;
+}
+
+el["new-thread"].addEventListener("click", async () => { appState.snapshot = await window.companion.newThread(); appState.activities = []; appState.changes = []; render({ type: "reset" }); });
+el["workspace-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.chooseWorkspace(); render(); });
+el["refresh-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.refreshOllama(); render(); });
+el["context-button"].addEventListener("click", () => setInspectorMode(appState.inspectorMode === "context" ? "activity" : "context"));
+el["context-close"].addEventListener("click", () => setInspectorMode("activity"));
+document.querySelectorAll("[data-inspector-mode]").forEach((button) => button.addEventListener("click", () => setInspectorMode(button.dataset.inspectorMode)));
+el["context-open-form"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  const value = el["context-input"].value.trim();
+  if (!value) return;
+  void performContextAction(async () => {
+    const snapshot = await window.companion.openContext(value);
+    el["context-input"].value = "";
+    return snapshot;
+  });
+});
+el["context-external-toggle"].addEventListener("click", () => performContextAction(() => window.companion.setContextExternalAccess(!appState.snapshot.context.externalAccess)));
+el["context-back"].addEventListener("click", () => performContextAction(() => window.companion.navigateContext("back")));
+el["context-forward"].addEventListener("click", () => performContextAction(() => window.companion.navigateContext("forward")));
+el["context-reload"].addEventListener("click", () => performContextAction(() => window.companion.navigateContext("reload")));
+el["context-include"].addEventListener("click", () => {
+  const id = appState.snapshot.context.activeTabId;
+  if (id) void performContextAction(() => window.companion.toggleContextIncluded(id));
+});
+el["inspector-resizer"].addEventListener("pointerdown", (event) => {
+  if (appState.inspectorMode !== "context" || window.innerWidth <= 980) return;
+  const startX = event.clientX;
+  const startWidth = document.querySelector(".inspector").getBoundingClientRect().width;
+  document.body.classList.add("resizing-inspector");
+  const move = (moveEvent) => {
+    const maximum = Math.min(820, window.innerWidth - 760);
+    const width = Math.max(450, Math.min(maximum, startWidth + startX - moveEvent.clientX));
+    document.documentElement.style.setProperty("--context-inspector", `${Math.round(width)}px`);
+  };
+  const stop = () => {
+    document.body.classList.remove("resizing-inspector");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+});
+el["model-button"].addEventListener("click", () => el["model-popover"].classList.toggle("hidden"));
+el["close-models"].addEventListener("click", () => el["model-popover"].classList.add("hidden"));
+el["runtime-button"].addEventListener("click", () => el["runtime-popover"].classList.toggle("hidden"));
+el["close-runtimes"].addEventListener("click", () => el["runtime-popover"].classList.add("hidden"));
+document.querySelectorAll("[data-runtime]").forEach((button) => button.addEventListener("click", async () => {
+  appState.snapshot = await window.companion.setAgentRuntime(button.dataset.runtime);
+  el["runtime-popover"].classList.add("hidden");
+  render();
+}));
+el["pull-model-button"].addEventListener("click", async () => {
+  el["pull-progress"].textContent = "Iniciando download…";
+  try { appState.snapshot = await window.companion.pullModel(el["pull-model-input"].value.trim()); render(); }
+  catch (error) { showError(error.message || String(error)); }
+});
+el["recommend-models"].addEventListener("click", async () => {
+  try { appState.snapshot = await window.companion.recommendModels(); render(); }
+  catch (error) { showError(error); }
+});
+el["reanalyze-models"].addEventListener("click", async () => {
+  try { appState.snapshot = await window.companion.recommendModels(); render(); }
+  catch (error) { showError(error); }
+});
+el["public-catalog-toggle"].addEventListener("change", async () => {
+  try { appState.snapshot = await window.companion.setPublicOllamaCatalog(el["public-catalog-toggle"].checked); render(); }
+  catch (error) { showError(error); }
+});
+el["refresh-public-catalog"].addEventListener("click", async () => {
+  try { appState.snapshot = await window.companion.refreshPublicOllamaCatalog(); render(); }
+  catch (error) { showError(error); }
+});
+el["apply-recommendation"].addEventListener("click", async () => {
+  const roles = Object.fromEntries([...el["recommendation-roles"].querySelectorAll("[data-role-model]")]
+    .map((input) => [input.dataset.roleModel, input.value.trim()]));
+  try { appState.snapshot = await window.companion.applyRecommendation(roles); render(); }
+  catch (error) { showError(error); }
+});
+el["pull-recommended"].addEventListener("click", async () => {
+  try { appState.snapshot = await window.companion.pullRecommended(); render(); }
+  catch (error) { showError(error); }
+});
+el["setup-action"].addEventListener("click", async () => {
+  if (!appState.snapshot.ollama.connected) appState.snapshot = await window.companion.refreshOllama();
+  else if (!appState.snapshot.workspacePath) appState.snapshot = await window.companion.chooseWorkspace();
+  else appState.snapshot = await window.companion.pullModel(appState.snapshot.modelRoles?.executor || "qwen3-coder:30b");
+  render();
+});
+el["mode-control"].addEventListener("click", async (event) => {
+  const mode = event.target.dataset.mode;
+  if (!mode) return;
+  appState.snapshot = await window.companion.setMode(mode);
+  render();
+});
+el.prompt.addEventListener("input", resizePrompt);
+el.prompt.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } });
+el["send-button"].addEventListener("click", send);
+el["cancel-button"].addEventListener("click", () => window.companion.cancel());
+el["deny-approval"].addEventListener("click", () => answerApproval(false));
+el["allow-approval"].addEventListener("click", () => answerApproval(true));
+document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventListener("click", () => { el.prompt.value = button.dataset.prompt; resizePrompt(); el.prompt.focus(); }));
+el["jump-latest"].addEventListener("click", scrollConversationToBottom);
+el.conversation.addEventListener("wheel", () => { readerAnchorLocked = false; }, { passive: true });
+el.conversation.addEventListener("pointerdown", () => { readerAnchorLocked = false; });
+el.conversation.addEventListener("scroll", () => {
+  if (readerAnchorLocked) return;
+  conversationPinnedToBottom = conversationIsNearBottom();
+  if (conversationPinnedToBottom) resetConversationScroll();
+});
+
+function basename(value) { return value.split(/[\\/]/).filter(Boolean).at(-1) || value; }
+function formatBytes(value) { if (!value) return ""; const units = ["B", "KB", "MB", "GB"]; const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1); return `${(value / 1024 ** index).toFixed(index > 1 ? 1 : 0)} ${units[index]}`; }
+function relativeTime(value) { const minutes = Math.floor((Date.now() - value) / 60000); if (minutes < 1) return "agora"; if (minutes < 60) return `${minutes} min`; const hours = Math.floor(minutes / 60); if (hours < 24) return `${hours} h`; return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }); }
+function paragraph(text, className) { const node = document.createElement("p"); node.textContent = text; if (className) node.className = className; return node; }
+function activityIcon(kind) { return ({ context: "⌁", read: "▤", search: "⌕", edit: "✎", command: ">_", thinking: "◇", verification: "✓" })[kind] || "·"; }
+function stripProtocolMarkers(value) { return String(value || "").replace(/<\/?tool_call>/gi, ""); }

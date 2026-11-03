@@ -11,6 +11,7 @@ const semanticMemory = sources.get("src/semantic-memory.ts") ?? "";
 const gateway = sources.get("src/gateway.ts") ?? "";
 const chroma = sources.get("src/chroma.ts") ?? "";
 const mcpCatalog = sources.get("src/mcp-catalog.ts") ?? "";
+const ollamaPublicCatalog = sources.get("src/ollama-public-catalog.ts") ?? "";
 const processManager = sources.get("src/process-manager.ts") ?? "";
 
 function count(source: string, pattern: RegExp): number {
@@ -27,6 +28,10 @@ test("keeps direct source-level network calls inside the reviewed gateway and lo
   assert.match(chroma, /http:\/\/127\.0\.0\.1:/, "the remaining direct fetch must target local Chroma");
   assert.match(mcpCatalog, /https:\/\/registry\.modelcontextprotocol\.io\/v0\.1\/servers/,
     "the public MCP catalog must use the explicit official registry source");
+  assert.match(ollamaPublicCatalog, /https:\/\/raw\.githubusercontent\.com\/rlsgarcia-code\/local-agent-companion\/main\/catalogs\/ollama-models\.json/,
+    "the optional Ollama catalog must use the exact project-owned source");
+  assert.match(ollamaPublicCatalog, /"cache-control": "no-cache"/);
+  assert.match(ollamaPublicCatalog, /OLLAMA_PUBLIC_CATALOG_MAX_BYTES = 512 \* 1024/);
   assert.match(processManager, /new URL\(normalizeLocalBrowserUrl\(urlText\)\)/,
     "managed-process readiness must validate loopback before using node:http");
 
@@ -45,6 +50,11 @@ test("keeps direct source-level network calls inside the reviewed gateway and lo
     if (file === "src/mcp-catalog.ts") {
       assert.deepEqual(remoteDestinations, ["https://registry.modelcontextprotocol.io/v0.1/servers?limit=100"],
         "the built-in public catalog must use only the official registry");
+      continue;
+    }
+    if (file === "src/ollama-public-catalog.ts") {
+      assert.deepEqual(remoteDestinations, ["https://raw.githubusercontent.com/rlsgarcia-code/local-agent-companion/main/catalogs/ollama-models.json"],
+        "the opt-in Ollama catalog must use only the exact project-owned JSON route");
       continue;
     }
     assert.deepEqual(remoteDestinations, [], `${file} must not hard-code a remote network destination`);
@@ -71,7 +81,7 @@ test("keeps browser automation local and approval-gated", () => {
 });
 
 test("routes every LangChain model client through the exact-route gateway transport", () => {
-  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 4);
+  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 5);
   assert.equal(count(agent, /new OpenAIEmbeddings\s*\(/g), 1);
   assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g), 1);
 

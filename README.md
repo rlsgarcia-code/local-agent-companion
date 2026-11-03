@@ -112,6 +112,41 @@ Depois:
 
 Cada release inclui `SHA256SUMS.txt` para ambientes que exigem validação de integridade. O VSIX já contém a extensão e o binário local do ChromaDB para a plataforma escolhida; não é necessário Docker nem instalar um servidor Chroma separadamente.
 
+### Aplicativo macOS — Ollama local
+
+O repositório também contém um aplicativo macOS independente do VS Code. Essa variante usa exclusivamente o Ollama em `http://127.0.0.1:11434`, não solicita chave e bloqueia qualquer outro endpoint de modelo. O usuário escolhe explicitamente uma pasta antes do agente obter acesso ao projeto.
+
+O aplicativo oferece conversas persistidas no diretório privado da aplicação, seleção de modelos instalados, download opcional por `ollama pull`, streaming, cancelamento, timeline de atividade e escolha independente de runtime. A resposta corrente permanece estável durante o stream; falas intermediárias anteriores a ferramentas ou novas iterações são preservadas no grupo recolhível **Etapas da execução**, evitando tanto perda de contexto quanto excesso de mensagens abertas. A conversa rola de forma independente, mantendo o compositor e o painel de atividade dentro da janela mesmo em respostas longas.
+
+Em **Modelos Ollama**, **Recomendação para esta máquina** detecta somente plataforma, arquitetura, memória, espaço livre, aceleração, versão local do Ollama e modelos instalados. Hostname, usuário, serial, projeto e conversas não entram na análise. O executor instalado pode atuar como advisor local via `ChatOpenAICompletions`; sem ele, o aplicativo apresenta uma estimativa inicial claramente identificada. A revisão mostra executor, planner, evaluator, vision e embedding, downloads ausentes, tamanho estimado e alertas. **Aplicar configuração** não baixa nada; **Baixar ausentes** é uma ação separada.
+
+O estado antigo com um único modelo é migrado automaticamente para o papel `executor`. No Deep Agent, o `planner` produz orientação limitada antes da execução e o `evaluator` alimenta o gate final; quando ausentes, ambos recorrem ao executor. Os modelos são chamados em sequência para reduzir pressão de memória.
+
+O painel lateral também alterna para **Contexto visual**. Nele, o usuário pode abrir abas de `localhost`, informar uma URL HTTPS ou escrever uma pesquisa livre. Páginas locais funcionam sem ampliar permissões; internet começa bloqueada, precisa ser ativada explicitamente e cada domínio público é aprovado em uma caixa nativa antes da navegação. Abas e autorizações existem apenas durante a sessão.
+
+Uma página só entra no pedido quando o usuário marca **Usar no agente**. No máximo três abas são anexadas, com limites de texto por página e total. O conteúdo visível é tratado como dado externo não confiável, não como instrução, e não é gravado no histórico da conversa. Essa seleção permite combinar código local com documentação, uma aplicação em desenvolvimento ou resultados de pesquisa sem conceder navegação invisível ao agente.
+
+**Agente padrão** usa `createAgent` para trabalho direto e focado; **Deep Agent** usa `createDeepAgent`, planejamento nativo, filesystem virtual em `/workspace`, compactação de contexto e subagentes para tarefas multietapa. Alternar o runtime não altera automaticamente as permissões e mantém checkpoints separados para não misturar estados incompatíveis na mesma conversa.
+
+Os três modos de autonomia continuam ortogonais ao runtime. No modo **Plano**, somente ferramentas de leitura ficam disponíveis; no modo **Revisar**, cada alteração e comando pede aprovação; no modo **Auto edits**, edições confinadas ao workspace são automáticas e comandos continuam exigindo aprovação. Comandos são executados diretamente, sem `shell: true`, e recebem somente um ambiente local reduzido.
+
+Para abrir em desenvolvimento no macOS:
+
+```bash
+npm install
+npm run desktop:dev
+```
+
+Para gerar os aplicativos Apple Silicon e Intel, além dos respectivos DMGs e ZIPs:
+
+```bash
+npm run desktop:package
+```
+
+Os artefatos ficam em `release/desktop/`. Builds locais são deliberadamente não assinados; para distribuição ampla, configure a identidade Apple Developer ID e notarização no pipeline de release antes de entregá-los a outros usuários.
+
+O desktop é uma superfície Ollama dedicada. Ele não expõe LiteLLM, OpenAI, MCP corporativo, ChromaDB ou APIs do editor do VS Code. Sua navegação é uma superfície visual isolada e controlada pelo usuário; não adiciona uma ferramenta autônoma de browser ao runtime. A extensão continua sendo a variante completa para os demais fluxos.
+
 ## Gerar e instalar a partir do repositório
 
 Requer Node.js 22 ou superior. Este fluxo apenas instala as dependências locais, constrói a extensão e gera o VSIX da plataforma atual; ele não lê a configuração do VS Code, não exige que o LiteLLM já esteja configurado e não faz chamada de validação ao gateway:
@@ -302,6 +337,8 @@ Se for informada uma URL base, a extensão acrescenta `/chat/completions`. Se a 
 
 Também é possível trocar o runtime e a autonomia diretamente nos dois seletores do compositor. **Ask first** pede confirmação antes de cada edição, atualização de memória ou comando; **Auto edits** aplica edições de arquivo e memória automaticamente, mas continua pedindo confirmação para comandos e exclusões; **Plan only** disponibiliza somente leitura e planejamento. A escolha de autonomia vale para o workspace atual. Clique no nome do provedor no rodapé para alterar conexão, modelo ou chave. No LiteLLM, informe **Models URL** e clique em **Load** para preencher os aliases; essa consulta usa `GET`, `Cache-Control: no-cache` e `api-key: <chave>`. Ollama e OpenAI usam o nome de modelo informado explicitamente. As opções de reasoning, temperatura, Top P e perfil de compatibilidade ficam recolhidas em **Advanced model settings** e são lembradas separadamente para cada alias exato. Se uma chave aplicável ficar vazia, o valor já armazenado no Secret Storage é preservado. **Corporate CA…** aparece somente para LiteLLM.
 
+Na variante Ollama, **Recommend for this machine** substitui o antigo preset aplicado diretamente. A análise combina o snapshot incorporado, `/api/tags` e `/api/show`; somente incompatibilidades objetivas são filtradas no código, enquanto a escolha entre candidatos válidos pertence ao advisor local. A recomendação permanece editável e precisa ser aplicada explicitamente. O catálogo em `catalogs/ollama-models.json`, que inclui opções DeepSeek para planejamento e avaliação, pode ser incluído por opt-in. A extensão consulta exclusivamente `https://raw.githubusercontent.com/rlsgarcia-code/local-agent-companion/main/catalogs/ollama-models.json`, somente quando o usuário clica em **Refresh public catalog now**, com `Cache-Control: no-cache`, limite de 512 KB e redirects bloqueados. Isso não é um update check e não se aplica aos VSIX LiteLLM ou OpenAI.
+
 Antes de salvar, clique em **Test connection**. O diagnóstico valida os campos localmente e testa, em sequência, o catálogo configurado, o modelo selecionado (Chat Completions ou Responses API) com streaming e metadados de function tools e, quando habilitado, o modelo de embeddings. Cada etapa apresenta resultado e duração separadamente. O teste de chat não executa ferramentas, e o teste de embeddings envia apenas uma frase fixa de diagnóstico. Para troubleshooting local, os eventos resumidos também são gravados em `.local-agent/logs/agent.log`; o arquivo é rotacionado em 1 MB e não contém prompts, conversa, corpos de request ou credenciais.
 
 Ao informar o alias de chat, um resumo de compatibilidade aparece imediatamente fora das opções avançadas. Ele diferencia perfil reconhecido e pronto para teste, exigência de `reasoning_effort: none`, modelo conhecido por depender da Responses API e alias corporativo cuja capacidade não pode ser inferida. A indicação é preventiva e nunca substitui **Test connection**, que valida o deployment real do gateway.
@@ -433,6 +470,13 @@ Para recompilar continuamente:
 
 ```bash
 npm run watch
+```
+
+Para trabalhar na aplicação macOS Ollama:
+
+```bash
+npm run desktop:build
+npm run desktop:dev
 ```
 
 Para gerar e reinstalar o pacote:

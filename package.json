@@ -242,6 +242,12 @@
           "default": "",
           "description": "Optional Ollama model used for evidence-only goal evaluation and completion review."
         },
+        "localAgentCompanion.ollamaPublicCatalogEnabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Opt in to the exact project-owned public Ollama model catalog. The catalog is fetched only when you explicitly refresh it from setup; this is not an update check."
+        },
         "localAgentCompanion.liteLlmModelsEndpoint": {
           "type": "string",
           "default": "",
@@ -434,6 +440,9 @@
   },
   "scripts": {
     "build": "node esbuild.mjs",
+    "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:dev": "npm run desktop:build && electron desktop-dist/main.cjs",
+    "desktop:package": "npm run desktop:build && electron-builder --projectDir desktop-dist --config ../desktop/electron-builder.yml",
     "watch": "node esbuild.mjs --watch",
     "check": "tsc --noEmit",
     "test": "npm run compile:tests && node --test dist-tests/test/**/*.test.js && npm run test:repository",
@@ -473,6 +482,8 @@
     "@types/vscode": "^1.106.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0"
   }

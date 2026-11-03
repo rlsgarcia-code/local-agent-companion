@@ -2,6 +2,10 @@
 .github/**
 .local-agent/**
 src/**
+desktop/**
+desktop-dist/**
+release/**
+catalogs/**
 esbuild.mjs
 tsconfig.json
 tsconfig.test.json
