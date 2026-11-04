@@ -16,6 +16,8 @@ export type LocalProcessSpec = {
   command: string;
   args: string[];
   cwd: string;
+  knownUrls?: string[];
+  onExit?: () => void;
 };
 
 export type LocalProcessSnapshot = {
@@ -54,6 +56,10 @@ export class LocalProcessManager implements vscode.Disposable {
   private sanitize: (value: string) => string = (value) => value;
   private disposed = false;
 
+  public constructor(
+    private readonly readinessCheck: (urlText: string, timeoutMs: number) => Promise<boolean> = localHttpReady
+  ) {}
+
   public setEventSink(onEvent: (event: AgentUiEvent) => void): void {
     this.eventSink = onEvent;
   }
@@ -88,7 +94,7 @@ export class LocalProcessManager implements vscode.Disposable {
       startedAt: Date.now(),
       stdout: "",
       stderr: "",
-      detectedUrls: new Set()
+      detectedUrls: new Set((spec.knownUrls ?? []).map((url) => safeUrl(normalizeLocalBrowserUrl(url))))
     };
     this.processes.set(id, entry);
 
@@ -108,6 +114,7 @@ export class LocalProcessManager implements vscode.Disposable {
         title: `${this.safeDisplay(entry.displayCommand)} · exited ${entry.exitCode}`,
         detail: this.safeDisplay(tail([entry.stdout, entry.stderr].filter(Boolean).join("\n"), 1_800))
       });
+      try { entry.spec.onExit?.(); } catch { /* Process cleanup is best effort. */ }
       this.pruneHistory(MAX_RETAINED_PROCESSES);
     });
 
@@ -168,7 +175,7 @@ export class LocalProcessManager implements vscode.Disposable {
         };
       }
       selectedUrl = selectedUrl ?? firstHttpUrl(entry.detectedUrls);
-      if (selectedUrl && await localHttpReady(selectedUrl, 1_500)) {
+      if (selectedUrl && await this.readinessCheck(selectedUrl, 1_500)) {
         this.eventSink({ type: "activity", kind: "process", title: `Ready · ${safeUrl(selectedUrl)}` });
         return { ready: true, url: safeUrl(selectedUrl), process: this.snapshot(entry), detail: "Local HTTP endpoint responded." };
       }
@@ -182,6 +189,17 @@ export class LocalProcessManager implements vscode.Disposable {
         ? "The local endpoint did not respond before the readiness timeout."
         : "No localhost URL was detected in process output; provide readiness_url explicitly."
     };
+  }
+
+  public async waitForExit(id: string, timeoutMs: number, signal: AbortSignal): Promise<LocalProcessSnapshot> {
+    const entry = this.required(id);
+    const deadline = Date.now() + timeoutMs;
+    while (entry.state === "running" && Date.now() < deadline) {
+      signal.throwIfAborted();
+      await delay(100, signal);
+    }
+    if (entry.state === "running") throw new Error("The managed process did not exit before the timeout.");
+    return this.snapshot(entry);
   }
 
   public dispose(): void {

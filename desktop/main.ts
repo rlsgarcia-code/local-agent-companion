@@ -44,6 +44,7 @@ app.setName("Local Companion");
 
 app.whenReady().then(async () => {
   store = await DesktopStateStore.open(path.join(app.getPath("userData"), "desktop-state.json"));
+  if (dockerSandboxInstallParameter()) await store.update({ dockerSandboxEnabled: true });
   createWindow();
   contextBrowser = new DesktopContextBrowser(
     () => window,
@@ -64,7 +65,7 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  runtime.cancel();
+  runtime.dispose();
   contextBrowser?.close();
   for (const resolve of approvals.values()) resolve(false);
   approvals.clear();
@@ -142,6 +143,14 @@ function registerIpc(): void {
     if (typeof enabled !== "boolean") throw new Error("Invalid public catalog preference.");
     await store.update({ ollamaPublicCatalogEnabled: enabled });
     if (!enabled) publicOllamaCatalog = undefined;
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:set-docker-sandbox", async (_event, enabled: unknown) => {
+    if (typeof enabled !== "boolean") throw new Error("Invalid Docker sandbox preference.");
+    if (runtime.running) throw new Error("Wait for or cancel the current run before changing the Docker sandbox.");
+    runtime.configureDockerSandbox(enabled);
+    await store.update({ dockerSandboxEnabled: enabled, lastRecommendation: undefined });
+    activeRecommendation = undefined;
     return publishSnapshot();
   });
   ipcMain.handle("companion:refresh-public-ollama-catalog", async () => {
@@ -255,9 +264,14 @@ async function send(request: SendRequest): Promise<void> {
       request: text,
       workspacePath: state.workspacePath,
       modelRoles: state.modelRoles,
+      dockerSandboxEnabled: state.dockerSandboxEnabled,
       mode: state.mode,
       agentRuntime: state.agentRuntime,
       assistantMessageId,
+      openPreview: async (url) => {
+        await contextBrowser.open(url);
+        publish({ type: "context-focus", url });
+      },
       callbacks: {
         approval: requestApproval,
         activity: (activity) => publish({ type: "activity", activity }),
@@ -303,6 +317,14 @@ async function recommendModels(): Promise<DesktopSnapshot> {
   hasCheckedOllama = true;
   if (!cachedOllama.connected) throw new Error(cachedOllama.error || "Start Ollama before analyzing this machine.");
   const state = store.snapshot();
+  let publicCatalogWarning = "";
+  if (state.ollamaPublicCatalogEnabled && !publicOllamaCatalog) {
+    try {
+      publicOllamaCatalog = await fetchPublicOllamaCatalog();
+    } catch (error) {
+      publicCatalogWarning = `O catálogo público não pôde ser carregado; a análise usou o catálogo incorporado (${error instanceof Error ? error.message : String(error)}).`;
+    }
+  }
   const candidates = mergeOllamaCandidates({
     bundled: OLLAMA_CATALOG,
     ...(state.ollamaPublicCatalogEnabled && publicOllamaCatalog ? { publicCatalog: publicOllamaCatalog } : {}),
@@ -314,6 +336,9 @@ async function recommendModels(): Promise<DesktopSnapshot> {
     }))
   });
   const machine = await detectMachineProfile(app.getPath("userData"), cachedOllama.version);
+  const docker = state.dockerSandboxEnabled
+    ? await runtime.dockerStatus()
+    : { available: false as const, images: [], error: "Docker sandbox disabled by installation/setup preference." };
   const advisor = cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())
     ? state.modelRoles.executor
     : undefined;
@@ -321,9 +346,22 @@ async function recommendModels(): Promise<DesktopSnapshot> {
     machine,
     candidates,
     supportedRoles: ["executor", "planner", "evaluator", "vision", "embedding"],
+    installedDockerImages: docker.images.map((image) => image.alias),
     advisorModel: advisor,
     ...(advisor ? { invokeAdvisor: (prompt: string) => runtime.invokeAdvisor(advisor, prompt) } : {})
   });
+  if (publicCatalogWarning) {
+    activeRecommendation = {
+      ...activeRecommendation,
+      warnings: [publicCatalogWarning, ...activeRecommendation.warnings].slice(0, 10)
+    };
+  }
+  if (!docker.available) {
+    activeRecommendation = {
+      ...activeRecommendation,
+      warnings: [`O ambiente Docker não está habilitado ou disponível; o Companion seguirá sem ferramentas de comando e preview executável (${docker.error ?? "daemon indisponível"}).`, ...activeRecommendation.warnings].slice(0, 10)
+    };
+  }
   await store.update({ lastRecommendation: activeRecommendation });
   return publishSnapshot();
 }
@@ -341,7 +379,13 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
     cachedOllama = await runtime.ollamaStatus();
     hasCheckedOllama = true;
   }
-  return { ...store.snapshot(), ollama: cachedOllama, context: contextBrowser.snapshot(), running: runtime.running };
+  return {
+    ...store.snapshot(),
+    ollama: cachedOllama,
+    context: contextBrowser.snapshot(),
+    ollamaPublicCatalogLoaded: Boolean(publicOllamaCatalog),
+    running: runtime.running
+  };
 }
 
 async function publishSnapshot(refreshOllama = false): Promise<DesktopSnapshot> {
@@ -352,4 +396,9 @@ async function publishSnapshot(refreshOllama = false): Promise<DesktopSnapshot> 
 
 function publish(event: DesktopEvent): void {
   window?.webContents.send("companion:event", event);
+}
+
+function dockerSandboxInstallParameter(): boolean {
+  return process.argv.includes("--enable-docker-sandbox")
+    || process.env.LOCAL_COMPANION_DOCKER_SANDBOX === "1";
 }

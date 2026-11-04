@@ -143,13 +143,30 @@
       <div class="popover-head"><strong>Modelos Ollama</strong><button id="close-models">×</button></div>
       <section class="model-advisor">
         <div class="advisor-heading"><span><small>CONFIGURAÇÃO ADAPTATIVA</small><strong>Recomendação para esta máquina</strong></span><button id="recommend-models">Analisar</button></div>
+        <label class="catalog-opt-in"><input id="docker-sandbox-toggle" type="checkbox"><span>Disponibilizar ambiente Docker para comandos e aplicações</span></label>
+        <small class="catalog-status" id="docker-sandbox-status"></small>
         <label class="catalog-opt-in"><input id="public-catalog-toggle" type="checkbox"><span>Incluir catálogo público do projeto</span></label>
         <button class="text-action hidden" id="refresh-public-catalog">Atualizar catálogo agora</button>
+        <small class="catalog-status" id="public-catalog-status"></small>
+        <div class="advisor-progress hidden" id="advisor-progress" role="status" aria-live="assertive">
+          <span class="advisor-progress-mark" aria-hidden="true"></span>
+          <span><strong id="advisor-progress-title">Analisando máquina e modelos…</strong><small id="advisor-progress-detail">Mantenha esta janela aberta. A recomendação será exibida para revisão.</small></span>
+        </div>
         <div class="recommendation hidden" id="recommendation" aria-live="polite">
           <p id="recommendation-machine"></p>
           <div id="recommendation-roles"></div>
           <p id="recommendation-downloads"></p>
+          <div class="recommendation-docker hidden" id="recommendation-docker">
+            <strong>Sandbox Docker</strong>
+            <span id="recommendation-docker-image"></span>
+            <small id="recommendation-docker-reason"></small>
+            <code id="recommendation-docker-command"></code>
+          </div>
           <ul id="recommendation-warnings"></ul>
+          <details class="recommendation-candidates hidden" id="recommendation-candidates">
+            <summary>Modelos considerados</summary>
+            <div id="recommendation-candidate-list"></div>
+          </details>
           <div class="recommendation-actions">
             <button id="apply-recommendation">Aplicar configuração</button>
             <button id="pull-recommended">Baixar ausentes</button>

@@ -2,11 +2,19 @@ import * as os from "node:os";
 import { statfs } from "node:fs/promises";
 import { z } from "zod";
 import { OLLAMA_RECOMMENDED_SETUP, type OllamaCatalogEntry, type OllamaRole } from "./ollama-catalog";
+import {
+  dockerImageRecommendationCandidates,
+  dockerResourceLimits,
+  DOCKER_SANDBOX_PROXY_IMAGE,
+  type DockerExecutionRecommendation,
+  type DockerImageCandidate
+} from "./docker-recommendation";
 
 export type MachineProfile = {
   platform: NodeJS.Platform;
   architecture: string;
   totalMemoryGb: number;
+  cpuCount: number;
   availableDiskGb: number;
   acceleration: "apple-metal" | "cuda" | "cpu" | "unknown";
   ollamaVersion?: string;
@@ -40,6 +48,8 @@ export type OllamaRecommendationPlan = {
   downloadBytes: number;
   fitness: "comfortable" | "borderline";
   rationaleByRole: Partial<Record<OllamaRole, string>>;
+  consideredCandidates?: Partial<Record<OllamaRole, string[]>>;
+  docker: DockerExecutionRecommendation;
   warnings: string[];
 };
 
@@ -73,6 +83,8 @@ const recommendationResponseSchema = z.object({
     vision: z.string().max(128).optional(),
     embedding: z.string().max(128).optional()
   }).strict(),
+  dockerImage: z.string().max(256).optional(),
+  dockerRationale: z.string().max(600).optional(),
   rationaleByRole: z.record(z.string(), z.string().max(600)).default({}),
   warnings: z.array(z.string().max(600)).max(10).default([])
 }).strict();
@@ -87,6 +99,7 @@ export async function detectMachineProfile(diskPath: string, ollamaVersion?: str
     platform: process.platform,
     architecture: process.arch,
     totalMemoryGb: roundGb(os.totalmem()),
+    cpuCount: os.cpus().length,
     availableDiskGb,
     acceleration: detectAcceleration(process.platform, process.arch, process.env.CUDA_VISIBLE_DEVICES),
     ...(ollamaVersion?.trim() ? { ollamaVersion: ollamaVersion.trim().slice(0, 80) } : {})
@@ -147,16 +160,18 @@ export class OllamaRecommendationEngine {
     supportedRoles: readonly OllamaRole[];
     advisorModel?: string;
     invokeAdvisor?: (prompt: string) => Promise<string>;
+    installedDockerImages?: readonly string[];
   }): Promise<OllamaRecommendationPlan> {
     const eligible = eligibleCandidates(options.machine, options.candidates, options.supportedRoles);
-    const baseline = baselineRecommendation(options.machine, eligible, options.supportedRoles);
+    const dockerCandidates = dockerImageRecommendationCandidates(options.machine.architecture);
+    const baseline = baselineRecommendation(options.machine, eligible, options.supportedRoles, dockerCandidates, options.installedDockerImages ?? []);
     if (!options.advisorModel || !options.invokeAdvisor || !eligible.some((candidate) => candidate.installed && sameAlias(candidate.alias, options.advisorModel!))) {
       return baseline;
     }
     try {
-      const response = await options.invokeAdvisor(advisorPrompt(options.machine, eligible, options.supportedRoles));
+      const response = await options.invokeAdvisor(advisorPrompt(options.machine, eligible, options.supportedRoles, dockerCandidates, options.installedDockerImages ?? []));
       const parsed = recommendationResponseSchema.parse(JSON.parse(extractJson(response)) as unknown);
-      return validateAdvisorPlan(parsed, options.machine, eligible, options.supportedRoles, options.advisorModel);
+      return validateAdvisorPlan(parsed, options.machine, eligible, options.supportedRoles, options.advisorModel, dockerCandidates, options.installedDockerImages ?? []);
     } catch (error) {
       return {
         ...baseline,
@@ -166,7 +181,7 @@ export class OllamaRecommendationEngine {
   }
 }
 
-function baselineRecommendation(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[]): OllamaRecommendationPlan {
+function baselineRecommendation(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[], dockerCandidates: readonly DockerImageCandidate[], installedDockerImages: readonly string[]): OllamaRecommendationPlan {
   const roles: Partial<Record<OllamaRole, string>> = {};
   const rationale: Partial<Record<OllamaRole, string>> = {};
   for (const role of supportedRoles) {
@@ -180,7 +195,7 @@ function baselineRecommendation(machine: MachineProfile, candidates: readonly Ol
     }
   }
   if (!roles.executor) throw new Error("Nenhum executor Ollama compatível foi encontrado no catálogo.");
-  return finalizePlan("baseline", machine, roles as OllamaRoleConfiguration, candidates, rationale, ["Estimativa inicial; use Reanalyze with local model após instalar um executor compatível."]);
+  return finalizePlan("baseline", machine, roles as OllamaRoleConfiguration, candidates, rationale, ["Estimativa inicial; use Reanalyze with local model após instalar um executor compatível."], selectDockerImage(machine, dockerCandidates, installedDockerImages));
 }
 
 function validateAdvisorPlan(
@@ -188,7 +203,9 @@ function validateAdvisorPlan(
   machine: MachineProfile,
   candidates: readonly OllamaModelCandidate[],
   supportedRoles: readonly OllamaRole[],
-  advisorModel: string
+  advisorModel: string,
+  dockerCandidates: readonly DockerImageCandidate[],
+  installedDockerImages: readonly string[]
 ): OllamaRecommendationPlan {
   const roles: Partial<Record<OllamaRole, string>> = {};
   for (const role of supportedRoles) {
@@ -200,10 +217,11 @@ function validateAdvisorPlan(
   }
   if (!roles.executor) throw new Error("O advisor não escolheu um executor válido.");
   const rationale = Object.fromEntries(Object.entries(value.rationaleByRole).filter(([role]) => supportedRoles.includes(role as OllamaRole))) as Partial<Record<OllamaRole, string>>;
-  return { ...finalizePlan("advisor", machine, roles as OllamaRoleConfiguration, candidates, rationale, value.warnings), advisorModel };
+  const docker = selectDockerImage(machine, dockerCandidates, installedDockerImages, value.dockerImage, value.dockerRationale);
+  return { ...finalizePlan("advisor", machine, roles as OllamaRoleConfiguration, candidates, rationale, value.warnings, docker), advisorModel };
 }
 
-function finalizePlan(source: "baseline" | "advisor", machine: MachineProfile, roles: OllamaRoleConfiguration, candidates: readonly OllamaModelCandidate[], rationaleByRole: Partial<Record<OllamaRole, string>>, warnings: string[]): OllamaRecommendationPlan {
+function finalizePlan(source: "baseline" | "advisor", machine: MachineProfile, roles: OllamaRoleConfiguration, candidates: readonly OllamaModelCandidate[], rationaleByRole: Partial<Record<OllamaRole, string>>, warnings: string[], docker: DockerExecutionRecommendation): OllamaRecommendationPlan {
   const aliases = unique(Object.values(roles).filter((value): value is string => Boolean(value)));
   const selected = aliases.map((alias) => candidates.find((candidate) => sameAlias(candidate.alias, alias))!).filter(Boolean);
   const missing = selected.filter((candidate) => !candidate.installed);
@@ -216,6 +234,15 @@ function finalizePlan(source: "baseline" | "advisor", machine: MachineProfile, r
       ? ["O espaço livre detectado é menor que o total estimado dos downloads ausentes."]
       : [])
   ];
+  const consideredCandidates = Object.fromEntries((["executor", "planner", "evaluator", "vision", "embedding"] as const).flatMap((role) => {
+    const selectedAlias = roles[role];
+    const roleCandidates = candidates.filter((candidate) => candidate.roles.includes(role));
+    const selected = roleCandidates.filter((candidate) => sameAlias(candidate.alias, selectedAlias ?? ""));
+    const installed = roleCandidates.filter((candidate) => candidate.installed && !sameAlias(candidate.alias, selectedAlias ?? "")).slice(0, 4);
+    const available = roleCandidates.filter((candidate) => !candidate.installed && !sameAlias(candidate.alias, selectedAlias ?? "")).slice(0, 8);
+    const aliases = unique([...selected, ...installed, ...available].map((candidate) => candidate.alias)).slice(0, 12);
+    return aliases.length ? [[role, aliases]] : [];
+  })) as Partial<Record<OllamaRole, string[]>>;
   return {
     source,
     machineSummary: `${machine.architecture} · ${machine.totalMemoryGb} GB RAM · ${accelerationLabel(machine.acceleration)}${machine.ollamaVersion ? ` · Ollama ${machine.ollamaVersion}` : ""}`,
@@ -224,6 +251,8 @@ function finalizePlan(source: "baseline" | "advisor", machine: MachineProfile, r
     downloadBytes,
     fitness: largest <= comfortableBytes ? "comfortable" : "borderline",
     rationaleByRole,
+    consideredCandidates,
+    docker,
     warnings: unique([...warnings, ...compatibilityWarnings].map((warning) => warning.trim()).filter(Boolean)).slice(0, 10)
   };
 }
@@ -234,15 +263,54 @@ function eligibleCandidates(machine: MachineProfile, candidates: readonly Ollama
     && (candidate.roles.includes("embedding") || candidate.sizeBytes <= maxBytes || candidate.sizeBytes === 0));
 }
 
-function advisorPrompt(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[]): string {
+function advisorPrompt(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[], dockerCandidates: readonly DockerImageCandidate[], installedDockerImages: readonly string[]): string {
   return [
     "Recommend a balanced local Ollama model composition for a coding agent.",
-    "Choose aliases only from candidates. Do not invent facts or aliases. Prefer installed models when quality is comparable.",
-    "Return JSON only: {roles:{executor,planner?,evaluator?,vision?,embedding?},rationaleByRole:{...},warnings:[...]}",
+    "Choose aliases only from candidates. Do not invent facts or aliases.",
+    "Optimize role quality within the detected machine limits, not merely download size. Models run sequentially, so do not assume simultaneous memory use.",
+    "For planner and evaluator, compare reasoning-specialized candidates and prefer complementary specialists when they materially improve planning or independent review.",
+    "Use installed status only as a tiebreaker when role quality is genuinely comparable; explain when one model is intentionally reused across roles.",
+    "Also choose one general Docker execution image from Docker candidates. Installed status is a tiebreaker; do not invent an alias.",
+    "Return JSON only: {roles:{executor,planner?,evaluator?,vision?,embedding?},dockerImage?,dockerRationale?,rationaleByRole:{...},warnings:[...]}",
     `Machine: ${JSON.stringify(machine)}`,
     `Supported roles: ${JSON.stringify(supportedRoles)}`,
-    `Candidates: ${JSON.stringify(candidates.map(({ alias, sizeBytes, contextTokens, capabilities, roles, installed }) => ({ alias, sizeBytes, contextTokens, capabilities, roles, installed })))}`
+    `Candidates: ${JSON.stringify(candidates.map(({ alias, sizeBytes, contextTokens, capabilities, roles, installed }) => ({ alias, sizeBytes, contextTokens, capabilities, roles, installed })))}`,
+    `Docker candidates: ${JSON.stringify(dockerCandidates.map((candidate) => ({ ...candidate, installed: installedDockerImages.some((image) => sameAlias(image, candidate.alias)) })))}`
   ].join("\n").slice(0, 80_000);
+}
+
+function selectDockerImage(machine: MachineProfile, candidates: readonly DockerImageCandidate[], installedImages: readonly string[], requested?: string, rationale?: string): DockerExecutionRecommendation {
+  const limits = dockerResourceLimits(machine.totalMemoryGb, machine.cpuCount);
+  if (!candidates.length) {
+    return {
+      image: "unavailable",
+      installed: false,
+      rationale: "Nenhuma imagem de execução incorporada oferece suporte à arquitetura detectada.",
+      pullCommand: "",
+      proxyImage: DOCKER_SANDBOX_PROXY_IMAGE,
+      proxyInstalled: installedImages.some((image) => sameAlias(image, DOCKER_SANDBOX_PROXY_IMAGE)),
+      proxyPullCommand: `docker pull ${DOCKER_SANDBOX_PROXY_IMAGE}`,
+      ...limits
+    };
+  }
+  let selected: DockerImageCandidate | undefined;
+  if (requested) {
+    selected = candidates.find((candidate) => sameAlias(candidate.alias, requested));
+    if (!selected) throw new Error("O advisor escolheu uma imagem Docker ausente do catálogo incorporado.");
+  }
+  selected ??= candidates.find((candidate) => installedImages.some((image) => sameAlias(image, candidate.alias))) ?? candidates[0];
+  if (!selected) throw new Error("Nenhuma imagem Docker compatível foi encontrada.");
+  const installed = installedImages.some((image) => sameAlias(image, selected.alias));
+  return {
+    image: selected.alias,
+    installed,
+    rationale: rationale?.trim() || `${selected.purpose} Compatível com ${selected.architectures.join(" e ")}.`,
+    pullCommand: `docker pull ${selected.alias}`,
+    proxyImage: DOCKER_SANDBOX_PROXY_IMAGE,
+    proxyInstalled: installedImages.some((image) => sameAlias(image, DOCKER_SANDBOX_PROXY_IMAGE)),
+    proxyPullCommand: `docker pull ${DOCKER_SANDBOX_PROXY_IMAGE}`,
+    ...limits
+  };
 }
 
 function inferRoles(capabilities: readonly string[]): OllamaRole[] {

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import test from "node:test";
 import { resolveDesktopContextTarget } from "../desktop/context-policy";
 import { DesktopStateStore } from "../desktop/state-store";
+import { LocalProcessManager } from "../src/process-manager";
 import { readWorkspaceFile, resolveWritablePath, searchWorkspace, workspaceTree, writeWorkspaceFile } from "../desktop/workspace";
 
 test("desktop workspace operations remain inside the selected project", async () => {
@@ -32,13 +33,15 @@ test("desktop state migrates a single model and persists role configuration", as
     await writeFile(statePath, JSON.stringify({ model: "legacy-executor:7b", threads: [] }), "utf8");
     const store = await DesktopStateStore.open(statePath);
     assert.equal(store.snapshot().agentRuntime, "standard");
+    assert.equal(store.snapshot().dockerSandboxEnabled, false);
     assert.equal(store.snapshot().modelRoles.executor, "legacy-executor:7b");
     const thread = store.activeThread();
     await store.update({
       workspacePath: "/tmp/example",
       modelRoles: { executor: "qwen3-coder:30b", planner: "deepseek-r1:14b", evaluator: "gpt-oss:20b" },
       mode: "execute",
-      agentRuntime: "deep"
+      agentRuntime: "deep",
+      dockerSandboxEnabled: true
     });
     await store.appendMessage(thread.id, { id: "u1", role: "user", text: "Ajuste a validação", createdAt: 1 });
     await store.appendMessage(thread.id, {
@@ -55,6 +58,7 @@ test("desktop state migrates a single model and persists role configuration", as
     assert.equal(snapshot.modelRoles.planner, "deepseek-r1:14b");
     assert.equal(snapshot.mode, "execute");
     assert.equal(snapshot.agentRuntime, "deep");
+    assert.equal(snapshot.dockerSandboxEnabled, true);
     assert.equal(snapshot.threads[0]?.messages[0]?.text, "Ajuste a validação");
     assert.equal(snapshot.threads[0]?.messages[1]?.executionSteps?.[0]?.text, "Vou primeiro inspecionar o arquivo.");
   } finally {
@@ -90,14 +94,85 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   ]);
   assert.match(html, /Recomendação para esta máquina/);
   assert.match(html, /Incluir catálogo público do projeto/);
+  assert.match(html, /id="advisor-progress"/);
+  assert.match(html, /Modelos considerados/);
+  assert.match(html, /Sandbox Docker/);
   assert.match(renderer, /dataset\.roleModel = role/);
   assert.match(renderer, /applyRecommendation\(roles\)/);
+  assert.match(renderer, /setRecommendationBusy\(true/);
+  assert.match(renderer, /aria-busy/);
+  assert.match(renderer, /plan\.docker\.proxyImage/);
+  assert.match(renderer, /if \(!appState\.recommendationBusy\) el\["model-popover"\]/);
   assert.match(preload, /companion:recommend-models/);
   assert.match(main, /detectMachineProfile/);
+  assert.match(main, /state\.ollamaPublicCatalogEnabled && !publicOllamaCatalog/);
   assert.match(main, /supportedRoles: \["executor", "planner", "evaluator", "vision", "embedding"\]/);
   assert.match(runtime, /createModel\(options\.modelRoles\.executor, true\)/);
   assert.match(runtime, /options\.modelRoles\.evaluator \|\| options\.modelRoles\.executor/);
   assert.match(runtime, /options\.agentRuntime === "deep" && options\.modelRoles\.planner/);
+});
+
+test("managed Docker client processes retain a known loopback URL for readiness", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "local-companion-preview-"));
+  const script = path.join(root, "server.cjs");
+  const expectedUrl = "http://127.0.0.1:43123/";
+  const manager = new LocalProcessManager(async (url) => url === expectedUrl);
+  try {
+    await writeFile(script, [
+      `console.log(${JSON.stringify(expectedUrl)});`,
+      "setInterval(() => undefined, 1000);"
+    ].join("\n"), "utf8");
+    const started = await manager.start({ command: process.execPath, args: [script], cwd: root, knownUrls: [expectedUrl] });
+    const ready = await manager.waitForReady(started.id, undefined, 10_000, AbortSignal.timeout(12_000));
+    assert.equal(ready.ready, true);
+    assert.equal(ready.url, expectedUrl);
+    const stopped = await manager.stop(started.id);
+    assert.equal(stopped.state, "exited");
+  } finally {
+    manager.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("desktop wires opt-in Docker-only execution to a visible Context preview", async () => {
+  const [contracts, main, renderer, runtime, sandbox, stateStore, html, preload] = await Promise.all([
+    readFile(path.join(process.cwd(), "desktop", "contracts.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "main.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "renderer", "renderer.js"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "runtime.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "docker-sandbox.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "state-store.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "renderer", "index.html"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "preload.ts"), "utf8")
+  ]);
+  assert.match(runtime, /name: "list_sandbox_images"/);
+  assert.match(runtime, /name: "run_sandbox_command"/);
+  assert.match(runtime, /name: "start_sandbox_application"/);
+  assert.match(runtime, /name: "wait_for_sandbox_application"/);
+  assert.match(runtime, /name: "open_sandbox_preview"/);
+  assert.doesNotMatch(runtime, /name: "start_local_process"/);
+  assert.doesNotMatch(runtime, /name: "run_command"/);
+  assert.match(runtime, /dockerSandboxEnabled/);
+  assert.match(runtime, /tools\.filter\(\(candidate\) => !candidate\.name\.includes\("sandbox"\)\)/);
+  assert.match(runtime, /never attempt a native-host fallback/);
+  assert.match(runtime, /evaluateCommandPolicy\(executable, args\)/);
+  assert.match(runtime, /dockerSandbox\.dispose\(\)/);
+  assert.match(sandbox, /"--cap-drop", "ALL"/);
+  assert.match(sandbox, /"--security-opt", "no-new-privileges:true"/);
+  assert.match(sandbox, /"--network", "none"/);
+  assert.match(sandbox, /"--internal", SANDBOX_NETWORK/);
+  assert.match(sandbox, /127\.0\.0\.1:\$\{hostPort\}/);
+  assert.doesNotMatch(sandbox, /docker\.sock/);
+  assert.match(main, /contextBrowser\.open\(url\)/);
+  assert.match(main, /type: "context-focus"/);
+  assert.match(contracts, /type: "context-focus"/);
+  assert.match(renderer, /event\.type === "context-focus"/);
+  assert.match(renderer, /setDockerSandbox/);
+  assert.match(html, /Disponibilizar ambiente Docker/);
+  assert.match(preload, /companion:set-docker-sandbox/);
+  assert.match(stateStore, /dockerSandboxEnabled: stored\.dockerSandboxEnabled === true/);
+  assert.match(main, /--enable-docker-sandbox/);
+  assert.match(main, /LOCAL_COMPANION_DOCKER_SANDBOX/);
 });
 
 test("desktop keeps streaming stable and projects LangChain tool progress", async () => {

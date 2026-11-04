@@ -7,5 +7,5 @@
     "rootDir": ".",
     "sourceMap": true
   },
-  "include": ["src/litellm.ts", "test/**/*.ts"]
+  "include": ["src/litellm.ts", "desktop/docker-sandbox.ts", "test/**/*.ts"]
 }

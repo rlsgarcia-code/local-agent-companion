@@ -30,6 +30,7 @@ export type DesktopState = {
   workspacePath: string;
   modelRoles: OllamaRoleConfiguration;
   ollamaPublicCatalogEnabled: boolean;
+  dockerSandboxEnabled: boolean;
   lastRecommendation?: OllamaRecommendationPlan;
   mode: DesktopRunMode;
   agentRuntime: DesktopAgentRuntime;
@@ -85,6 +86,7 @@ export type DesktopSnapshot = DesktopState & {
     error?: string;
   };
   context: DesktopContextSnapshot;
+  ollamaPublicCatalogLoaded: boolean;
   running: boolean;
 };
 
@@ -111,6 +113,7 @@ export type DesktopEvent =
   | { type: "assistant-complete"; threadId: string; message: DesktopMessage; changes: DesktopChange[] }
   | { type: "activity"; activity: DesktopActivity }
   | { type: "context-snapshot"; snapshot: DesktopContextSnapshot }
+  | { type: "context-focus"; url: string }
   | { type: "run-error"; threadId: string; message: string }
   | { type: "run-done"; threadId: string };
 

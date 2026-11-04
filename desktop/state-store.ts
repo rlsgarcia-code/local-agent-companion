@@ -29,6 +29,7 @@ export class DesktopStateStore {
       workspacePath: typeof stored.workspacePath === "string" ? stored.workspacePath : "",
       modelRoles: normalizeModelRoles(stored.modelRoles, stored.model),
       ollamaPublicCatalogEnabled: stored.ollamaPublicCatalogEnabled === true,
+      dockerSandboxEnabled: stored.dockerSandboxEnabled === true,
       ...(isRecommendationPlan(stored.lastRecommendation) ? { lastRecommendation: stored.lastRecommendation } : {}),
       mode: parseMode(stored.mode),
       agentRuntime: parseAgentRuntime(stored.agentRuntime),
@@ -51,7 +52,7 @@ export class DesktopStateStore {
     return thread;
   }
 
-  public async update(values: Partial<Pick<DesktopState, "workspacePath" | "modelRoles" | "ollamaPublicCatalogEnabled" | "lastRecommendation" | "mode" | "agentRuntime" | "activeThreadId">>): Promise<void> {
+  public async update(values: Partial<Pick<DesktopState, "workspacePath" | "modelRoles" | "ollamaPublicCatalogEnabled" | "dockerSandboxEnabled" | "lastRecommendation" | "mode" | "agentRuntime" | "activeThreadId">>): Promise<void> {
     this.state = { ...this.state, ...values };
     await this.save();
   }

@@ -452,6 +452,7 @@
     "test:extension-host": "npm run build && npm run compile:extension-host-tests && node scripts/run-extension-host-tests.mjs",
     "test:vsix-install": "npm run compile:extension-host-tests && node scripts/run-vsix-install-tests.mjs",
     "smoke:litellm": "npm run compile:tests && node scripts/smoke-litellm-routing.mjs",
+    "smoke:desktop-preview": "npm run compile:tests && node scripts/smoke-desktop-preview.mjs",
     "catalog:update": "node scripts/update-litellm-catalog.mjs",
     "smoke:chroma": "node scripts/smoke-chroma-lifecycle.mjs",
     "audit:prod": "node scripts/audit-production.mjs",

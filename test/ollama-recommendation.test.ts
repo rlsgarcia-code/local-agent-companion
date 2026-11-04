@@ -16,6 +16,7 @@ const machine: MachineProfile = {
   platform: "darwin",
   architecture: "arm64",
   totalMemoryGb: 32,
+  cpuCount: 10,
   availableDiskGb: 100,
   acceleration: "apple-metal",
   ollamaVersion: "0.4.0"
@@ -51,6 +52,12 @@ test("recommendation uses a declared baseline when no local advisor is usable", 
   });
   assert.equal(plan.source, "baseline");
   assert.ok(plan.roles.executor);
+  assert.equal(plan.docker.image, "node:22-bookworm-slim");
+  assert.equal(plan.docker.installed, false);
+  assert.equal(plan.docker.pullCommand, "docker pull node:22-bookworm-slim");
+  assert.equal(plan.docker.proxyImage, "alpine/socat:1.8.0.3");
+  assert.equal(plan.docker.memoryLimitGb, 8);
+  assert.equal(plan.docker.cpuLimit, 4);
   assert.ok(plan.warnings.some((warning) => warning.includes("Estimativa")));
 });
 
@@ -64,11 +71,14 @@ test("advisor selects only compatible catalog aliases and receives anonymous fac
     machine,
     candidates,
     supportedRoles: ["executor", "planner", "evaluator"],
+    installedDockerImages: ["python:3.13-slim"],
     advisorModel: "qwen3-coder:30b",
     invokeAdvisor: async (value) => {
       prompt = value;
       return JSON.stringify({
         roles: { executor: "qwen3-coder:30b", planner: "deepseek-r1:14b", evaluator: "deepseek-r1:14b" },
+        dockerImage: "python:3.13-slim",
+        dockerRationale: "Already installed and suitable for local HTTP applications.",
         rationaleByRole: { executor: "Installed coding model.", planner: "Reasoning model.", evaluator: "Independent review." },
         warnings: []
       });
@@ -76,6 +86,14 @@ test("advisor selects only compatible catalog aliases and receives anonymous fac
   });
   assert.equal(plan.source, "advisor");
   assert.equal(plan.roles.planner, "deepseek-r1:14b");
+  assert.equal(plan.docker.image, "python:3.13-slim");
+  assert.equal(plan.docker.installed, true);
+  assert.equal(plan.docker.proxyInstalled, false);
+  assert.ok(plan.consideredCandidates?.planner?.includes("deepseek-r1:32b"));
+  assert.ok(plan.consideredCandidates?.planner?.includes("gpt-oss:20b"));
+  assert.match(prompt, /installed status only as a tiebreaker/i);
+  assert.match(prompt, /complementary specialists/i);
+  assert.match(prompt, /Docker candidates/i);
   assert.doesNotMatch(prompt, /workspace|conversation|\/Users\//i);
 });
 

@@ -118,23 +118,37 @@ O repositório também contém um aplicativo macOS independente do VS Code. Essa
 
 O aplicativo oferece conversas persistidas no diretório privado da aplicação, seleção de modelos instalados, download opcional por `ollama pull`, streaming, cancelamento, timeline de atividade e escolha independente de runtime. A resposta corrente permanece estável durante o stream; falas intermediárias anteriores a ferramentas ou novas iterações são preservadas no grupo recolhível **Etapas da execução**, evitando tanto perda de contexto quanto excesso de mensagens abertas. A conversa rola de forma independente, mantendo o compositor e o painel de atividade dentro da janela mesmo em respostas longas.
 
-Em **Modelos Ollama**, **Recomendação para esta máquina** detecta somente plataforma, arquitetura, memória, espaço livre, aceleração, versão local do Ollama e modelos instalados. Hostname, usuário, serial, projeto e conversas não entram na análise. O executor instalado pode atuar como advisor local via `ChatOpenAICompletions`; sem ele, o aplicativo apresenta uma estimativa inicial claramente identificada. A revisão mostra executor, planner, evaluator, vision e embedding, downloads ausentes, tamanho estimado e alertas. **Aplicar configuração** não baixa nada; **Baixar ausentes** é uma ação separada.
+Em **Modelos Ollama**, **Recomendação para esta máquina** detecta somente plataforma, arquitetura, memória, espaço livre, aceleração, versão local do Ollama e modelos instalados. Hostname, usuário, serial, projeto e conversas não entram na análise. O executor instalado pode atuar como advisor local via `ChatOpenAICompletions`; sem ele, o aplicativo apresenta uma estimativa inicial claramente identificada. Durante a chamada, o painel permanece aberto, apresenta progresso e bloqueia os controles que alterariam a seleção. A revisão mostra executor, planner, evaluator, vision e embedding, downloads ausentes, tamanho estimado, alertas e uma seção recolhível com os modelos considerados por papel. **Aplicar configuração** não baixa nada; **Baixar ausentes** é uma ação separada. Quando o opt-in do catálogo público está marcado, a primeira análise da sessão o carrega automaticamente; **Atualizar catálogo agora** força um novo GET manual.
 
 O estado antigo com um único modelo é migrado automaticamente para o papel `executor`. No Deep Agent, o `planner` produz orientação limitada antes da execução e o `evaluator` alimenta o gate final; quando ausentes, ambos recorrem ao executor. Os modelos são chamados em sequência para reduzir pressão de memória.
 
 O painel lateral também alterna para **Contexto visual**. Nele, o usuário pode abrir abas de `localhost`, informar uma URL HTTPS ou escrever uma pesquisa livre. Páginas locais funcionam sem ampliar permissões; internet começa bloqueada, precisa ser ativada explicitamente e cada domínio público é aprovado em uma caixa nativa antes da navegação. Abas e autorizações existem apenas durante a sessão.
 
+O ambiente Docker é uma capacidade opcional e começa desativado. Pode ser habilitado no setup em **Modelos Ollama → Disponibilizar ambiente Docker** ou pelo parâmetro de primeira inicialização `--enable-docker-sandbox`; `LOCAL_COMPANION_DOCKER_SANDBOX=1` oferece o equivalente para implantação automatizada. A escolha é persistida no armazenamento privado da aplicação. Sem essa opção, o Companion continua lendo, analisando e editando arquivos, mas não recebe ferramentas de comando ou execução de aplicações — e nunca recorre silenciosamente ao host.
+
+Quando o usuário pede para executar ou visualizar uma aplicação com a capacidade habilitada, o desktop exige Docker e inicia o comando em um contêiner endurecido, sem shell e somente após aprovação. O workspace é o único volume do projeto, montado em `/workspace`; o contêiner não recebe o home do usuário, o socket Docker, capacidades Linux ou rede externa. Servidores usam uma rede Docker interna e somente uma porta aleatória em `127.0.0.1` é publicada. O agente espera essa URL responder antes de declará-la pronta e abre a página automaticamente, de forma visível, no painel **Contexto**.
+
+O isolamento combina camadas diferentes: os tools de arquivo resolvem caminhos e symlinks dentro do workspace; o Deep Agent monta essa pasta virtualmente como `/workspace`; comandos e aplicações do desktop passam pela política local e depois pelo sandbox Docker com limites de CPU, memória e processos; e o navegador usa o sandbox do Chromium sem Node, permissões ou downloads. Cada execução e encerramento continua sujeito à aprovação explícita. Docker e ao menos uma imagem compatível precisam estar instalados pelo usuário; o setup adaptativo recomenda uma imagem para a arquitetura detectada, informa se ela já está disponível e mostra o comando de pull, mas nunca baixa uma imagem silenciosamente.
+
 Uma página só entra no pedido quando o usuário marca **Usar no agente**. No máximo três abas são anexadas, com limites de texto por página e total. O conteúdo visível é tratado como dado externo não confiável, não como instrução, e não é gravado no histórico da conversa. Essa seleção permite combinar código local com documentação, uma aplicação em desenvolvimento ou resultados de pesquisa sem conceder navegação invisível ao agente.
 
 **Agente padrão** usa `createAgent` para trabalho direto e focado; **Deep Agent** usa `createDeepAgent`, planejamento nativo, filesystem virtual em `/workspace`, compactação de contexto e subagentes para tarefas multietapa. Alternar o runtime não altera automaticamente as permissões e mantém checkpoints separados para não misturar estados incompatíveis na mesma conversa.
 
-Os três modos de autonomia continuam ortogonais ao runtime. No modo **Plano**, somente ferramentas de leitura ficam disponíveis; no modo **Revisar**, cada alteração e comando pede aprovação; no modo **Auto edits**, edições confinadas ao workspace são automáticas e comandos continuam exigindo aprovação. Comandos são executados diretamente, sem `shell: true`, e recebem somente um ambiente local reduzido.
+Os três modos de autonomia continuam ortogonais ao runtime. No modo **Plano**, somente ferramentas de leitura ficam disponíveis; no modo **Revisar**, cada alteração e comando pede aprovação; no modo **Auto edits**, edições confinadas ao workspace são automáticas e comandos continuam exigindo aprovação. Quando habilitados, comandos são enviados diretamente ao Docker sem `shell: true`; quando desabilitados, as ferramentas correspondentes nem entram no grafo LangChain.
 
 Para abrir em desenvolvimento no macOS:
 
 ```bash
 npm install
 npm run desktop:dev
+```
+
+Para habilitar Docker já na primeira inicialização do aplicativo instalado:
+
+```bash
+open -a "Local Companion" --args --enable-docker-sandbox
+# ou, para implantação automatizada/primeiro start:
+LOCAL_COMPANION_DOCKER_SANDBOX=1 "/Applications/Local Companion.app/Contents/MacOS/Local Companion"
 ```
 
 Para gerar os aplicativos Apple Silicon e Intel, além dos respectivos DMGs e ZIPs:

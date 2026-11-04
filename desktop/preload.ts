@@ -22,6 +22,7 @@ const api = {
   refreshOllama: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:refresh-ollama"),
   recommendModels: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:recommend-models"),
   setPublicOllamaCatalog: (enabled: boolean): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-public-ollama-catalog", enabled),
+  setDockerSandbox: (enabled: boolean): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-docker-sandbox", enabled),
   refreshPublicOllamaCatalog: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:refresh-public-ollama-catalog"),
   applyRecommendation: (roles: Record<string, string>): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:apply-recommendation", roles),
   pullRecommended: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:pull-recommended"),

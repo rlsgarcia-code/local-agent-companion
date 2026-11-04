@@ -238,6 +238,16 @@ button { color: inherit; }
 .catalog-opt-in { display: flex; align-items: center; gap: 7px; margin-top: 11px; color: var(--muted); font-size: 9px; }
 .catalog-opt-in input { accent-color: var(--accent); }
 .text-action { margin: 6px 0 0 20px; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 8px; cursor: pointer; }
+.catalog-status { display: block; margin: 5px 0 0 20px; color: var(--quiet); font-size: 8px; line-height: 1.4; }
+.advisor-progress { display: flex; align-items: center; gap: 10px; margin-top: 11px; padding: 10px 0 1px; border-top: 1px solid var(--line); }
+.advisor-progress > span:last-child { min-width: 0; }
+.advisor-progress strong, .advisor-progress small { display: block; }
+.advisor-progress strong { color: var(--text); font-size: 10px; }
+.advisor-progress small { margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.advisor-progress-mark { flex: 0 0 15px; width: 15px; height: 15px; border: 2px solid rgba(215,255,71,.18); border-top-color: var(--accent); border-radius: 50%; animation: advisor-spin .8s linear infinite; }
+.popover.is-recommending .model-list, .popover.is-recommending .pull-form, .popover.is-recommending .section-divider { opacity: .32; pointer-events: none; }
+.popover.is-recommending .popover-head button { opacity: .35; cursor: wait; }
+.popover.is-recommending .model-advisor { border-color: rgba(215,255,71,.28); }
 .recommendation { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line); }
 .recommendation > p { margin: 0 0 8px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .recommendation-role { display: grid; grid-template-columns: 68px 1fr; gap: 2px 8px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.035); }
@@ -246,9 +256,19 @@ button { color: inherit; }
 .recommendation-role input:focus { border-color: var(--accent); }
 .recommendation-role small { grid-column: 2; color: var(--quiet); font-size: 8px; line-height: 1.35; }
 .recommendation ul { margin: 7px 0; padding-left: 16px; color: var(--quiet); font-size: 8px; line-height: 1.45; }
+.recommendation-candidates { margin: 8px 0; border-top: 1px solid rgba(255,255,255,.035); color: var(--muted); font-size: 8px; }
+.recommendation-candidates summary { padding: 8px 0 4px; color: var(--muted); cursor: pointer; }
+.recommendation-candidate-row { display: grid; grid-template-columns: 68px 1fr; gap: 8px; padding: 4px 0; }
+.recommendation-candidate-row strong { color: var(--quiet); font-weight: 600; }
+.recommendation-candidate-row span { overflow-wrap: anywhere; color: var(--muted); font-family: ui-monospace, monospace; line-height: 1.4; }
 .recommendation-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .recommendation-actions button:first-child { border-color: rgba(215,255,71,.35); color: var(--accent); }
 .recommendation-actions button:disabled { opacity: .35; cursor: default; }
+.recommendation-docker { display: grid; grid-template-columns: 68px 1fr; gap: 3px 8px; margin-top: 8px; padding: 7px 0; border-top: 1px solid rgba(255,255,255,.035); }
+.recommendation-docker strong { color: var(--muted); font-size: 9px; }
+.recommendation-docker span { color: var(--text); font: 9px ui-monospace, monospace; }
+.recommendation-docker small, .recommendation-docker code { grid-column: 2; color: var(--quiet); font-size: 8px; line-height: 1.4; overflow-wrap: anywhere; }
+.recommendation-docker code { color: var(--accent); user-select: text; }
 .section-divider { margin: 10px 8px 4px; }
 .model-list { max-height: 270px; overflow: auto; }
 .model-option { width: 100%; display: flex; justify-content: space-between; padding: 9px; border: 0; border-radius: 7px; background: transparent; text-align: left; cursor: pointer; }
@@ -285,6 +305,7 @@ button { color: inherit; }
 @keyframes activity-in { from { opacity: 0; transform: translateY(-3px); } }
 @keyframes activity-pulse { 50% { opacity: .65; } }
 @keyframes context-in { from { opacity: 0; transform: translateX(5px); } }
+@keyframes advisor-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 1180px) {
   :root { --inspector: 270px; --sidebar: 220px; }

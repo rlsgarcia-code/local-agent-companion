@@ -4,7 +4,8 @@ const appState = {
   changes: [],
   draftMessages: new Map(),
   approval: null,
-  inspectorMode: "activity"
+  inspectorMode: "activity",
+  recommendationBusy: false
 };
 
 const SCROLL_STICK_THRESHOLD = 48;
@@ -25,8 +26,11 @@ const el = Object.fromEntries([
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
   "model-popover", "close-models", "model-list", "pull-model-input", "pull-model-button", "pull-progress",
-  "recommend-models", "public-catalog-toggle", "refresh-public-catalog", "recommendation", "recommendation-machine",
-  "recommendation-roles", "recommendation-downloads", "recommendation-warnings", "apply-recommendation", "pull-recommended", "reanalyze-models",
+  "recommend-models", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
+  "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
+  "recommendation-roles", "recommendation-downloads", "recommendation-warnings", "recommendation-candidates",
+  "recommendation-docker", "recommendation-docker-image", "recommendation-docker-reason", "recommendation-docker-command",
+  "recommendation-candidate-list", "apply-recommendation", "pull-recommended", "reanalyze-models",
   "approval-modal", "approval-title", "approval-detail", "deny-approval", "allow-approval", "toast"
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -49,6 +53,7 @@ function handleEvent(event) {
   let conversationEffect = null;
   if (event.type === "snapshot") appState.snapshot = event.snapshot;
   if (event.type === "context-snapshot") appState.snapshot.context = event.snapshot;
+  if (event.type === "context-focus") appState.inspectorMode = "context";
   if (event.type === "run-start") {
     appState.activities = [];
     appState.changes = [];
@@ -383,8 +388,17 @@ function renderInspector() {
 function renderRecommendation() {
   const snapshot = appState.snapshot;
   const plan = snapshot.lastRecommendation;
+  el["docker-sandbox-toggle"].checked = Boolean(snapshot.dockerSandboxEnabled);
+  el["docker-sandbox-status"].textContent = snapshot.dockerSandboxEnabled
+    ? "Ativo: comandos usam somente Docker; não existe fallback nativo."
+    : "Desativado: análise e edição continuam disponíveis, sem execução de comandos.";
   el["public-catalog-toggle"].checked = Boolean(snapshot.ollamaPublicCatalogEnabled);
   el["refresh-public-catalog"].classList.toggle("hidden", !snapshot.ollamaPublicCatalogEnabled);
+  el["public-catalog-status"].textContent = !snapshot.ollamaPublicCatalogEnabled
+    ? "Somente catálogo incorporado e modelos instalados."
+    : snapshot.ollamaPublicCatalogLoaded
+      ? "Catálogo público carregado nesta sessão."
+      : "Será carregado ao analisar; use Atualizar para forçar um novo GET."
   el.recommendation.classList.toggle("hidden", !plan);
   if (!plan) return;
   el["recommendation-machine"].textContent = `${plan.machineSummary} · ${plan.source === "advisor" ? `análise por ${plan.advisorModel}` : "estimativa inicial"}`;
@@ -406,10 +420,60 @@ function renderRecommendation() {
   el["recommendation-downloads"].textContent = plan.requiredPulls.length
     ? `${plan.requiredPulls.length} ausente(s) · ${formatBytes(plan.downloadBytes)} de download estimado`
     : "Todos os modelos recomendados já estão instalados.";
+  el["recommendation-docker"].classList.toggle("hidden", !plan.docker);
+  if (plan.docker) {
+    el["recommendation-docker-image"].textContent = `${plan.docker.image} · ${plan.docker.installed ? "instalada" : "ausente"}`;
+    el["recommendation-docker-reason"].textContent = `${plan.docker.rationale} Limite adaptativo: ${plan.docker.memoryLimitGb} GB RAM e ${plan.docker.cpuLimit} CPU. Gateway loopback: ${plan.docker.proxyImage} (${plan.docker.proxyInstalled ? "instalado" : "ausente"}).`;
+    const commands = [
+      ...(plan.docker.installed ? [] : [plan.docker.pullCommand]),
+      ...(plan.docker.proxyInstalled ? [] : [plan.docker.proxyPullCommand])
+    ];
+    el["recommendation-docker-command"].textContent = commands.length ? commands.join(" · ") : "Pronta para execução";
+  }
   el["recommendation-warnings"].replaceChildren(...(plan.warnings || []).map((warning) => {
     const item = document.createElement("li"); item.textContent = warning; return item;
   }));
+  const considered = Object.entries(plan.consideredCandidates || {}).filter(([, aliases]) => Array.isArray(aliases) && aliases.length);
+  el["recommendation-candidates"].classList.toggle("hidden", !considered.length);
+  el["recommendation-candidate-list"].replaceChildren(...considered.map(([role, aliases]) => {
+    const row = document.createElement("div");
+    row.className = "recommendation-candidate-row";
+    const label = document.createElement("strong");
+    label.textContent = labels[role] || role;
+    const values = document.createElement("span");
+    values.textContent = aliases.join(" · ");
+    row.append(label, values);
+    return row;
+  }));
   el["pull-recommended"].disabled = !plan.requiredPulls.length;
+}
+
+function setRecommendationBusy(busy, title = "Analisando máquina e modelos…") {
+  appState.recommendationBusy = busy;
+  el["model-popover"].classList.toggle("is-recommending", busy);
+  el["model-popover"].setAttribute("aria-busy", String(busy));
+  el["advisor-progress"].classList.toggle("hidden", !busy);
+  el["advisor-progress-title"].textContent = title;
+  el["recommend-models"].textContent = busy ? "Analisando…" : "Analisar";
+  for (const control of ["recommend-models", "reanalyze-models", "refresh-public-catalog", "public-catalog-toggle", "docker-sandbox-toggle", "apply-recommendation", "pull-recommended", "close-models"]) {
+    el[control].disabled = busy;
+  }
+  if (!busy && appState.snapshot?.lastRecommendation) {
+    el["pull-recommended"].disabled = !appState.snapshot.lastRecommendation.requiredPulls.length;
+  }
+}
+
+async function runRecommendation(title = "Analisando máquina e modelos…", action = () => window.companion.recommendModels()) {
+  if (appState.recommendationBusy) return;
+  setRecommendationBusy(true, title);
+  try {
+    appState.snapshot = await action();
+    render();
+  } catch (error) {
+    showError(error?.message || String(error));
+  } finally {
+    setRecommendationBusy(false);
+  }
 }
 
 function renderContext() {
@@ -596,8 +660,12 @@ el["inspector-resizer"].addEventListener("pointerdown", (event) => {
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", stop);
 });
-el["model-button"].addEventListener("click", () => el["model-popover"].classList.toggle("hidden"));
-el["close-models"].addEventListener("click", () => el["model-popover"].classList.add("hidden"));
+el["model-button"].addEventListener("click", () => {
+  if (!appState.recommendationBusy) el["model-popover"].classList.toggle("hidden");
+});
+el["close-models"].addEventListener("click", () => {
+  if (!appState.recommendationBusy) el["model-popover"].classList.add("hidden");
+});
 el["runtime-button"].addEventListener("click", () => el["runtime-popover"].classList.toggle("hidden"));
 el["close-runtimes"].addEventListener("click", () => el["runtime-popover"].classList.add("hidden"));
 document.querySelectorAll("[data-runtime]").forEach((button) => button.addEventListener("click", async () => {
@@ -610,21 +678,18 @@ el["pull-model-button"].addEventListener("click", async () => {
   try { appState.snapshot = await window.companion.pullModel(el["pull-model-input"].value.trim()); render(); }
   catch (error) { showError(error.message || String(error)); }
 });
-el["recommend-models"].addEventListener("click", async () => {
-  try { appState.snapshot = await window.companion.recommendModels(); render(); }
-  catch (error) { showError(error); }
-});
-el["reanalyze-models"].addEventListener("click", async () => {
-  try { appState.snapshot = await window.companion.recommendModels(); render(); }
-  catch (error) { showError(error); }
-});
+el["recommend-models"].addEventListener("click", () => runRecommendation());
+el["reanalyze-models"].addEventListener("click", () => runRecommendation("Reanalisando com o modelo local…"));
 el["public-catalog-toggle"].addEventListener("change", async () => {
   try { appState.snapshot = await window.companion.setPublicOllamaCatalog(el["public-catalog-toggle"].checked); render(); }
   catch (error) { showError(error); }
 });
+el["docker-sandbox-toggle"].addEventListener("change", async () => {
+  try { appState.snapshot = await window.companion.setDockerSandbox(el["docker-sandbox-toggle"].checked); render(); }
+  catch (error) { el["docker-sandbox-toggle"].checked = !el["docker-sandbox-toggle"].checked; showError(error); }
+});
 el["refresh-public-catalog"].addEventListener("click", async () => {
-  try { appState.snapshot = await window.companion.refreshPublicOllamaCatalog(); render(); }
-  catch (error) { showError(error); }
+  await runRecommendation("Atualizando catálogo e analisando…", () => window.companion.refreshPublicOllamaCatalog());
 });
 el["apply-recommendation"].addEventListener("click", async () => {
   const roles = Object.fromEntries([...el["recommendation-roles"].querySelectorAll("[data-role-model]")]
