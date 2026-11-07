@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import type { DesktopAgentRuntime, DesktopMessage, DesktopRunMode, DesktopState, DesktopThread } from "./contracts";
-import type { OllamaRecommendationPlan, OllamaRoleConfiguration } from "../src/ollama-recommendation";
+import type { DesktopAgentRuntime, DesktopMessage, DesktopRunMode, DesktopRunOutputs, DesktopState, DesktopThread } from "./contracts";
+import { redactSensitiveText } from "../src/redaction";
+import {
+  OLLAMA_RECOMMENDATION_SCHEMA_VERSION,
+  type OllamaRecommendationPlan,
+  type OllamaRoleConfiguration
+} from "../src/ollama-recommendation";
 
 const DEFAULT_MODEL = "qwen3-coder:30b";
 const MAX_EXECUTION_STEPS = 60;
@@ -65,6 +70,12 @@ export class DesktopStateStore {
     return structuredClone(thread);
   }
 
+  public async toggleThreadPinned(threadId: string): Promise<void> {
+    const thread = this.thread(threadId);
+    thread.pinned = !thread.pinned;
+    await this.save();
+  }
+
   public async appendMessage(threadId: string, message: DesktopThread["messages"][number]): Promise<void> {
     const thread = this.thread(threadId);
     thread.messages.push(message);
@@ -113,7 +124,8 @@ function normalizeModelRoles(value: unknown, legacyModel: unknown): OllamaRoleCo
 function isRecommendationPlan(value: unknown): value is OllamaRecommendationPlan {
   if (!value || typeof value !== "object") return false;
   const record = value as Partial<OllamaRecommendationPlan>;
-  return (record.source === "baseline" || record.source === "advisor")
+  return record.schemaVersion === OLLAMA_RECOMMENDATION_SCHEMA_VERSION
+    && (record.source === "baseline" || record.source === "advisor")
     && Boolean(record.roles && typeof record.roles.executor === "string")
     && Array.isArray(record.requiredPulls)
     && Array.isArray(record.warnings);
@@ -148,7 +160,8 @@ function normalizeThreads(value: unknown): DesktopThread[] {
       title: typeof record.title === "string" ? record.title : "Conversa",
       messages: record.messages.flatMap(normalizeMessage),
       createdAt: typeof record.createdAt === "number" ? record.createdAt : Date.now(),
-      updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : Date.now()
+      updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : Date.now(),
+      ...(record.pinned === true ? { pinned: true } : {})
     }];
   }).slice(0, 100);
 }
@@ -169,12 +182,69 @@ function normalizeMessage(value: unknown): DesktopMessage[] {
         }];
       }).slice(-MAX_EXECUTION_STEPS)
     : undefined;
+  const outputs = normalizeRunOutputs(message.outputs);
   return [{
     id: typeof message.id === "string" ? message.id : randomUUID(),
     role: message.role,
     text: message.text,
     createdAt: typeof message.createdAt === "number" ? message.createdAt : Date.now(),
     ...(message.status === "complete" || message.status === "streaming" || message.status === "failed" ? { status: message.status } : {}),
-    ...(executionSteps?.length ? { executionSteps } : {})
+    ...(executionSteps?.length ? { executionSteps } : {}),
+    ...(outputs ? { outputs } : {})
   }];
+}
+
+function normalizeRunOutputs(value: unknown): DesktopRunOutputs | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Partial<DesktopRunOutputs>;
+  const boundedCount = (candidate: unknown): number => typeof candidate === "number" && Number.isFinite(candidate)
+    ? Math.max(0, Math.min(10_000, Math.round(candidate)))
+    : 0;
+  const previewUrls = Array.isArray(record.previewUrls)
+    ? record.previewUrls.filter((url): url is string => typeof url === "string" && /^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/|$)/i.test(url)).slice(0, 8)
+    : [];
+  const changes = Array.isArray(record.changes)
+    ? record.changes.flatMap((change) => {
+        if (!change || typeof change !== "object") return [];
+        const item = change as { path?: unknown; kind?: unknown };
+        if (typeof item.path !== "string" || !["created", "modified", "deleted"].includes(String(item.kind))) return [];
+        return [{ path: item.path.slice(0, 1_000), kind: item.kind as "created" | "modified" | "deleted" }];
+      }).slice(0, 500)
+    : [];
+  const commands = Array.isArray(record.commands)
+    ? record.commands.flatMap((command) => {
+        if (!command || typeof command !== "object") return [];
+        const item = command as { title?: unknown; detail?: unknown; status?: unknown };
+        if (typeof item.title !== "string" || !["complete", "failed"].includes(String(item.status))) return [];
+        return [{
+          title: redactSensitiveText(item.title).slice(0, 300),
+          ...(typeof item.detail === "string" ? { detail: redactSensitiveText(item.detail).slice(0, 2_000) } : {}),
+          status: item.status as "complete" | "failed"
+        }];
+      }).slice(0, 100)
+    : [];
+  const activities = Array.isArray(record.activities)
+    ? record.activities.flatMap((activity) => {
+        if (!activity || typeof activity !== "object") return [];
+        const item = activity as { kind?: unknown; title?: unknown; detail?: unknown; status?: unknown };
+        const kinds = ["context", "read", "search", "edit", "command", "thinking", "verification"];
+        if (!kinds.includes(String(item.kind)) || typeof item.title !== "string" || !["complete", "failed"].includes(String(item.status))) return [];
+        return [{
+          kind: item.kind as "context" | "read" | "search" | "edit" | "command" | "thinking" | "verification",
+          title: redactSensitiveText(item.title).slice(0, 300),
+          ...(typeof item.detail === "string" ? { detail: redactSensitiveText(item.detail).slice(0, 2_000) } : {}),
+          status: item.status as "complete" | "failed"
+        }];
+      }).slice(0, 200)
+    : [];
+  return {
+    activityCount: boundedCount(record.activityCount),
+    commandCount: boundedCount(record.commandCount),
+    changeCount: boundedCount(record.changeCount),
+    contextCount: boundedCount(record.contextCount),
+    previewUrls,
+    changes,
+    commands,
+    activities
+  };
 }

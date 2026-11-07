@@ -5,6 +5,7 @@ import { DesktopContextBrowser } from "./context-browser";
 import type {
   ApprovalRequest,
   DesktopAgentRuntime,
+  DesktopActivity,
   DesktopContextBounds,
   DesktopEvent,
   DesktopExecutionStep,
@@ -15,7 +16,9 @@ import type {
   SendRequest,
   OllamaModel
 } from "./contracts";
+import { redactSensitiveText } from "../src/redaction";
 import { OllamaDesktopRuntime } from "./runtime";
+import { formatDesktopRunFailure } from "./run-failure";
 import { DesktopStateStore } from "./state-store";
 import { OLLAMA_CATALOG } from "../src/ollama-catalog";
 import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "../src/ollama-public-catalog";
@@ -39,6 +42,7 @@ let hasCheckedOllama = false;
 let cancellationRequested = false;
 let publicOllamaCatalog: PublicOllamaCatalog | undefined;
 let activeRecommendation: OllamaRecommendationPlan | undefined;
+let recommendationController: AbortController | undefined;
 
 app.setName("Local Companion");
 
@@ -65,6 +69,7 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
+  recommendationController?.abort();
   runtime.dispose();
   contextBrowser?.close();
   for (const resolve of approvals.values()) resolve(false);
@@ -137,8 +142,16 @@ function registerIpc(): void {
     await store.createThread();
     return publishSnapshot();
   });
+  ipcMain.handle("companion:toggle-thread-pin", async (_event, threadId: unknown) => {
+    if (typeof threadId !== "string") throw new Error("Invalid conversation.");
+    await store.toggleThreadPinned(threadId);
+    return publishSnapshot();
+  });
   ipcMain.handle("companion:refresh-ollama", async () => publishSnapshot(true));
   ipcMain.handle("companion:recommend-models", async () => recommendModels());
+  ipcMain.handle("companion:cancel-recommendation", () => {
+    recommendationController?.abort();
+  });
   ipcMain.handle("companion:set-public-ollama-catalog", async (_event, enabled: unknown) => {
     if (typeof enabled !== "boolean") throw new Error("Invalid public catalog preference.");
     await store.update({ ollamaPublicCatalogEnabled: enabled });
@@ -171,6 +184,8 @@ function registerIpc(): void {
     for (const model of recommendation.requiredPulls) {
       await runtime.pullModel(model, (progress) => window?.webContents.send("companion:pull-progress", progress));
     }
+    activeRecommendation = { ...recommendation, requiredPulls: [], downloadBytes: 0 };
+    await store.update({ lastRecommendation: activeRecommendation });
     return publishSnapshot(true);
   });
   ipcMain.handle("companion:pull-model", async (_event, model: unknown) => {
@@ -254,6 +269,23 @@ async function send(request: SendRequest): Promise<void> {
   const assistantMessageId = randomUUID();
   let partialAssistantText = "";
   const executionSteps: DesktopExecutionStep[] = [];
+  const runActivities = new Map<string, DesktopActivity>();
+  const commandOutputs = () => [...runActivities.values()]
+    .filter((activity) => activity.kind === "command")
+    .map((activity) => ({
+      title: redactSensitiveText(activity.title).slice(0, 300),
+      ...(activity.detail ? { detail: redactSensitiveText(activity.detail).slice(0, 2_000) } : {}),
+      status: activity.status === "complete" ? "complete" as const : "failed" as const
+    }))
+    .slice(-100);
+  const activityOutputs = () => [...runActivities.values()]
+    .map((activity) => ({
+      kind: activity.kind,
+      title: redactSensitiveText(activity.title).slice(0, 300),
+      ...(activity.detail ? { detail: redactSensitiveText(activity.detail).slice(0, 2_000) } : {}),
+      status: activity.status === "complete" ? "complete" as const : "failed" as const
+    }))
+    .slice(-200);
   const visualContext = await contextBrowser.selectedPages();
   cancellationRequested = false;
   await store.appendMessage(request.threadId, userMessage);
@@ -274,7 +306,10 @@ async function send(request: SendRequest): Promise<void> {
       },
       callbacks: {
         approval: requestApproval,
-        activity: (activity) => publish({ type: "activity", activity }),
+        activity: (activity) => {
+          runActivities.set(activity.id, { ...runActivities.get(activity.id), ...activity });
+          publish({ type: "activity", activity });
+        },
         delta: (messageId, delta) => {
           partialAssistantText += delta;
           publish({ type: "assistant-delta", threadId: request.threadId, messageId, delta });
@@ -290,17 +325,41 @@ async function send(request: SendRequest): Promise<void> {
       },
       contextPages: visualContext
     });
-    await store.appendMessage(request.threadId, result.message);
-    publish({ type: "assistant-complete", threadId: request.threadId, message: result.message, changes: result.changes });
+    const contextSnapshot = contextBrowser.snapshot();
+    const completedMessage: DesktopMessage = {
+      ...result.message,
+      outputs: {
+        activityCount: result.message.outputs?.activityCount ?? 0,
+        commandCount: result.message.outputs?.commandCount ?? 0,
+        changeCount: result.changes.length,
+        contextCount: visualContext.length,
+        previewUrls: contextSnapshot.tabs.filter((tab) => tab.kind === "local" && tab.status === "ready").map((tab) => tab.url).slice(0, 8),
+        changes: result.changes,
+        commands: commandOutputs(),
+        activities: activityOutputs()
+      }
+    };
+    await store.appendMessage(request.threadId, completedMessage);
+    publish({ type: "assistant-complete", threadId: request.threadId, message: completedMessage, changes: result.changes });
   } catch (error) {
     const message = cancellationRequested ? "A execução foi interrompida." : error instanceof Error ? error.message : "A execução falhou.";
     const failedMessage: DesktopMessage = {
       id: assistantMessageId,
       role: "assistant",
-      text: partialAssistantText.replace(/<\/?tool_call>/gi, "").trim() || message,
+      text: formatDesktopRunFailure(partialAssistantText, message, cancellationRequested),
       createdAt: Date.now(),
       status: "failed",
-      executionSteps
+      executionSteps,
+      outputs: {
+        activityCount: runActivities.size,
+        commandCount: commandOutputs().length,
+        changeCount: 0,
+        contextCount: visualContext.length,
+        previewUrls: contextBrowser.snapshot().tabs.filter((tab) => tab.kind === "local" && tab.status === "ready").map((tab) => tab.url).slice(0, 8),
+        changes: [],
+        commands: commandOutputs(),
+        activities: activityOutputs()
+      }
     };
     await store.appendMessage(request.threadId, failedMessage);
     publish({ type: "assistant-complete", threadId: request.threadId, message: failedMessage, changes: [] });
@@ -313,6 +372,10 @@ async function send(request: SendRequest): Promise<void> {
 }
 
 async function recommendModels(): Promise<DesktopSnapshot> {
+  if (recommendationController) throw new Error("A model recommendation is already running.");
+  const controller = new AbortController();
+  recommendationController = controller;
+  try {
   cachedOllama = await runtime.ollamaStatus();
   hasCheckedOllama = true;
   if (!cachedOllama.connected) throw new Error(cachedOllama.error || "Start Ollama before analyzing this machine.");
@@ -348,7 +411,7 @@ async function recommendModels(): Promise<DesktopSnapshot> {
     supportedRoles: ["executor", "planner", "evaluator", "vision", "embedding"],
     installedDockerImages: docker.images.map((image) => image.alias),
     advisorModel: advisor,
-    ...(advisor ? { invokeAdvisor: (prompt: string) => runtime.invokeAdvisor(advisor, prompt) } : {})
+    ...(advisor ? { invokeAdvisor: (prompt: string) => runtime.invokeAdvisor(advisor, prompt, controller.signal) } : {})
   });
   if (publicCatalogWarning) {
     activeRecommendation = {
@@ -364,6 +427,9 @@ async function recommendModels(): Promise<DesktopSnapshot> {
   }
   await store.update({ lastRecommendation: activeRecommendation });
   return publishSnapshot();
+  } finally {
+    if (recommendationController === controller) recommendationController = undefined;
+  }
 }
 
 async function requestApproval(request: ApprovalRequest): Promise<boolean> {

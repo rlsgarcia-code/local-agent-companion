@@ -79,6 +79,64 @@ test("LangGraph accepts actual changes without retrying and allows read-only ans
   }
 });
 
+test("a create-and-run task cannot complete from files and prose without a verified live preview", async () => {
+  for (const [evidence, expected] of [
+    [[], "incomplete"],
+    [[{ kind: "live_preview" as const, detail: "Verified and opened http://127.0.0.1:43123/ in Context." }], "complete"]
+  ] as const) {
+    let calls = 0;
+    const verifier = {
+      invoke: async () => ({ text: JSON.stringify(calls++ === 0
+        ? {
+            outcome: "workspace_change",
+            objective: "Create the game, run it, and expose it for the user.",
+            reason: "The requested result combines implementation and interactive use.",
+            requiredEvidence: "live_preview",
+            acceptanceCriteria: ["The game is open in visual context."]
+          }
+        : { verdict: "satisfied", reason: "The game files were created and the available execution evidence was reviewed." }) })
+    } as unknown as BaseChatModel;
+    const middleware = createTaskCompletionMiddleware({
+      model: verifier,
+      mode: "execute",
+      conversation: [{ role: "user", content: "Create a game and run it here so I can use it." }],
+      tracker: tracker(1),
+      signal: new AbortController().signal,
+      executionEvidence: () => evidence,
+      onRetry: async () => undefined
+    });
+    const agent = createAgent({ model: new FakeToolCallingModel(), tools: [], middleware: [middleware] });
+    const result = await agent.invoke({ messages: [{ role: "user", content: "Create a game and run it here so I can use it." }] });
+    assert.equal(completionGateResult(result).completionOutcome, expected);
+  }
+});
+
+test("Plan mode stops an execution request before the executor can falsely claim success", async () => {
+  const classifier = {
+    invoke: async () => ({ text: JSON.stringify({
+      outcome: "execution",
+      objective: "Run the game and expose it in visual context.",
+      reason: "The user wants an interactive running result.",
+      requiredEvidence: "live_preview",
+      acceptanceCriteria: ["A verified page is open."]
+    }) })
+  } as unknown as BaseChatModel;
+  const executor = new FakeToolCallingModel();
+  const middleware = createTaskCompletionMiddleware({
+    model: classifier,
+    mode: "plan",
+    conversation: [{ role: "user", content: "Run the game here for me." }],
+    tracker: tracker(0),
+    signal: new AbortController().signal,
+    onRetry: async () => undefined
+  });
+  const agent = createAgent({ model: executor, tools: [], middleware: [middleware] });
+  const result = await agent.invoke({ messages: [{ role: "user", content: "Run the game here for me." }] });
+  assert.equal(executor.index, 0);
+  assert.equal(completionGateResult(result).completionOutcome, "incomplete");
+  assert.match(String(result.messages.at(-1)?.content), /modo Plano/i);
+});
+
 test("a declined edit stops retries and a verified no-op needs observed workspace evidence", async () => {
   for (const [denied, read, expected] of [[true, false, "incomplete"], [false, true, "complete"], [false, false, "incomplete"]] as const) {
     let retries = 0;

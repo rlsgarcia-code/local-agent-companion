@@ -9,6 +9,30 @@ export type DesktopExecutionStep = {
   createdAt: number;
 };
 
+export type DesktopRunOutputs = {
+  activityCount: number;
+  commandCount: number;
+  changeCount: number;
+  contextCount: number;
+  previewUrls: string[];
+  changes: DesktopChange[];
+  commands: DesktopCommandOutput[];
+  activities: DesktopActivityOutput[];
+};
+
+export type DesktopCommandOutput = {
+  title: string;
+  detail?: string;
+  status: "complete" | "failed";
+};
+
+export type DesktopActivityOutput = {
+  kind: "context" | "read" | "search" | "edit" | "command" | "thinking" | "verification";
+  title: string;
+  detail?: string;
+  status: "complete" | "failed";
+};
+
 export type DesktopMessage = {
   id: string;
   role: "user" | "assistant";
@@ -16,6 +40,7 @@ export type DesktopMessage = {
   createdAt: number;
   status?: "complete" | "streaming" | "failed";
   executionSteps?: DesktopExecutionStep[];
+  outputs?: DesktopRunOutputs;
 };
 
 export type DesktopThread = {
@@ -24,6 +49,7 @@ export type DesktopThread = {
   messages: DesktopMessage[];
   createdAt: number;
   updatedAt: number;
+  pinned?: boolean;
 };
 
 export type DesktopState = {

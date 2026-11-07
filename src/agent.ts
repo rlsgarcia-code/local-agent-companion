@@ -1402,12 +1402,25 @@ export class DevelopmentAgent implements vscode.Disposable {
         sensitiveValues,
         hasObservedRead: () => observedWorkspaceRead || evidence.snapshot().filesRead.length > 0,
         approvalWasDenied: () => mutationDenied,
+        executionEvidence: () => {
+          const snapshot = evidence.snapshot();
+          const command = [...snapshot.commands].reverse().find((item) => item.exitCode === 0);
+          const preview = [...snapshot.browser].reverse().find((item) =>
+            item.action === "open"
+            && typeof item.detail === "string"
+            && /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?:\/|$)/i.test(item.detail)
+          );
+          return [
+            ...(command ? [{ kind: "command_success" as const, detail: `${command.command} exited with code 0.` }] : []),
+            ...(preview ? [{ kind: "live_preview" as const, detail: `Opened verified local page ${preview.detail}.` }] : [])
+          ];
+        },
         onContract: (contract) => onEvent({
           type: "activity",
           kind: "goal",
           title: responseLanguage === "en"
-            ? `Interpreted task · ${{ answer: "answer", plan: "plan", workspace_change: "workspace change", uncertain: "clarification needed" }[contract.outcome]}`
-            : `Tarefa interpretada · ${{ answer: "resposta", plan: "plano", workspace_change: "alteração de arquivos", uncertain: "precisa esclarecer" }[contract.outcome]}`,
+            ? `Interpreted task · ${{ answer: "answer", plan: "plan", workspace_change: "workspace change", execution: "execution", uncertain: "clarification needed" }[contract.outcome]}`
+            : `Tarefa interpretada · ${{ answer: "resposta", plan: "plano", workspace_change: "alteração de arquivos", execution: "execução", uncertain: "precisa esclarecer" }[contract.outcome]}`,
           detail: redactSensitiveText(contract.objective, sensitiveValues)
         }),
         onRetry: async (attempt) => {

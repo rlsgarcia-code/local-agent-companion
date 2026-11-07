@@ -13,9 +13,11 @@
         <div class="drag-region"></div>
         <header class="brand">
           <div class="brand-mark"><span></span></div>
-          <div><strong>Companion</strong><small>LOCAL / OLLAMA</small></div>
+          <div class="brand-copy"><strong>Companion</strong><small>LOCAL / OLLAMA</small></div>
+          <button class="sidebar-collapse" id="sidebar-collapse" aria-label="Recolher navegação" title="Recolher navegação">‹</button>
         </header>
-        <button class="new-thread" id="new-thread"><span>＋</span> Nova conversa</button>
+        <button class="new-thread" id="new-thread"><span>＋</span><b>Nova conversa</b></button>
+        <label class="thread-search"><span>⌕</span><input id="thread-search" type="search" autocomplete="off" placeholder="Buscar conversas" aria-label="Buscar conversas"></label>
         <nav class="thread-list" id="thread-list" aria-label="Conversas"></nav>
         <footer class="sidebar-footer">
           <button class="workspace-button" id="workspace-button">
@@ -28,15 +30,18 @@
 
       <main class="workspace">
         <header class="workspace-header">
-          <div>
+          <div class="workspace-title">
+            <button class="sidebar-reveal" id="sidebar-reveal" aria-label="Abrir navegação" title="Abrir navegação">☰</button>
+            <span>
             <p class="eyebrow">CONVERSA ATIVA</p>
             <h1 id="thread-title">Nova conversa</h1>
+            </span>
           </div>
           <div class="header-actions">
-            <button class="icon-button" id="refresh-button" title="Atualizar Ollama" aria-label="Atualizar Ollama">↻</button>
-            <button class="icon-button context-button" id="context-button" title="Abrir contexto visual" aria-label="Abrir contexto visual">▣</button>
             <button class="runtime-button" id="runtime-button"><span class="runtime-glyph">◇</span><span id="runtime-label">Agente padrão</span><b>⌄</b></button>
             <button class="model-button" id="model-button"><i></i><span id="model-label">Modelo local</span><b>⌄</b></button>
+            <button class="icon-button settings-button" id="settings-button" title="Configurar ambiente" aria-label="Configurar ambiente">⚙</button>
+            <button class="icon-button context-button" id="context-button" title="Abrir bancada de contexto" aria-label="Abrir bancada de contexto">▣</button>
           </div>
         </header>
 
@@ -83,12 +88,15 @@
             <nav class="inspector-modes" aria-label="Painel lateral">
               <button class="active" data-inspector-mode="activity">EXECUÇÃO</button>
               <button data-inspector-mode="context">CONTEXTO <span id="context-count">0</span></button>
+              <button class="hidden" data-inspector-mode="preview" id="preview-mode-button">PREVIEW <span id="preview-count">0</span></button>
+              <button class="hidden" data-inspector-mode="changes" id="changes-mode-button">ALTERAÇÕES <span id="surface-changes-count">0</span></button>
+              <button class="hidden" data-inspector-mode="commands" id="commands-mode-button">COMANDOS <span id="commands-count">0</span></button>
             </nav>
             <h2 id="run-state">Pronto</h2>
           </div>
           <div class="inspector-head-actions">
             <span class="pulse" id="run-pulse"></span>
-            <button class="context-close hidden" id="context-close" aria-label="Fechar contexto">×</button>
+            <button class="context-close" id="context-close" aria-label="Fechar bancada">×</button>
           </div>
         </div>
         <div class="inspector-scroll" id="activity-view">
@@ -101,10 +109,6 @@
           <section class="activity-panel">
             <div class="section-heading"><span>AÇÕES DO AGENTE</span><small id="activity-count">0 eventos</small></div>
             <div class="activity-list" id="activity-list"><p class="empty-copy">A leitura de arquivos, buscas, alterações e comandos aparecerão aqui.</p></div>
-          </section>
-          <section class="changes-panel hidden" id="changes-panel">
-            <div class="section-heading"><span>ARQUIVOS ALTERADOS</span><small id="changes-count"></small></div>
-            <div class="change-list" id="change-list"></div>
           </section>
         </div>
         <section class="context-view hidden" id="context-view" aria-label="Contexto visual">
@@ -135,12 +139,25 @@
             </div>
           </div>
         </section>
+        <section class="surface-list hidden" id="surface-changes-view" aria-label="Arquivos alterados">
+          <header><span class="section-label">RESULTADO LOCAL</span><h3>Arquivos alterados</h3><p>Arquivos observados na execução selecionada.</p></header>
+          <div class="surface-list-body" id="surface-change-list"></div>
+        </section>
+        <section class="surface-list hidden" id="commands-view" aria-label="Comandos executados">
+          <header><span class="section-label">AUDITORIA LOCAL</span><h3>Comandos</h3><p>Somente o comando e seu estado; saídas brutas não são persistidas.</p></header>
+          <div class="surface-list-body" id="command-list"></div>
+        </section>
         <footer class="privacy-note"><span>◉</span><p><strong id="privacy-title">Local por padrão</strong><br><span id="privacy-copy">Projeto e conversas permanecem neste Mac.</span></p></footer>
       </aside>
     </div>
 
-    <div class="popover hidden" id="model-popover">
-      <div class="popover-head"><strong>Modelos Ollama</strong><button id="close-models">×</button></div>
+    <button class="model-scrim hidden" id="model-scrim" aria-label="Fechar configuração do ambiente"></button>
+    <div class="popover model-sheet hidden" id="model-popover" role="dialog" aria-modal="true" aria-labelledby="model-sheet-title">
+      <div class="popover-head"><span><small>AMBIENTE LOCAL</small><strong id="model-sheet-title">Configuração do ambiente</strong></span><button id="close-models" aria-label="Fechar configuração">×</button></div>
+      <section class="environment-strip">
+        <div><span class="section-label">APARÊNCIA</span><div class="theme-control" id="theme-control"><button data-theme="system">Sistema</button><button data-theme="dark">Escuro</button><button data-theme="light">Claro</button></div></div>
+        <button class="refresh-environment" id="refresh-button"><span>↻</span> Atualizar Ollama</button>
+      </section>
       <section class="model-advisor">
         <div class="advisor-heading"><span><small>CONFIGURAÇÃO ADAPTATIVA</small><strong>Recomendação para esta máquina</strong></span><button id="recommend-models">Analisar</button></div>
         <label class="catalog-opt-in"><input id="docker-sandbox-toggle" type="checkbox"><span>Disponibilizar ambiente Docker para comandos e aplicações</span></label>
@@ -150,12 +167,19 @@
         <small class="catalog-status" id="public-catalog-status"></small>
         <div class="advisor-progress hidden" id="advisor-progress" role="status" aria-live="assertive">
           <span class="advisor-progress-mark" aria-hidden="true"></span>
-          <span><strong id="advisor-progress-title">Analisando máquina e modelos…</strong><small id="advisor-progress-detail">Mantenha esta janela aberta. A recomendação será exibida para revisão.</small></span>
+          <span><strong id="advisor-progress-title">Analisando máquina e modelos…</strong><small id="advisor-progress-detail">A análise local pode levar alguns minutos. Ela continuará até terminar ou você cancelar.</small></span>
+          <button id="cancel-recommendation">Cancelar análise</button>
         </div>
         <div class="recommendation hidden" id="recommendation" aria-live="polite">
           <p id="recommendation-machine"></p>
+          <strong class="recommendation-option-title">Melhor configuração para esta máquina</strong>
           <div id="recommendation-roles"></div>
           <p id="recommendation-downloads"></p>
+          <section class="recommendation-installed hidden" id="recommendation-installed">
+            <strong class="recommendation-option-title">Melhor configuração já instalada</strong>
+            <div id="recommendation-installed-roles"></div>
+            <p id="recommendation-installed-downloads">Sem downloads adicionais.</p>
+          </section>
           <div class="recommendation-docker hidden" id="recommendation-docker">
             <strong>Sandbox Docker</strong>
             <span id="recommendation-docker-image"></span>
@@ -163,21 +187,30 @@
             <code id="recommendation-docker-command"></code>
           </div>
           <ul id="recommendation-warnings"></ul>
-          <details class="recommendation-candidates hidden" id="recommendation-candidates">
-            <summary>Modelos considerados</summary>
+          <details class="recommendation-candidates hidden" id="recommendation-candidates" open>
+            <summary>Alternativas compatíveis por papel · inclui modelos não instalados</summary>
             <div id="recommendation-candidate-list"></div>
           </details>
+          <p class="recommendation-status" id="recommendation-status" role="status" aria-live="polite"></p>
           <div class="recommendation-actions">
-            <button id="apply-recommendation">Aplicar configuração</button>
+            <button id="apply-recommendation">Aplicar configuração ideal</button>
+            <button class="hidden" id="apply-installed-recommendation">Aplicar configuração instalada</button>
             <button id="pull-recommended">Baixar ausentes</button>
             <button id="reanalyze-models">Reanalisar</button>
           </div>
         </div>
       </section>
-      <p class="section-divider">EXECUTOR INSTALADO</p>
+    </div>
+
+    <div class="popover model-picker hidden" id="model-picker" role="dialog" aria-labelledby="model-picker-title">
+      <div class="popover-head"><span><small>EXECUTOR</small><strong id="model-picker-title">Selecionar modelo</strong></span><button id="close-model-picker" aria-label="Fechar seleção de modelo">×</button></div>
+      <p class="model-picker-copy">Escolha o modelo que executa as conversas. Planner, evaluator e demais papéis permanecem na configuração adaptativa.</p>
       <div id="model-list" class="model-list"></div>
-      <div class="pull-form"><input id="pull-model-input" value="qwen3-coder:30b" aria-label="Modelo para baixar"><button id="pull-model-button">Baixar</button></div>
-      <p class="pull-progress" id="pull-progress"></p>
+      <div class="manual-pull">
+        <span class="section-label">INSTALAR OUTRO MODELO</span>
+        <div class="pull-form"><input id="pull-model-input" value="qwen3-coder:30b" aria-label="Modelo para baixar"><button id="pull-model-button">Baixar</button></div>
+        <p class="pull-progress" id="pull-progress"></p>
+      </div>
     </div>
 
     <div class="popover runtime-popover hidden" id="runtime-popover">

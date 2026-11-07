@@ -6,6 +6,7 @@ import { OLLAMA_CATALOG } from "../src/ollama-catalog";
 import {
   mergeOllamaCandidates,
   OllamaRecommendationEngine,
+  OLLAMA_RECOMMENDATION_SCHEMA_VERSION,
   publicOllamaCatalogSchema,
   detectAcceleration,
   type MachineProfile
@@ -51,7 +52,9 @@ test("recommendation uses a declared baseline when no local advisor is usable", 
     supportedRoles: ["executor", "planner", "evaluator", "vision", "embedding"]
   });
   assert.equal(plan.source, "baseline");
+  assert.equal(plan.schemaVersion, OLLAMA_RECOMMENDATION_SCHEMA_VERSION);
   assert.ok(plan.roles.executor);
+  assert.equal(plan.roles.planner, "deepseek-r1:32b");
   assert.equal(plan.docker.image, "node:22-bookworm-slim");
   assert.equal(plan.docker.installed, false);
   assert.equal(plan.docker.pullCommand, "docker pull node:22-bookworm-slim");
@@ -59,6 +62,28 @@ test("recommendation uses a declared baseline when no local advisor is usable", 
   assert.equal(plan.docker.memoryLimitGb, 8);
   assert.equal(plan.docker.cpuLimit, 4);
   assert.ok(plan.warnings.some((warning) => warning.includes("Estimativa")));
+});
+
+test("baseline separates the best catalog setup from the zero-download installed setup", async () => {
+  const candidates = mergeOllamaCandidates({
+    bundled: OLLAMA_CATALOG,
+    installed: [
+      { name: "granite4.2:8b", size: 5_000_000_000, capabilities: ["tools", "coding"] },
+      { name: "nomic-embed-text:latest", size: 300_000_000, capabilities: ["embedding"] }
+    ]
+  });
+  const plan = await new OllamaRecommendationEngine().recommend({
+    machine,
+    candidates,
+    supportedRoles: ["executor", "planner", "evaluator", "embedding"]
+  });
+  assert.equal(plan.source, "baseline");
+  assert.equal(plan.roles.executor, "qwen3-coder:30b");
+  assert.ok(plan.requiredPulls.includes("qwen3-coder:30b"));
+  assert.equal(plan.installedAlternative?.roles.executor, "granite4.2:8b");
+  assert.equal(plan.installedAlternative?.roles.embedding, "nomic-embed-text:latest");
+  assert.deepEqual(plan.installedAlternative?.requiredPulls, []);
+  assert.equal(plan.installedAlternative?.downloadBytes, 0);
 });
 
 test("advisor selects only compatible catalog aliases and receives anonymous facts", async () => {
@@ -77,24 +102,56 @@ test("advisor selects only compatible catalog aliases and receives anonymous fac
       prompt = value;
       return JSON.stringify({
         roles: { executor: "qwen3-coder:30b", planner: "deepseek-r1:14b", evaluator: "deepseek-r1:14b" },
+        installedRoles: { executor: "qwen3-coder:30b", planner: "qwen3-coder:30b" },
         dockerImage: "python:3.13-slim",
         dockerRationale: "Already installed and suitable for local HTTP applications.",
         rationaleByRole: { executor: "Installed coding model.", planner: "Reasoning model.", evaluator: "Independent review." },
+        installedRationaleByRole: { executor: "Best installed executor.", planner: "Best installed planner.", evaluator: "Best installed evaluator." },
         warnings: []
       });
     }
   });
   assert.equal(plan.source, "advisor");
   assert.equal(plan.roles.planner, "deepseek-r1:14b");
+  assert.equal(plan.installedAlternative?.roles.planner, "qwen3-coder:30b");
+  assert.deepEqual(plan.installedAlternative?.requiredPulls, []);
   assert.equal(plan.docker.image, "python:3.13-slim");
   assert.equal(plan.docker.installed, true);
   assert.equal(plan.docker.proxyInstalled, false);
   assert.ok(plan.consideredCandidates?.planner?.includes("deepseek-r1:32b"));
   assert.ok(plan.consideredCandidates?.planner?.includes("gpt-oss:20b"));
+  assert.match(prompt, /regardless of whether models are installed/i);
+  assert.match(prompt, /using only candidates whose installed field is true/i);
   assert.match(prompt, /installed status only as a tiebreaker/i);
   assert.match(prompt, /complementary specialists/i);
+  assert.match(prompt, /DeepSeek catalog entries are intentional candidates/i);
   assert.match(prompt, /Docker candidates/i);
   assert.doesNotMatch(prompt, /workspace|conversation|\/Users\//i);
+});
+
+test("advisor cannot collapse the ideal plan into installed generalists while compatible specialists are available", async () => {
+  const candidates = mergeOllamaCandidates({
+    bundled: OLLAMA_CATALOG,
+    installed: [{ name: "qwen3.5:latest", size: 7_000_000_000, capabilities: ["tools", "vision"] }]
+  });
+  const plan = await new OllamaRecommendationEngine().recommend({
+    machine,
+    candidates,
+    supportedRoles: ["executor", "planner", "evaluator", "vision", "embedding"],
+    advisorModel: "qwen3.5:latest",
+    invokeAdvisor: async () => JSON.stringify({
+      roles: { executor: "qwen3.5:latest", planner: "qwen3.5:latest", evaluator: "qwen3.5:latest", vision: "qwen3.5:latest", embedding: "nomic-embed-text:latest" },
+      installedRoles: { executor: "qwen3.5:latest", planner: "qwen3.5:latest", evaluator: "qwen3.5:latest", vision: "qwen3.5:latest" },
+      rationaleByRole: {},
+      installedRationaleByRole: {},
+      warnings: []
+    })
+  });
+  assert.equal(plan.source, "baseline");
+  assert.equal(plan.roles.planner, "deepseek-r1:32b");
+  assert.ok(plan.requiredPulls.includes("deepseek-r1:32b"));
+  assert.ok(plan.consideredCandidates?.planner?.includes("deepseek-r1:14b"));
+  assert.ok(plan.warnings.some((warning) => warning.includes("ignorou especialistas")));
 });
 
 test("invented advisor aliases fall back safely", async () => {
@@ -110,6 +167,29 @@ test("invented advisor aliases fall back safely", async () => {
     invokeAdvisor: async () => JSON.stringify({ roles: { executor: "invented:900b" }, rationaleByRole: {}, warnings: [] })
   });
   assert.equal(plan.source, "baseline");
+  assert.ok(plan.warnings.some((warning) => warning.includes("não pôde ser validada")));
+});
+
+test("advisor cannot place an absent model in the installed-only setup", async () => {
+  const candidates = mergeOllamaCandidates({
+    bundled: OLLAMA_CATALOG,
+    installed: [{ name: "qwen3-coder:30b", capabilities: ["tools", "coding"] }]
+  });
+  const plan = await new OllamaRecommendationEngine().recommend({
+    machine,
+    candidates,
+    supportedRoles: ["executor", "planner", "evaluator"],
+    advisorModel: "qwen3-coder:30b",
+    invokeAdvisor: async () => JSON.stringify({
+      roles: { executor: "qwen3-coder:30b", planner: "deepseek-r1:14b", evaluator: "deepseek-r1:14b" },
+      installedRoles: { executor: "qwen3-coder:30b", planner: "deepseek-r1:14b" },
+      rationaleByRole: {},
+      installedRationaleByRole: {},
+      warnings: []
+    })
+  });
+  assert.equal(plan.source, "baseline");
+  assert.deepEqual(plan.installedAlternative?.requiredPulls, []);
   assert.ok(plan.warnings.some((warning) => warning.includes("não pôde ser validada")));
 });
 

@@ -44,6 +44,7 @@ import {
   detectMachineProfile,
   mergeOllamaCandidates,
   OllamaRecommendationEngine,
+  OLLAMA_RECOMMENDATION_SCHEMA_VERSION,
   type OllamaRecommendationPlan
 } from "./ollama-recommendation";
 import type {
@@ -186,7 +187,8 @@ type LiteLlmSettingsSnapshot = {
 function parsePersistedOllamaRecommendation(value: unknown): OllamaRecommendationPlan | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Partial<OllamaRecommendationPlan>;
-  if ((record.source !== "baseline" && record.source !== "advisor")
+  if (record.schemaVersion !== OLLAMA_RECOMMENDATION_SCHEMA_VERSION
+    || (record.source !== "baseline" && record.source !== "advisor")
     || !record.roles || typeof record.roles.executor !== "string"
     || !Array.isArray(record.requiredPulls) || !Array.isArray(record.warnings)) return undefined;
   return record as OllamaRecommendationPlan;
@@ -3099,15 +3101,22 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-label="Agent cognitive roles">
           <div class="brief-actions ollama-agent-actions">
             <button class="secondary-action" id="ollama-recommended" type="button">Recommend for this machine</button>
-            <button class="secondary-action hidden" id="ollama-apply-recommendation" type="button">Apply recommendation</button>
+            <button class="secondary-action hidden" id="ollama-apply-recommendation" type="button">Apply optimal</button>
+            <button class="secondary-action hidden" id="ollama-apply-installed-recommendation" type="button">Apply installed-only</button>
             <button class="secondary-action hidden" id="ollama-pull-recommended" type="button">Pull missing models</button>
           </div>
           <label class="ollama-public-catalog"><input id="ollama-public-catalog" type="checkbox" /> Include public project catalog</label>
           <button class="link-action hidden" id="ollama-refresh-public-catalog" type="button">Refresh public catalog now</button>
           <div class="ollama-recommendation hidden" id="ollama-recommendation" role="status" aria-live="polite">
             <strong id="ollama-recommendation-machine"></strong>
+            <b class="ollama-recommendation-title">Best configuration for this machine</b>
             <div id="ollama-recommendation-roles"></div>
             <small id="ollama-recommendation-downloads"></small>
+            <div class="hidden" id="ollama-installed-recommendation">
+              <b class="ollama-recommendation-title">Best configuration already installed</b>
+              <div id="ollama-installed-recommendation-roles"></div>
+              <small>No additional downloads.</small>
+            </div>
             <ul id="ollama-recommendation-warnings"></ul>
           </div>
           <div class="ollama-agent-flow" aria-label="Agent cognitive flow">
@@ -3609,6 +3618,8 @@ h1 { margin: 2px 0 0; font-size: 24px; line-height: 1; letter-spacing: -.045em; 
 .ollama-public-catalog input { accent-color: var(--accent); }
 .ollama-recommendation { display: grid; gap: 7px; margin: 9px 0; padding: 9px; border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--vscode-sideBar-background) 94%, var(--accent)); }
 .ollama-recommendation > strong { font-size: 10px; }
+.ollama-recommendation-title { display: block; margin-top: 7px; color: var(--vscode-foreground); font-size: 9px; }
+#ollama-installed-recommendation { margin-top: 7px; padding-top: 2px; border-top: 1px solid var(--line); }
 .ollama-recommendation-role { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 2px 7px; padding-top: 5px; border-top: 1px solid var(--line); font-size: 9px; }
 .ollama-recommendation-role b { color: var(--muted); }
 .ollama-recommendation-role small { grid-column: 2; color: var(--muted); }
@@ -3921,12 +3932,15 @@ const ollamaEvaluatorModel = document.getElementById('ollama-evaluator-model');
 const ollamaRecommended = document.getElementById('ollama-recommended');
 const ollamaPullRecommended = document.getElementById('ollama-pull-recommended');
 const ollamaApplyRecommendation = document.getElementById('ollama-apply-recommendation');
+const ollamaApplyInstalledRecommendation = document.getElementById('ollama-apply-installed-recommendation');
 const ollamaPublicCatalog = document.getElementById('ollama-public-catalog');
 const ollamaRefreshPublicCatalog = document.getElementById('ollama-refresh-public-catalog');
 const ollamaRecommendation = document.getElementById('ollama-recommendation');
 const ollamaRecommendationMachine = document.getElementById('ollama-recommendation-machine');
 const ollamaRecommendationRoles = document.getElementById('ollama-recommendation-roles');
 const ollamaRecommendationDownloads = document.getElementById('ollama-recommendation-downloads');
+const ollamaInstalledRecommendation = document.getElementById('ollama-installed-recommendation');
+const ollamaInstalledRecommendationRoles = document.getElementById('ollama-installed-recommendation-roles');
 const ollamaRecommendationWarnings = document.getElementById('ollama-recommendation-warnings');
 const ollamaCatalogNote = document.getElementById('ollama-catalog-note');
 const ollamaModelAliases = document.getElementById('ollama-model-aliases');
@@ -6348,6 +6362,7 @@ function renderOllamaRecommendation(plan) {
   currentOllamaRecommendation = plan || null;
   ollamaRecommendation.classList.toggle('hidden', !plan);
   ollamaApplyRecommendation.classList.toggle('hidden', !plan);
+  ollamaApplyInstalledRecommendation.classList.toggle('hidden', !plan || !plan.installedAlternative);
   ollamaPullRecommended.classList.toggle('hidden', !plan || !(plan.requiredPulls || []).length);
   ollamaRecommended.textContent = plan ? 'Reanalyze with local model' : 'Recommend for this machine';
   if (!plan) return;
@@ -6360,6 +6375,11 @@ function renderOllamaRecommendation(plan) {
   ollamaRecommendationDownloads.textContent = (plan.requiredPulls || []).length
     ? plan.requiredPulls.length + ' missing · ' + formatBytes(Number(plan.downloadBytes || 0)) + ' estimated download'
     : 'All recommended models are installed.';
+  ollamaInstalledRecommendation.classList.toggle('hidden', !plan.installedAlternative);
+  ollamaInstalledRecommendationRoles.innerHTML = plan.installedAlternative ? Object.entries(plan.installedAlternative.roles || {}).map(([role, model]) =>
+    '<div class="ollama-recommendation-role"><b>' + escapeHtml(labels[role] || role) + '</b><span>' + escapeHtml(model) + '</span><small>' +
+    escapeHtml((plan.installedAlternative.rationaleByRole || {})[role] || 'Best compatible model already installed.') + '</small></div>'
+  ).join('') : '';
   ollamaRecommendationWarnings.innerHTML = (plan.warnings || []).map(warning => '<li>' + escapeHtml(warning) + '</li>').join('');
 }
 ollamaRecommended.addEventListener('click', () => {
@@ -6368,8 +6388,7 @@ ollamaRecommended.addEventListener('click', () => {
   ollamaRecommended.textContent = 'Analyzing…';
   vscode.postMessage({ type: 'recommendOllamaModels' });
 });
-ollamaApplyRecommendation.addEventListener('click', () => {
-  const setup = currentOllamaRecommendation && currentOllamaRecommendation.roles;
+function applyOllamaRecommendationToFields(setup, message) {
   if (!setup) return;
   liteLlmModel.value = setup.executor || '';
   visionModel.value = setup.vision || '';
@@ -6381,7 +6400,19 @@ ollamaApplyRecommendation.addEventListener('click', () => {
   fillModelProfile(liteLlmModel.value, {}, true);
   previewModelCompatibility();
   markConnectionEdited();
-  announce('Recommended Ollama roles applied to editable fields. Review and save the connection.');
+  announce(message);
+}
+ollamaApplyRecommendation.addEventListener('click', () => {
+  applyOllamaRecommendationToFields(
+    currentOllamaRecommendation && currentOllamaRecommendation.roles,
+    'Optimal Ollama roles applied to editable fields. Review downloads and save the connection.'
+  );
+});
+ollamaApplyInstalledRecommendation.addEventListener('click', () => {
+  applyOllamaRecommendationToFields(
+    currentOllamaRecommendation && currentOllamaRecommendation.installedAlternative && currentOllamaRecommendation.installedAlternative.roles,
+    'Best installed-only Ollama roles applied to editable fields. Review and save the connection.'
+  );
 });
 ollamaPullRecommended.addEventListener('click', () => {
   if (currentOllamaRecommendation && currentOllamaRecommendation.requiredPulls.length) {

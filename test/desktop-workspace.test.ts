@@ -3,7 +3,17 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import test from "node:test";
+import { AIMessage, isToolMessage } from "@langchain/core/messages";
+import { createDeepAgent, StateBackend } from "deepagents";
+import { FakeToolCallingModel, tool } from "langchain";
+import { z } from "zod";
 import { resolveDesktopContextTarget } from "../desktop/context-policy";
+import {
+  createDesktopModelActivityMiddleware,
+  createDesktopModelRetry,
+  createRecoverableDockerToolErrors
+} from "../desktop/runtime";
+import { formatDesktopRunFailure } from "../desktop/run-failure";
 import { DesktopStateStore } from "../desktop/state-store";
 import { LocalProcessManager } from "../src/process-manager";
 import { readWorkspaceFile, resolveWritablePath, searchWorkspace, workspaceTree, writeWorkspaceFile } from "../desktop/workspace";
@@ -30,11 +40,21 @@ test("desktop state migrates a single model and persists role configuration", as
   const statePath = path.join(root, "private", "desktop-state.json");
   try {
     await mkdir(path.dirname(statePath), { recursive: true });
-    await writeFile(statePath, JSON.stringify({ model: "legacy-executor:7b", threads: [] }), "utf8");
+    await writeFile(statePath, JSON.stringify({
+      model: "legacy-executor:7b",
+      threads: [],
+      lastRecommendation: {
+        source: "advisor",
+        roles: { executor: "qwen3.5:latest", planner: "qwen3.5:latest" },
+        requiredPulls: [],
+        warnings: []
+      }
+    }), "utf8");
     const store = await DesktopStateStore.open(statePath);
     assert.equal(store.snapshot().agentRuntime, "standard");
     assert.equal(store.snapshot().dockerSandboxEnabled, false);
     assert.equal(store.snapshot().modelRoles.executor, "legacy-executor:7b");
+    assert.equal(store.snapshot().lastRecommendation, undefined);
     const thread = store.activeThread();
     await store.update({
       workspacePath: "/tmp/example",
@@ -49,8 +69,19 @@ test("desktop state migrates a single model and persists role configuration", as
       role: "assistant",
       text: "Validação ajustada.",
       createdAt: 2,
-      executionSteps: [{ id: "s1", text: "Vou primeiro inspecionar o arquivo.", createdAt: 2 }]
+      executionSteps: [{ id: "s1", text: "Vou primeiro inspecionar o arquivo.", createdAt: 2 }],
+      outputs: {
+        activityCount: 4,
+        commandCount: 1,
+        changeCount: 2,
+        contextCount: 1,
+        previewUrls: ["http://127.0.0.1:43123/"],
+        changes: [{ path: "src/check.ts", kind: "modified" }],
+        commands: [{ title: "Executando testes", detail: "token=private", status: "complete" }],
+        activities: [{ kind: "verification", title: "Validando resultado", status: "complete" }]
+      }
     });
+    await store.toggleThreadPinned(thread.id);
     const reopened = await DesktopStateStore.open(statePath);
     const snapshot = reopened.snapshot();
     assert.equal(snapshot.workspacePath, "/tmp/example");
@@ -61,6 +92,13 @@ test("desktop state migrates a single model and persists role configuration", as
     assert.equal(snapshot.dockerSandboxEnabled, true);
     assert.equal(snapshot.threads[0]?.messages[0]?.text, "Ajuste a validação");
     assert.equal(snapshot.threads[0]?.messages[1]?.executionSteps?.[0]?.text, "Vou primeiro inspecionar o arquivo.");
+    assert.equal(snapshot.threads[0]?.messages[1]?.outputs?.changeCount, 2);
+    assert.equal(snapshot.threads[0]?.messages[1]?.outputs?.previewUrls[0], "http://127.0.0.1:43123/");
+    assert.equal(snapshot.threads[0]?.messages[1]?.outputs?.changes[0]?.path, "src/check.ts");
+    assert.equal(snapshot.threads[0]?.messages[1]?.outputs?.commands[0]?.title, "Executando testes");
+    assert.equal(snapshot.threads[0]?.messages[1]?.outputs?.commands[0]?.detail, "token=[REDACTED]");
+    assert.equal(snapshot.threads[0]?.messages[1]?.outputs?.activities[0]?.kind, "verification");
+    assert.equal(snapshot.threads[0]?.pinned, true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -95,21 +133,75 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.match(html, /Recomendação para esta máquina/);
   assert.match(html, /Incluir catálogo público do projeto/);
   assert.match(html, /id="advisor-progress"/);
-  assert.match(html, /Modelos considerados/);
+  assert.match(html, /id="cancel-recommendation"/);
+  assert.match(html, /id="recommendation-status"/);
+  assert.match(html, /id="settings-button"[^>]+Configurar ambiente/);
+  assert.match(html, /id="model-picker"/);
+  assert.match(html, /Configuração do ambiente/);
+  assert.match(html, /Selecionar modelo/);
+  assert.match(html, /Planner, evaluator e demais papéis permanecem na configuração adaptativa/);
+  assert.match(html, /Alternativas compatíveis por papel/);
+  assert.match(html, /Melhor configuração para esta máquina/);
+  assert.match(html, /Melhor configuração já instalada/);
+  assert.match(html, /id="apply-installed-recommendation"/);
   assert.match(html, /Sandbox Docker/);
-  assert.match(renderer, /dataset\.roleModel = role/);
+  assert.match(renderer, /dataset\[attribute\] = role/);
+  assert.match(renderer, /installedAlternative/);
   assert.match(renderer, /applyRecommendation\(roles\)/);
   assert.match(renderer, /setRecommendationBusy\(true/);
+  assert.match(renderer, /Aplicar escolhe os papéis, mas não inicia downloads/);
+  assert.match(renderer, /\$\{label\} aplicada\. Os papéis já foram salvos/);
+  assert.match(renderer, /Downloads concluídos\. A configuração ideal está pronta para uso/);
   assert.match(renderer, /aria-busy/);
   assert.match(renderer, /plan\.docker\.proxyImage/);
-  assert.match(renderer, /if \(!appState\.recommendationBusy\) el\["model-popover"\]/);
+  assert.match(renderer, /setSettingsSheetOpen/);
+  assert.match(renderer, /setModelPickerOpen/);
   assert.match(preload, /companion:recommend-models/);
+  assert.match(preload, /companion:cancel-recommendation/);
   assert.match(main, /detectMachineProfile/);
   assert.match(main, /state\.ollamaPublicCatalogEnabled && !publicOllamaCatalog/);
   assert.match(main, /supportedRoles: \["executor", "planner", "evaluator", "vision", "embedding"\]/);
   assert.match(runtime, /createModel\(options\.modelRoles\.executor, true\)/);
   assert.match(runtime, /options\.modelRoles\.evaluator \|\| options\.modelRoles\.executor/);
   assert.match(runtime, /options\.agentRuntime === "deep" && options\.modelRoles\.planner/);
+  assert.doesNotMatch(runtime, /AbortSignal\.timeout\(90_000\)/);
+  assert.match(runtime, /invokeAdvisor\(modelName: string, prompt: string, signal: AbortSignal\)/);
+  assert.match(main, /recommendationController\?\.abort\(\)/);
+  assert.match(main, /activeRecommendation = \{ \.\.\.recommendation, requiredPulls: \[\], downloadBytes: 0 \}/);
+});
+
+test("desktop evolves into an adaptive workbench with durable outputs and progressive surfaces", async () => {
+  const [html, renderer, styles, preload, main, contracts, stateStore] = await Promise.all([
+    readFile(path.join(process.cwd(), "desktop", "renderer", "index.html"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "renderer", "renderer.js"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "renderer", "styles.css"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "preload.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "main.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "contracts.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "desktop", "state-store.ts"), "utf8")
+  ]);
+  assert.match(html, /id="thread-search"/);
+  assert.match(html, /id="sidebar-collapse"/);
+  assert.match(html, /data-inspector-mode="preview"/);
+  assert.match(html, /data-inspector-mode="changes"/);
+  assert.match(html, /data-inspector-mode="commands"/);
+  assert.match(html, /id="model-scrim"/);
+  assert.match(html, /data-theme="system"/);
+  assert.match(renderer, /outputDescriptors/);
+  assert.match(renderer, /openInspectorSurface/);
+  assert.match(renderer, /toggleThreadPin/);
+  assert.match(renderer, /companion\.inspectorWidth/);
+  assert.match(renderer, /appState\.inspectorOpen = true/);
+  assert.match(renderer, /el\["model-popover"\]\.classList\.contains\("hidden"\)/);
+  assert.match(styles, /\.app-shell\.inspector-open/);
+  assert.match(styles, /\.message-outputs/);
+  assert.match(styles, /\.model-sheet/);
+  assert.match(styles, /html\[data-theme="light"\]/);
+  assert.match(styles, /@media \(max-width: 900px\)/);
+  assert.match(preload, /companion:toggle-thread-pin/);
+  assert.match(main, /toggleThreadPinned/);
+  assert.match(contracts, /DesktopRunOutputs/);
+  assert.match(stateStore, /normalizeRunOutputs/);
 });
 
 test("managed Docker client processes retain a known loopback URL for readiness", async () => {
@@ -150,12 +242,18 @@ test("desktop wires opt-in Docker-only execution to a visible Context preview", 
   assert.match(runtime, /name: "start_sandbox_application"/);
   assert.match(runtime, /name: "wait_for_sandbox_application"/);
   assert.match(runtime, /name: "open_sandbox_preview"/);
+  assert.match(runtime, /kind: "live_preview"/);
+  assert.match(runtime, /executionEvidence: \(\) => executionEvidence/);
+  assert.match(runtime, /Creating files, printing launch instructions, or starting a native GUI does not satisfy/);
   assert.doesNotMatch(runtime, /name: "start_local_process"/);
   assert.doesNotMatch(runtime, /name: "run_command"/);
   assert.match(runtime, /dockerSandboxEnabled/);
   assert.match(runtime, /tools\.filter\(\(candidate\) => !candidate\.name\.includes\("sandbox"\)\)/);
   assert.match(runtime, /never attempt a native-host fallback/);
   assert.match(runtime, /evaluateCommandPolicy\(executable, args\)/);
+  assert.match(runtime, /createRecoverableDockerToolErrors\(signal\)/);
+  assert.match(runtime, /const planningActivityId = activity/);
+  assert.match(runtime, /updateActivity\(planningActivityId/);
   assert.match(runtime, /dockerSandbox\.dispose\(\)/);
   assert.match(sandbox, /"--cap-drop", "ALL"/);
   assert.match(sandbox, /"--security-opt", "no-new-privileges:true"/);
@@ -173,6 +271,97 @@ test("desktop wires opt-in Docker-only execution to a visible Context preview", 
   assert.match(stateStore, /dockerSandboxEnabled: stored\.dockerSandboxEnabled === true/);
   assert.match(main, /--enable-docker-sandbox/);
   assert.match(main, /LOCAL_COMPANION_DOCKER_SANDBOX/);
+});
+
+test("desktop returns correctable Docker tool failures to the LangGraph agent", async () => {
+  const middleware = createRecoverableDockerToolErrors(new AbortController().signal);
+  assert.ok(middleware.wrapToolCall);
+  const result = await middleware.wrapToolCall!(
+    {
+      toolCall: {
+        id: "docker-shell-call",
+        name: "run_sandbox_command",
+        args: { image: "python:3.13-slim", executable: "sh", args: ["-c", "python app.py"] }
+      }
+    } as never,
+    async () => { throw new Error("Shell executables are not available to the desktop agent."); }
+  );
+  assert.ok(isToolMessage(result));
+  assert.equal(result.status, "error");
+  assert.match(String(result.content), /recoverable_tool_error/);
+  assert.match(String(result.content), /Correct the tool arguments or implementation/);
+});
+
+test("Deep Agent retries a direct Docker executable after a recoverable shell rejection", async () => {
+  const executables: string[] = [];
+  const dockerTool = tool(async ({ executable }) => {
+    executables.push(executable);
+    if (executable === "sh") throw new Error("Shell executables are not available to the desktop agent.");
+    return "direct-command-ok";
+  }, {
+    name: "run_sandbox_command",
+    description: "Test direct Docker command.",
+    schema: z.object({ executable: z.string() })
+  });
+  const model = new FakeToolCallingModel({ toolCalls: [
+    [{ id: "shell-call", name: "run_sandbox_command", args: { executable: "sh" } }],
+    [{ id: "direct-call", name: "run_sandbox_command", args: { executable: "python3" } }],
+    []
+  ] });
+  const agent = createDeepAgent({
+    model,
+    tools: [dockerTool],
+    backend: new StateBackend(),
+    middleware: [createRecoverableDockerToolErrors(new AbortController().signal)]
+  });
+  const result = await agent.invoke({ messages: [{ role: "user", content: "Run the application safely." }] });
+  assert.deepEqual(executables, ["sh", "python3"]);
+  const toolMessages = result.messages.filter((message) => isToolMessage(message));
+  assert.equal(toolMessages[0]?.status, "error");
+  assert.match(String(toolMessages[0]?.content), /recoverable_tool_error/);
+  assert.equal(toolMessages[1]?.status, "success");
+  assert.equal(toolMessages[1]?.content, "direct-command-ok");
+});
+
+test("desktop retries one failed model call through LangChain middleware and reports each attempt", async () => {
+  const activities: Array<{ id: string; title: string; status: string }> = [];
+  let resets = 0;
+  let calls = 0;
+  const retry = createDesktopModelRetry();
+  const activity = createDesktopModelActivityMiddleware(
+    "qwen3.5:latest",
+    (value) => activities.push({ id: value.id, title: value.title, status: value.status }),
+    () => { resets += 1; }
+  );
+  assert.ok(retry.wrapModelCall);
+  assert.ok(activity.wrapModelCall);
+  const result = await retry.wrapModelCall!({} as never, (async () => activity.wrapModelCall!(
+    {} as never,
+    async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("temporary local model failure");
+      return new AIMessage("ready");
+    }
+  )) as never);
+  assert.ok(AIMessage.isInstance(result));
+  assert.equal(result.text, "ready");
+  assert.equal(calls, 2);
+  assert.equal(resets, 1);
+  assert.deepEqual(activities.map((value) => value.status), ["active", "failed", "active", "complete"]);
+  assert.notEqual(activities[0]?.id, activities[2]?.id);
+});
+
+test("desktop failed messages preserve partial work and expose a redacted reason", () => {
+  const text = formatDesktopRunFailure(
+    "Vou criar o arquivo agora:<tool_call>",
+    "request failed with api_key=private-value",
+    false
+  );
+  assert.match(text, /Vou criar o arquivo agora:/);
+  assert.match(text, /A execução não foi concluída/);
+  assert.match(text, /Motivo:/);
+  assert.doesNotMatch(text, /private-value/);
+  assert.equal(formatDesktopRunFailure("", "ignored", true), "A execução foi interrompida.");
 });
 
 test("desktop keeps streaming stable and projects LangChain tool progress", async () => {
@@ -194,9 +383,12 @@ test("desktop keeps streaming stable and projects LangChain tool progress", asyn
   assert.match(renderer, /1 nova atualização ↓/);
   assert.match(renderer, /existing >= 0.*splice\(existing, 1/s);
   assert.match(runtime, /consumeToolCallActivities\(run\.toolCalls/);
-  assert.match(runtime, /call\.output\.then\(\(\) => undefined, \(\) => undefined\)/);
+  assert.match(runtime, /const outputSettled = call\.output\.then/);
+  assert.match(runtime, /isToolMessage\(settled\.value\)/);
   assert.match(runtime, /status: "active"/);
-  assert.match(runtime, /status === "error" \? "failed" : "complete"/);
+  assert.match(runtime, /status: failed \? "failed" : "complete"/);
+  assert.match(runtime, /createDesktopModelRetry\(\)/);
+  assert.match(runtime, /createDesktopModelActivityMiddleware/);
   assert.match(runtime, /stripProviderProtocolMarkers\(answer\)/);
   assert.match(renderer, /stripProtocolMarkers\(message\.text\)/);
   assert.match(styles, /\.app-shell\s*\{[^}]*position:\s*fixed[^}]*inset:\s*0[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)[^}]*overflow:\s*hidden/s);
@@ -218,7 +410,7 @@ test("desktop preserves intermediate model turns in a collapsible execution grou
 
   assert.match(runtime, /archiveExecutionStep\(streamed\)/);
   assert.match(runtime, /executionSteps\.length > 60/);
-  assert.match(runtime, /executionSteps\n\s*}/);
+  assert.match(runtime, /executionSteps,\n\s*outputs:/);
   assert.match(main, /type: "assistant-step"/);
   assert.match(renderer, /createExecutionStepsElement/);
   assert.match(renderer, /updateExecutionStepsElement/);

@@ -34,7 +34,7 @@ export function redactSensitiveText(value: unknown, knownSecrets: readonly strin
   // Common JSON, YAML, environment, and log assignments. The name remains so
   // the user can identify which setting is at fault.
   text = text.replace(
-    /((?:^|[,{\s])(?:["']?)(?:api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|password|passwd)(?:["']?)\s*[:=]\s*)(["']?)([^\s,"'};]+|[^"']*?)(\2)(?=\s*[,;}\r\n]|$)/gim,
+    /((?:^|[,{\s])(?:["']?)(?:api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|token|secret|password|passwd)(?:["']?)\s*[:=]\s*)(["']?)([^\s,"'};]+|[^"']*?)(\2)(?=\s*[,;}\r\n]|$)/gim,
     (_match, prefix: string, quote: string) => `${prefix}${quote}${REDACTED}${quote}`
   );
 

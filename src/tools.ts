@@ -736,7 +736,8 @@ export class LocalToolHost {
       action,
       pageErrors: snapshot.pageErrors.length,
       consoleErrors: snapshot.console.filter((entry) => entry.startsWith("error:")).length,
-      blockedRequests: snapshot.blockedRequests.length
+      blockedRequests: snapshot.blockedRequests.length,
+      detail: snapshot.url
     });
   }
 

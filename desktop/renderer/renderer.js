@@ -5,7 +5,12 @@ const appState = {
   draftMessages: new Map(),
   approval: null,
   inspectorMode: "activity",
-  recommendationBusy: false
+  inspectorOpen: false,
+  sidebarCollapsed: localStorage.getItem("companion.sidebarCollapsed") === "true",
+  threadQuery: "",
+  recommendationBusy: false,
+  recommendationNotice: null,
+  selectedOutputs: null
 };
 
 const SCROLL_STICK_THRESHOLD = 48;
@@ -15,28 +20,30 @@ let unseenConversationUpdates = 0;
 const countedUnseenMessages = new Set();
 
 const el = Object.fromEntries([
-  "thread-list", "new-thread", "workspace-button", "workspace-label", "ollama-dot", "ollama-label",
-  "thread-title", "refresh-button", "model-button", "model-label", "conversation", "welcome", "prompt",
+  "thread-list", "thread-search", "new-thread", "workspace-button", "workspace-label", "ollama-dot", "ollama-label", "sidebar-collapse", "sidebar-reveal",
+  "thread-title", "refresh-button", "model-button", "model-label", "settings-button", "conversation", "welcome", "prompt",
   "runtime-button", "runtime-label", "runtime-popover", "close-runtimes", "context-button",
   "jump-latest",
   "mode-control", "cancel-button", "send-button", "run-state", "run-pulse", "setup-panel", "setup-copy",
-  "setup-action", "activity-count", "activity-list", "changes-panel", "changes-count", "change-list",
+  "setup-action", "activity-count", "activity-list",
   "activity-view", "context-view", "context-count", "context-close", "inspector-resizer", "context-open-form", "context-input",
+  "preview-mode-button", "preview-count", "changes-mode-button", "surface-changes-count", "commands-mode-button", "commands-count", "surface-changes-view", "surface-change-list", "commands-view", "command-list",
   "context-external-toggle", "context-tabs", "context-back", "context-forward", "context-reload",
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
-  "model-popover", "close-models", "model-list", "pull-model-input", "pull-model-button", "pull-progress",
-  "recommend-models", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
+  "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "theme-control",
+  "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
-  "recommendation-roles", "recommendation-downloads", "recommendation-warnings", "recommendation-candidates",
+  "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
   "recommendation-docker", "recommendation-docker-image", "recommendation-docker-reason", "recommendation-docker-command",
-  "recommendation-candidate-list", "apply-recommendation", "pull-recommended", "reanalyze-models",
+  "recommendation-candidate-list", "recommendation-status", "apply-recommendation", "apply-installed-recommendation", "pull-recommended", "reanalyze-models",
   "approval-modal", "approval-title", "approval-detail", "deny-approval", "allow-approval", "toast"
 ].map((id) => [id, document.getElementById(id)]));
 
 initialize().catch(showError);
 
 async function initialize() {
+  applyUiPreferences();
   appState.snapshot = await window.companion.snapshot();
   render();
   const contextObserver = new ResizeObserver(syncContextBounds);
@@ -45,7 +52,11 @@ async function initialize() {
   window.companion.onEvent(handleEvent);
   window.companion.onApproval(showApproval);
   window.companion.onPullProgress((progress) => {
-    el["pull-progress"].textContent = progress.error || progress.line;
+    const message = progress.error || `${progress.model} · ${progress.line}`;
+    el["pull-progress"].textContent = message;
+    if (!el.recommendation.classList.contains("hidden")) {
+      setRecommendationNotice(message, progress.error ? "error" : progress.done ? "success" : "active");
+    }
   });
 }
 
@@ -53,11 +64,17 @@ function handleEvent(event) {
   let conversationEffect = null;
   if (event.type === "snapshot") appState.snapshot = event.snapshot;
   if (event.type === "context-snapshot") appState.snapshot.context = event.snapshot;
-  if (event.type === "context-focus") appState.inspectorMode = "context";
+  if (event.type === "context-focus") {
+    appState.inspectorMode = "preview";
+    appState.inspectorOpen = true;
+  }
   if (event.type === "run-start") {
     appState.activities = [];
     appState.changes = [];
+    appState.selectedOutputs = null;
     appState.snapshot.running = true;
+    appState.inspectorMode = "activity";
+    appState.inspectorOpen = true;
     const thread = appState.snapshot.threads.find((candidate) => candidate.id === event.threadId);
     if (thread && !thread.messages.some((message) => message.id === event.message.id)) {
       thread.messages.push(event.message);
@@ -124,6 +141,9 @@ function render(conversationEffect = null) {
   const snapshot = appState.snapshot;
   if (!snapshot) return;
   const active = snapshot.threads.find((thread) => thread.id === snapshot.activeThreadId) || snapshot.threads[0];
+  const shell = document.querySelector(".app-shell");
+  shell.classList.toggle("inspector-open", appState.inspectorOpen);
+  shell.classList.toggle("sidebar-collapsed", appState.sidebarCollapsed);
   el["workspace-label"].textContent = snapshot.workspacePath ? basename(snapshot.workspacePath) : "Escolher projeto";
   el["workspace-label"].title = snapshot.workspacePath || "";
   el["ollama-dot"].classList.toggle("online", snapshot.ollama.connected);
@@ -133,7 +153,7 @@ function render(conversationEffect = null) {
   el["model-label"].textContent = snapshot.modelRoles?.executor || "Escolher modelo";
   el["runtime-label"].textContent = snapshot.agentRuntime === "deep" ? "Deep Agent" : "Agente padrão";
   el["thread-title"].textContent = active?.title || "Nova conversa";
-  el["thread-list"].replaceChildren(...snapshot.threads.map(threadButton));
+  renderThreadList(snapshot.threads, active?.id);
   renderConversation(active, conversationEffect);
   renderModels();
   renderRecommendation();
@@ -144,24 +164,60 @@ function render(conversationEffect = null) {
   el["cancel-button"].classList.toggle("hidden", !snapshot.running);
   el["send-button"].disabled = snapshot.running;
   const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
-  el["run-state"].textContent = appState.inspectorMode === "context"
-    ? activeContext?.title || "Páginas e pesquisa"
-    : snapshot.running ? "Agente trabalhando" : "Pronto";
-  el["run-pulse"].classList.toggle("active", snapshot.running || (appState.inspectorMode === "context" && activeContext?.status === "loading"));
+  const inspectorTitles = {
+    activity: snapshot.running ? "Agente trabalhando" : "Execução",
+    context: activeContext?.title || "Páginas e pesquisa",
+    preview: activeContext?.title || "Preview local",
+    changes: `${appState.selectedOutputs?.changeCount ?? appState.changes.length} arquivo${(appState.selectedOutputs?.changeCount ?? appState.changes.length) === 1 ? "" : "s"}`,
+    commands: "Auditoria de comandos"
+  };
+  el["run-state"].textContent = inspectorTitles[appState.inspectorMode] || "Bancada";
+  el["run-pulse"].classList.toggle("active", snapshot.running || (["context", "preview"].includes(appState.inspectorMode) && activeContext?.status === "loading"));
 }
 
-function threadButton(thread) {
+function renderThreadList(threads, activeThreadId) {
+  const query = appState.threadQuery.trim().toLocaleLowerCase("pt-BR");
+  const filtered = threads.filter((thread) => !query || thread.title.toLocaleLowerCase("pt-BR").includes(query));
+  const groups = [
+    ["FIXADAS", filtered.filter((thread) => thread.pinned)],
+    [appState.snapshot.workspacePath ? basename(appState.snapshot.workspacePath).toLocaleUpperCase("pt-BR") : "CONVERSAS", filtered.filter((thread) => !thread.pinned)]
+  ];
+  const nodes = groups.flatMap(([label, values]) => {
+    if (!values.length) return [];
+    const heading = document.createElement("p");
+    heading.className = "thread-group-label";
+    heading.textContent = label;
+    return [heading, ...values.map((thread) => threadButton(thread, activeThreadId))];
+  });
+  if (!nodes.length) nodes.push(paragraph(query ? "Nenhuma conversa encontrada." : "Nenhuma conversa.", "thread-empty"));
+  el["thread-list"].replaceChildren(...nodes);
+}
+
+function threadButton(thread, activeThreadId) {
+  const row = document.createElement("div");
+  row.className = `thread-row${thread.id === activeThreadId ? " active" : ""}`;
   const button = document.createElement("button");
-  button.className = `thread-item${thread.id === appState.snapshot.activeThreadId ? " active" : ""}`;
+  button.className = "thread-item";
   button.textContent = thread.title;
   const small = document.createElement("small");
   small.textContent = relativeTime(thread.updatedAt);
   button.append(small);
   button.addEventListener("click", async () => {
+      appState.selectedOutputs = null;
     appState.snapshot = await window.companion.selectThread(thread.id);
     render({ type: "reset" });
   });
-  return button;
+  const pin = document.createElement("button");
+  pin.className = "thread-pin";
+  pin.textContent = thread.pinned ? "◆" : "◇";
+  pin.title = thread.pinned ? "Desafixar conversa" : "Fixar conversa";
+  pin.setAttribute("aria-label", pin.title);
+  pin.addEventListener("click", async () => {
+    appState.snapshot = await window.companion.toggleThreadPin(thread.id);
+    render();
+  });
+  row.append(button, pin);
+  return row;
 }
 
 function renderConversation(thread, effect) {
@@ -171,9 +227,11 @@ function renderConversation(thread, effect) {
   el.welcome.classList.toggle("hidden", messages.length > 0);
   const existing = new Map([...el.conversation.querySelectorAll(".message")].map((node) => [node.dataset.messageId, node]));
   const existingStepGroups = new Map([...el.conversation.querySelectorAll(".run-steps")].map((node) => [node.dataset.messageId, node]));
+  const existingOutputGroups = new Map([...el.conversation.querySelectorAll(".message-outputs")].map((node) => [node.dataset.messageId, node]));
   const desiredIds = new Set(messages.map((message) => message.id));
   for (const [id, node] of existing) if (!desiredIds.has(id)) node.remove();
   for (const [id, node] of existingStepGroups) if (!desiredIds.has(id)) node.remove();
+  for (const [id, node] of existingOutputGroups) if (!desiredIds.has(id)) node.remove();
   let position = el.welcome.nextSibling;
   for (const message of messages) {
     const steps = message.role === "assistant" && Array.isArray(message.executionSteps) ? message.executionSteps : [];
@@ -191,8 +249,51 @@ function renderConversation(thread, effect) {
     updateMessageElement(article, message);
     if (article !== position) el.conversation.insertBefore(article, position);
     position = article.nextSibling;
+    let outputs = existingOutputGroups.get(message.id);
+    if (message.role === "assistant" && message.outputs && outputDescriptors(message.outputs).length) {
+      if (!outputs) outputs = createMessageOutputsElement(message.id);
+      updateMessageOutputsElement(outputs, message.outputs);
+      if (outputs !== position) el.conversation.insertBefore(outputs, position);
+      position = outputs.nextSibling;
+    } else {
+      outputs?.remove();
+    }
   }
   applyConversationEffect(effect);
+}
+
+function outputDescriptors(outputs) {
+  return [
+    ...(outputs.previewUrls?.length ? [{ mode: "preview", icon: "▣", label: `${outputs.previewUrls.length} preview${outputs.previewUrls.length === 1 ? "" : "s"}`, url: outputs.previewUrls[0] }] : []),
+    ...(outputs.changeCount ? [{ mode: "changes", icon: "±", label: `${outputs.changeCount} arquivo${outputs.changeCount === 1 ? "" : "s"}` }] : []),
+    ...(outputs.activityCount ? [{ mode: "activity", icon: "↳", label: `${outputs.activityCount} ações` }] : []),
+    ...(outputs.commandCount ? [{ mode: "commands", icon: ">_", label: `${outputs.commandCount} comando${outputs.commandCount === 1 ? "" : "s"}` }] : []),
+    ...(outputs.contextCount ? [{ mode: "context", icon: "◎", label: `${outputs.contextCount} contexto${outputs.contextCount === 1 ? "" : "s"}` }] : [])
+  ];
+}
+
+function createMessageOutputsElement(messageId) {
+  const nav = document.createElement("nav");
+  nav.className = "message-outputs";
+  nav.dataset.messageId = messageId;
+  nav.setAttribute("aria-label", "Resultados desta execução");
+  return nav;
+}
+
+function updateMessageOutputsElement(nav, outputs) {
+  const signature = JSON.stringify(outputs);
+  if (nav.dataset.signature === signature) return;
+  nav.dataset.signature = signature;
+  nav.replaceChildren(...outputDescriptors(outputs).map((descriptor) => {
+    const button = document.createElement("button");
+    const icon = document.createElement("span");
+    icon.textContent = descriptor.icon;
+    const label = document.createElement("strong");
+    label.textContent = descriptor.label;
+    button.append(icon, label);
+    button.addEventListener("click", () => void openInspectorSurface(descriptor.mode, descriptor.url, outputs));
+    return button;
+  }));
 }
 
 function createExecutionStepsElement(messageId) {
@@ -326,7 +427,7 @@ function renderModels() {
     button.append(text, size);
     button.addEventListener("click", async () => {
       appState.snapshot = await window.companion.setModel(model.name);
-      el["model-popover"].classList.add("hidden");
+      setModelPickerOpen(false);
       render();
     });
     return button;
@@ -335,6 +436,14 @@ function renderModels() {
 
 function renderInspector() {
   const snapshot = appState.snapshot;
+  const selected = appState.selectedOutputs;
+  const activities = selected
+    ? (selected.activities || []).map((activity, index) => ({ ...activity, id: `saved-${index}` }))
+    : appState.activities;
+  const changes = selected ? (selected.changes || []) : appState.changes;
+  const commands = selected
+    ? (selected.commands || [])
+    : activities.filter((activity) => activity.kind === "command");
   const hasWorkspace = Boolean(snapshot.workspacePath);
   const selectedInstalled = snapshot.ollama.models.some((model) => model.name === snapshot.modelRoles?.executor);
   el["setup-panel"].classList.toggle("hidden", hasWorkspace && snapshot.ollama.connected && selectedInstalled);
@@ -348,8 +457,9 @@ function renderInspector() {
     el["setup-copy"].textContent = `O modelo ${snapshot.modelRoles?.executor} ainda não está instalado localmente.`;
     el["setup-action"].textContent = "Baixar modelo recomendado";
   }
-  el["activity-count"].textContent = `${appState.activities.length} evento${appState.activities.length === 1 ? "" : "s"}`;
-  el["activity-list"].replaceChildren(...(appState.activities.length ? appState.activities.map((activity) => {
+  const activityCount = selected?.activityCount ?? activities.length;
+  el["activity-count"].textContent = `${activityCount} evento${activityCount === 1 ? "" : "s"}`;
+  el["activity-list"].replaceChildren(...(activities.length ? activities.map((activity) => {
     const item = document.createElement("div");
     item.className = `activity-item ${activity.status}`;
     item.dataset.kind = activity.kind;
@@ -371,18 +481,43 @@ function renderInspector() {
     item.append(icon, body);
     return item;
   }) : [paragraph("A leitura de arquivos, buscas, alterações e comandos aparecerão aqui.", "empty-copy")]));
-  el["changes-panel"].classList.toggle("hidden", !appState.changes.length);
-  el["changes-count"].textContent = String(appState.changes.length);
-  el["change-list"].replaceChildren(...appState.changes.map((change) => {
+  const localPreviews = selected?.previewUrls || snapshot.context?.tabs.filter((tab) => tab.kind === "local" && tab.status === "ready").map((tab) => tab.url) || [];
+  const changeCount = selected?.changeCount ?? changes.length;
+  const commandCount = selected?.commandCount ?? commands.length;
+  el["preview-mode-button"].classList.toggle("hidden", !localPreviews.length);
+  el["preview-count"].textContent = String(localPreviews.length);
+  el["changes-mode-button"].classList.toggle("hidden", !changeCount);
+  el["surface-changes-count"].textContent = String(changeCount);
+  el["commands-mode-button"].classList.toggle("hidden", !commandCount);
+  el["commands-count"].textContent = String(commandCount);
+  el["surface-change-list"].replaceChildren(...(changes.length ? changes.map((change) => {
     const item = document.createElement("div");
-    item.className = "change-item";
+    item.className = "surface-row change-surface-row";
     const mark = document.createElement("i");
     mark.textContent = change.kind === "created" ? "+" : change.kind === "deleted" ? "−" : "~";
-    const name = document.createElement("span");
-    name.textContent = change.path;
-    item.append(mark, name);
+    const body = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = change.path;
+    const meta = document.createElement("small");
+    meta.textContent = ({ created: "Criado", modified: "Modificado", deleted: "Excluído" })[change.kind];
+    body.append(title, meta);
+    item.append(mark, body);
     return item;
-  }));
+  }) : [paragraph(changeCount ? "O resumo foi preservado, mas esta execução antiga não possui detalhes por arquivo." : "Nenhuma alteração observada nesta execução.", "surface-empty")]));
+  el["command-list"].replaceChildren(...(commands.length ? commands.map((activity) => {
+    const item = document.createElement("div");
+    item.className = `surface-row command-surface-row ${activity.status}`;
+    const mark = document.createElement("i");
+    mark.textContent = ">_";
+    const body = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = activity.title;
+    const meta = document.createElement("small");
+    meta.textContent = [activity.detail, activity.status === "failed" ? "Falhou" : activity.status === "active" ? "Em andamento" : "Concluído"].filter(Boolean).join(" · ");
+    body.append(title, meta);
+    item.append(mark, body);
+    return item;
+  }) : [paragraph(commandCount ? "O resumo foi preservado, mas esta execução antiga não possui detalhes dos comandos." : "Nenhum comando foi executado.", "surface-empty")]));
 }
 
 function renderRecommendation() {
@@ -403,23 +538,31 @@ function renderRecommendation() {
   if (!plan) return;
   el["recommendation-machine"].textContent = `${plan.machineSummary} · ${plan.source === "advisor" ? `análise por ${plan.advisorModel}` : "estimativa inicial"}`;
   const labels = { executor: "Executor", planner: "Planner", evaluator: "Evaluator", vision: "Vision", embedding: "Embedding" };
-  el["recommendation-roles"].replaceChildren(...Object.entries(plan.roles).map(([role, model]) => {
+  const roleRows = (roles, rationaleByRole, attribute) => Object.entries(roles || {}).map(([role, model]) => {
     const row = document.createElement("div");
     row.className = "recommendation-role";
     const label = document.createElement("strong");
     label.textContent = labels[role] || role;
     const value = document.createElement("input");
     value.value = model;
-    value.dataset.roleModel = role;
+    value.dataset[attribute] = role;
     value.setAttribute("aria-label", `${labels[role] || role} model`);
     const reason = document.createElement("small");
-    reason.textContent = plan.rationaleByRole?.[role] || "Seleção compatível com o perfil detectado.";
+    reason.textContent = rationaleByRole?.[role] || "Seleção compatível com o perfil detectado.";
     row.append(label, value, reason);
     return row;
-  }));
+  });
+  el["recommendation-roles"].replaceChildren(...roleRows(plan.roles, plan.rationaleByRole, "roleModel"));
   el["recommendation-downloads"].textContent = plan.requiredPulls.length
     ? `${plan.requiredPulls.length} ausente(s) · ${formatBytes(plan.downloadBytes)} de download estimado`
     : "Todos os modelos recomendados já estão instalados.";
+  const installedAlternative = plan.installedAlternative;
+  el["recommendation-installed"].classList.toggle("hidden", !installedAlternative);
+  el["apply-installed-recommendation"].classList.toggle("hidden", !installedAlternative);
+  if (installedAlternative) {
+    el["recommendation-installed-roles"].replaceChildren(...roleRows(installedAlternative.roles, installedAlternative.rationaleByRole, "installedRoleModel"));
+    el["recommendation-installed-downloads"].textContent = "Sem downloads adicionais · pronta para aplicar.";
+  }
   el["recommendation-docker"].classList.toggle("hidden", !plan.docker);
   if (plan.docker) {
     el["recommendation-docker-image"].textContent = `${plan.docker.image} · ${plan.docker.installed ? "instalada" : "ausente"}`;
@@ -446,6 +589,20 @@ function renderRecommendation() {
     return row;
   }));
   el["pull-recommended"].disabled = !plan.requiredPulls.length;
+  if (appState.recommendationNotice) {
+    setRecommendationNotice(appState.recommendationNotice.text, appState.recommendationNotice.kind);
+  } else {
+    const nextStep = plan.requiredPulls.length
+      ? `Aplicar escolhe os papéis, mas não inicia downloads. Depois, use “Baixar ausentes” para obter ${plan.requiredPulls.length} modelo(s).`
+      : "Aplicar escolhe os papéis imediatamente; nenhum download adicional é necessário.";
+    setRecommendationNotice(nextStep, "neutral", false);
+  }
+}
+
+function setRecommendationNotice(text, kind = "neutral", remember = true) {
+  if (remember) appState.recommendationNotice = { text, kind };
+  el["recommendation-status"].textContent = text;
+  el["recommendation-status"].className = `recommendation-status ${kind === "neutral" ? "" : kind}`.trim();
 }
 
 function setRecommendationBusy(busy, title = "Analisando máquina e modelos…") {
@@ -454,8 +611,9 @@ function setRecommendationBusy(busy, title = "Analisando máquina e modelos…")
   el["model-popover"].setAttribute("aria-busy", String(busy));
   el["advisor-progress"].classList.toggle("hidden", !busy);
   el["advisor-progress-title"].textContent = title;
+  el["cancel-recommendation"].classList.toggle("hidden", !busy);
   el["recommend-models"].textContent = busy ? "Analisando…" : "Analisar";
-  for (const control of ["recommend-models", "reanalyze-models", "refresh-public-catalog", "public-catalog-toggle", "docker-sandbox-toggle", "apply-recommendation", "pull-recommended", "close-models"]) {
+  for (const control of ["recommend-models", "reanalyze-models", "refresh-public-catalog", "public-catalog-toggle", "docker-sandbox-toggle", "apply-recommendation", "apply-installed-recommendation", "pull-recommended", "close-models"]) {
     el[control].disabled = busy;
   }
   if (!busy && appState.snapshot?.lastRecommendation) {
@@ -465,6 +623,7 @@ function setRecommendationBusy(busy, title = "Analisando máquina e modelos…")
 
 async function runRecommendation(title = "Analisando máquina e modelos…", action = () => window.companion.recommendModels()) {
   if (appState.recommendationBusy) return;
+  appState.recommendationNotice = null;
   setRecommendationBusy(true, title);
   try {
     appState.snapshot = await action();
@@ -476,20 +635,45 @@ async function runRecommendation(title = "Analisando máquina e modelos…", act
   }
 }
 
+async function applyRoleConfiguration(roles, label) {
+  for (const control of ["apply-recommendation", "apply-installed-recommendation", "pull-recommended", "reanalyze-models"]) el[control].disabled = true;
+  setRecommendationNotice(`Aplicando ${label.toLowerCase()}…`, "active");
+  try {
+    appState.snapshot = await window.companion.applyRecommendation(roles);
+    const missing = label === "Configuração ideal" ? appState.snapshot.lastRecommendation?.requiredPulls?.length || 0 : 0;
+    setRecommendationNotice(missing
+      ? `${label} aplicada. Os papéis já foram salvos; agora baixe ${missing} modelo(s) ausente(s).`
+      : `${label} aplicada e pronta para uso.`, "success");
+    render();
+  } catch (error) {
+    setRecommendationNotice(error?.message || String(error), "error");
+    showError(error);
+  } finally {
+    el["apply-recommendation"].disabled = false;
+    el["apply-installed-recommendation"].disabled = false;
+    el["reanalyze-models"].disabled = false;
+    el["pull-recommended"].disabled = !appState.snapshot?.lastRecommendation?.requiredPulls?.length;
+  }
+}
+
 function renderContext() {
   const context = appState.snapshot.context || { externalAccess: false, tabs: [] };
   const active = context.tabs.find((tab) => tab.id === context.activeTabId);
-  const contextVisible = appState.inspectorMode === "context";
-  document.querySelector(".app-shell").classList.toggle("context-mode", contextVisible);
+  const browserVisible = appState.inspectorOpen && ["context", "preview"].includes(appState.inspectorMode);
+  const shell = document.querySelector(".app-shell");
+  shell.classList.toggle("context-mode", browserVisible);
+  shell.classList.toggle("surface-wide", browserVisible);
+  document.querySelector(".inspector").classList.toggle("preview-mode", appState.inspectorMode === "preview");
   document.querySelectorAll("[data-inspector-mode]").forEach((button) => {
     button.classList.toggle("active", button.dataset.inspectorMode === appState.inspectorMode);
   });
-  el["activity-view"].classList.toggle("hidden", contextVisible);
-  el["context-view"].classList.toggle("hidden", !contextVisible);
-  el["context-close"].classList.toggle("hidden", !contextVisible);
-  el["context-button"].classList.toggle("active", contextVisible);
-  el["privacy-title"].textContent = contextVisible ? "Contexto sob controle" : "Local por padrão";
-  el["privacy-copy"].textContent = contextVisible ? "Só abas marcadas entram no próximo pedido." : "Projeto e conversas permanecem neste Mac.";
+  el["activity-view"].classList.toggle("hidden", appState.inspectorMode !== "activity");
+  el["context-view"].classList.toggle("hidden", !browserVisible);
+  el["surface-changes-view"].classList.toggle("hidden", appState.inspectorMode !== "changes");
+  el["commands-view"].classList.toggle("hidden", appState.inspectorMode !== "commands");
+  el["context-button"].classList.toggle("active", appState.inspectorOpen);
+  el["privacy-title"].textContent = browserVisible ? (appState.inspectorMode === "preview" ? "Preview isolado" : "Contexto sob controle") : "Local por padrão";
+  el["privacy-copy"].textContent = browserVisible ? (appState.inspectorMode === "preview" ? "A aplicação permanece no loopback deste Mac." : "Só abas marcadas entram no próximo pedido.") : "Projeto e conversas permanecem neste Mac.";
   el["context-count"].textContent = String(context.tabs.length);
   el["context-external-toggle"].classList.toggle("active", context.externalAccess);
   el["context-external-toggle"].querySelector("span").textContent = context.externalAccess ? "Internet permitida nesta sessão" : "Internet bloqueada";
@@ -550,9 +734,22 @@ async function performContextAction(action) {
   }
 }
 
-function setInspectorMode(mode) {
+function setInspectorMode(mode, outputs = null) {
   appState.inspectorMode = mode;
+  appState.inspectorOpen = true;
+  appState.selectedOutputs = outputs;
+  localStorage.setItem("companion.inspectorMode", mode);
   render();
+}
+
+async function openInspectorSurface(mode, url, outputs) {
+  if (url) {
+    const tab = appState.snapshot.context?.tabs.find((candidate) => candidate.url === url);
+    appState.snapshot.context = tab
+      ? await window.companion.selectContextTab(tab.id)
+      : await window.companion.openContext(url);
+  }
+  setInspectorMode(mode, outputs);
 }
 
 function contextAddress(value) {
@@ -567,7 +764,13 @@ function contextAddress(value) {
 function syncContextBounds() {
   if (!appState.snapshot) return;
   const active = appState.snapshot.context?.tabs.some((tab) => tab.id === appState.snapshot.context.activeTabId);
-  const visible = appState.inspectorMode === "context" && Boolean(active) && !el["context-view"].classList.contains("hidden");
+  const visible = appState.inspectorOpen
+    && ["context", "preview"].includes(appState.inspectorMode)
+    && Boolean(active)
+    && !el["context-view"].classList.contains("hidden")
+    && el["model-popover"].classList.contains("hidden")
+    && el["model-picker"].classList.contains("hidden")
+    && el["approval-modal"].classList.contains("hidden");
   const rect = el["context-browser-host"].getBoundingClientRect();
   void window.companion.setContextBounds({
     x: Math.round(rect.left),
@@ -596,6 +799,7 @@ function showApproval(request) {
   el["approval-detail"].textContent = request.detail;
   el["allow-approval"].textContent = request.confirmLabel;
   el["approval-modal"].classList.remove("hidden");
+  void syncContextBounds();
 }
 
 async function answerApproval(approved) {
@@ -603,6 +807,7 @@ async function answerApproval(approved) {
   const { id } = appState.approval;
   appState.approval = null;
   el["approval-modal"].classList.add("hidden");
+  void syncContextBounds();
   await window.companion.answerApproval(id, approved);
 }
 
@@ -618,12 +823,63 @@ function resizePrompt() {
   el.prompt.style.height = `${Math.min(el.prompt.scrollHeight, 180)}px`;
 }
 
-el["new-thread"].addEventListener("click", async () => { appState.snapshot = await window.companion.newThread(); appState.activities = []; appState.changes = []; render({ type: "reset" }); });
+function applyUiPreferences() {
+  const theme = localStorage.getItem("companion.theme") || "system";
+  document.documentElement.dataset.theme = theme;
+  const savedWidth = Number(localStorage.getItem("companion.inspectorWidth"));
+  if (Number.isFinite(savedWidth) && savedWidth >= 310 && savedWidth <= 900) {
+    document.documentElement.style.setProperty("--context-inspector", `${Math.round(savedWidth)}px`);
+  }
+  const savedMode = localStorage.getItem("companion.inspectorMode");
+  if (["activity", "context", "preview", "changes", "commands"].includes(savedMode)) appState.inspectorMode = savedMode;
+  document.querySelectorAll("[data-theme]").forEach((button) => button.classList.toggle("active", button.dataset.theme === theme));
+}
+
+function setTheme(theme) {
+  if (!["system", "dark", "light"].includes(theme)) return;
+  localStorage.setItem("companion.theme", theme);
+  applyUiPreferences();
+}
+
+function setSidebarCollapsed(collapsed) {
+  appState.sidebarCollapsed = collapsed;
+  localStorage.setItem("companion.sidebarCollapsed", String(collapsed));
+  render();
+}
+
+function setSettingsSheetOpen(open) {
+  if (appState.recommendationBusy && !open) return;
+  if (open) setModelPickerOpen(false);
+  el["model-popover"].classList.toggle("hidden", !open);
+  el["model-scrim"].classList.toggle("hidden", !open);
+  el["settings-button"].classList.toggle("active", open);
+  void syncContextBounds();
+}
+
+function setModelPickerOpen(open) {
+  if (open && appState.recommendationBusy) return;
+  if (open) setSettingsSheetOpen(false);
+  el["model-picker"].classList.toggle("hidden", !open);
+  el["model-button"].classList.toggle("active", open);
+  void syncContextBounds();
+}
+
+el["new-thread"].addEventListener("click", async () => { appState.snapshot = await window.companion.newThread(); appState.activities = []; appState.changes = []; appState.selectedOutputs = null; render({ type: "reset" }); });
+el["thread-search"].addEventListener("input", () => { appState.threadQuery = el["thread-search"].value; renderThreadList(appState.snapshot.threads, appState.snapshot.activeThreadId); });
+el["sidebar-collapse"].addEventListener("click", () => setSidebarCollapsed(true));
+el["sidebar-reveal"].addEventListener("click", () => setSidebarCollapsed(false));
 el["workspace-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.chooseWorkspace(); render(); });
 el["refresh-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.refreshOllama(); render(); });
-el["context-button"].addEventListener("click", () => setInspectorMode(appState.inspectorMode === "context" ? "activity" : "context"));
-el["context-close"].addEventListener("click", () => setInspectorMode("activity"));
-document.querySelectorAll("[data-inspector-mode]").forEach((button) => button.addEventListener("click", () => setInspectorMode(button.dataset.inspectorMode)));
+el["context-button"].addEventListener("click", () => {
+  if (appState.inspectorOpen) {
+    appState.inspectorOpen = false;
+    render();
+  } else {
+    setInspectorMode("context");
+  }
+});
+el["context-close"].addEventListener("click", () => { appState.inspectorOpen = false; render(); });
+document.querySelectorAll("[data-inspector-mode]").forEach((button) => button.addEventListener("click", () => setInspectorMode(button.dataset.inspectorMode, appState.selectedOutputs)));
 el["context-open-form"].addEventListener("submit", (event) => {
   event.preventDefault();
   const value = el["context-input"].value.trim();
@@ -643,16 +899,19 @@ el["context-include"].addEventListener("click", () => {
   if (id) void performContextAction(() => window.companion.toggleContextIncluded(id));
 });
 el["inspector-resizer"].addEventListener("pointerdown", (event) => {
-  if (appState.inspectorMode !== "context" || window.innerWidth <= 980) return;
+  if (!appState.inspectorOpen || window.innerWidth <= 980) return;
   const startX = event.clientX;
   const startWidth = document.querySelector(".inspector").getBoundingClientRect().width;
   document.body.classList.add("resizing-inspector");
   const move = (moveEvent) => {
-    const maximum = Math.min(820, window.innerWidth - 760);
-    const width = Math.max(450, Math.min(maximum, startWidth + startX - moveEvent.clientX));
+    const maximum = Math.min(900, window.innerWidth - 640);
+    const minimum = ["context", "preview"].includes(appState.inspectorMode) ? 450 : 310;
+    const width = Math.max(minimum, Math.min(maximum, startWidth + startX - moveEvent.clientX));
     document.documentElement.style.setProperty("--context-inspector", `${Math.round(width)}px`);
   };
   const stop = () => {
+    const width = Math.round(document.querySelector(".inspector").getBoundingClientRect().width);
+    if (width > 0) localStorage.setItem("companion.inspectorWidth", String(width));
     document.body.classList.remove("resizing-inspector");
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", stop);
@@ -661,12 +920,22 @@ el["inspector-resizer"].addEventListener("pointerdown", (event) => {
   window.addEventListener("pointerup", stop);
 });
 el["model-button"].addEventListener("click", () => {
-  if (!appState.recommendationBusy) el["model-popover"].classList.toggle("hidden");
+  setModelPickerOpen(el["model-picker"].classList.contains("hidden"));
+});
+el["settings-button"].addEventListener("click", () => {
+  setSettingsSheetOpen(el["model-popover"].classList.contains("hidden"));
 });
 el["close-models"].addEventListener("click", () => {
-  if (!appState.recommendationBusy) el["model-popover"].classList.add("hidden");
+  if (!appState.recommendationBusy) setSettingsSheetOpen(false);
 });
-el["runtime-button"].addEventListener("click", () => el["runtime-popover"].classList.toggle("hidden"));
+el["close-model-picker"].addEventListener("click", () => setModelPickerOpen(false));
+el["model-scrim"].addEventListener("click", () => setSettingsSheetOpen(false));
+el["theme-control"].addEventListener("click", (event) => setTheme(event.target.dataset.theme));
+el["runtime-button"].addEventListener("click", () => {
+  setModelPickerOpen(false);
+  if (!appState.recommendationBusy) setSettingsSheetOpen(false);
+  el["runtime-popover"].classList.toggle("hidden");
+});
 el["close-runtimes"].addEventListener("click", () => el["runtime-popover"].classList.add("hidden"));
 document.querySelectorAll("[data-runtime]").forEach((button) => button.addEventListener("click", async () => {
   appState.snapshot = await window.companion.setAgentRuntime(button.dataset.runtime);
@@ -680,6 +949,13 @@ el["pull-model-button"].addEventListener("click", async () => {
 });
 el["recommend-models"].addEventListener("click", () => runRecommendation());
 el["reanalyze-models"].addEventListener("click", () => runRecommendation("Reanalisando com o modelo local…"));
+el["cancel-recommendation"].addEventListener("click", async () => {
+  el["advisor-progress-title"].textContent = "Cancelando análise…";
+  el["cancel-recommendation"].disabled = true;
+  try { await window.companion.cancelRecommendation(); }
+  catch (error) { showError(error?.message || String(error)); }
+  finally { el["cancel-recommendation"].disabled = false; }
+});
 el["public-catalog-toggle"].addEventListener("change", async () => {
   try { appState.snapshot = await window.companion.setPublicOllamaCatalog(el["public-catalog-toggle"].checked); render(); }
   catch (error) { showError(error); }
@@ -694,12 +970,29 @@ el["refresh-public-catalog"].addEventListener("click", async () => {
 el["apply-recommendation"].addEventListener("click", async () => {
   const roles = Object.fromEntries([...el["recommendation-roles"].querySelectorAll("[data-role-model]")]
     .map((input) => [input.dataset.roleModel, input.value.trim()]));
-  try { appState.snapshot = await window.companion.applyRecommendation(roles); render(); }
-  catch (error) { showError(error); }
+  await applyRoleConfiguration(roles, "Configuração ideal");
+});
+el["apply-installed-recommendation"].addEventListener("click", async () => {
+  const roles = Object.fromEntries([...el["recommendation-installed-roles"].querySelectorAll("[data-installed-role-model]")]
+    .map((input) => [input.dataset.installedRoleModel, input.value.trim()]));
+  await applyRoleConfiguration(roles, "Configuração instalada");
 });
 el["pull-recommended"].addEventListener("click", async () => {
-  try { appState.snapshot = await window.companion.pullRecommended(); render(); }
-  catch (error) { showError(error); }
+  const button = el["pull-recommended"];
+  button.disabled = true;
+  button.textContent = "Baixando…";
+  setRecommendationNotice("Iniciando downloads dos modelos ausentes…", "active");
+  try {
+    appState.snapshot = await window.companion.pullRecommended();
+    setRecommendationNotice("Downloads concluídos. A configuração ideal está pronta para uso.", "success");
+    render();
+  } catch (error) {
+    setRecommendationNotice(error?.message || String(error), "error");
+    showError(error);
+  } finally {
+    button.textContent = "Baixar ausentes";
+    button.disabled = !appState.snapshot?.lastRecommendation?.requiredPulls?.length;
+  }
 });
 el["setup-action"].addEventListener("click", async () => {
   if (!appState.snapshot.ollama.connected) appState.snapshot = await window.companion.refreshOllama();
@@ -727,6 +1020,12 @@ el.conversation.addEventListener("scroll", () => {
   if (readerAnchorLocked) return;
   conversationPinnedToBottom = conversationIsNearBottom();
   if (conversationPinnedToBottom) resetConversationScroll();
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  setModelPickerOpen(false);
+  el["runtime-popover"].classList.add("hidden");
+  if (!appState.recommendationBusy) setSettingsSheetOpen(false);
 });
 
 function basename(value) { return value.split(/[\\/]/).filter(Boolean).at(-1) || value; }

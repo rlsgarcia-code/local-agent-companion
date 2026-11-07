@@ -114,7 +114,7 @@ export const OLLAMA_CATALOG: readonly OllamaCatalogEntry[] = [
 
 export const OLLAMA_RECOMMENDED_SETUP = {
   executor: "qwen3-coder:30b",
-  planner: "gpt-oss:20b",
+  planner: "deepseek-r1:32b",
   vision: "qwen3-vl:8b",
   evaluator: "gpt-oss:20b",
   embedding: "nomic-embed-text:latest"
