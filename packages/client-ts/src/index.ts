@@ -8,6 +8,8 @@ import {
   PROTOCOL_VERSION,
   terminalStates,
   type ClientCredential,
+  type ModelAssistance,
+  type ModelAssistanceResult,
   type EngineEvent,
   type RpcResponse,
   type Run,
@@ -121,6 +123,13 @@ export class AgentClient {
       });
       this.socket!.write(frame);
     });
+  }
+  async assistModel(request: ModelAssistance): Promise<ModelAssistanceResult> {
+    const bytes = Buffer.from(JSON.stringify(request));
+    const params = bytes.length > MAX_FRAME_BYTES - 2048
+      ? {transferId:(await this.upload(`model-assistance:${randomUUID()}`,bytes,"application/json")).id}
+      : request;
+    return this.call<ModelAssistanceResult>("models.assist",params,100_000);
   }
   private receive(chunk: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, chunk]);

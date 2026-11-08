@@ -125,6 +125,21 @@ class AgentClient:
         transfer = self.upload("run:" + hashlib.sha256(data).hexdigest(), data)
         return self.call("runs.start", {"sessionId": session_id, "key": key, "specTransferId": transfer["id"]})
 
+    def assist_model(self, request: dict) -> dict:
+        """Read-only model assistance. A protected KidOS client cannot use this route."""
+        data = json.dumps(request, separators=(",", ":"), ensure_ascii=False).encode()
+        params = request if len(data) <= MAX_FRAME_BYTES - 2048 else {
+            "transferId": self.upload("model-assistance:" + str(uuid.uuid4()), data)["id"]}
+        with self.lock:
+            previous_timeout = self.socket.gettimeout() if self.socket else None
+            if self.socket:
+                self.socket.settimeout(100)
+            try:
+                return self.call("models.assist", params)
+            finally:
+                if self.socket:
+                    self.socket.settimeout(previous_timeout)
+
     def export_session(self, identifier: str) -> object:
         transfer = self.call("sessions.export", {"id": identifier})
         return json.loads(self.download(transfer["id"]))

@@ -41,10 +41,10 @@ jobs:
         env:
           COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
       - name: Exercise signed engine through real Linux editor executors and reconnection
-        if: matrix.target == 'linux-x64'
+        if: startsWith(matrix.target, 'linux-')
         run: xvfb-run -a node scripts/test-editor-service.mjs
-      - name: Exercise signed engine through real Windows editor executors and reconnection
-        if: matrix.target == 'win32-x64'
+      - name: Exercise signed engine through real Mac and Windows editor executors
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: node scripts/test-editor-service.mjs
       - name: Package three VS Code provider variants with the exact signed engine
         shell: bash
@@ -55,6 +55,18 @@ jobs:
           done
         env:
           COMPANION_ENGINE_BUNDLE: ${{ github.workspace }}/engine-dist
+      - name: Resolve the exact application version
+        id: application
+        shell: bash
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Compile packaged-client acceptance tests
+        run: npm run compile:extension-host-tests
+      - name: Install and activate the signed OpenAI VSIX on Linux
+        if: startsWith(matrix.target, 'linux-')
+        run: xvfb-run -a node scripts/run-vsix-install-tests.mjs local-agent-companion-${{ steps.application.outputs.version }}-openai-${{ matrix.target }}.vsix
+      - name: Install and activate the signed OpenAI VSIX on Mac and Windows
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        run: node scripts/run-vsix-install-tests.mjs local-agent-companion-${{ steps.application.outputs.version }}-openai-${{ matrix.target }}.vsix
       - name: Build thin SDK bundles
         if: matrix.target == 'linux-x64'
         run: node scripts/build-sdks.mjs

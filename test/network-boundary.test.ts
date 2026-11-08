@@ -82,16 +82,18 @@ test("keeps browser automation local and approval-gated", () => {
 });
 
 test("routes every LangChain model client through the exact-route gateway transport", () => {
-  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 3);
-  assert.equal(count(agent, /new OpenAIEmbeddings\s*\(/g), 1);
-  assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g), 1);
-
-  assert.match(agent, /const chatFetch = gatewayFetch\(\s*chatCompletionsUrl\(connection\)/);
-  assert.match(agent, /const embeddingFetch = gatewayFetch\(\s*embeddingsUrl\(embeddingConnection(?:, (?:embeddingModel|options\.embeddingModel))?(?:, Boolean\([^)]*\))?\)/);
-  assert.match(agent, /fetch: chatFetch/);
-  assert.match(agent, /fetch: embeddingFetch/);
-  assert.match(agent, /fetch: gatewayFetch\(\s*chatCompletionsUrl\(connection\)/);
-  assert.match(readFileSync("packages/agent-core/src/provider-models.ts","utf8"), /fetch: gatewayFetch\(embeddingsUrl/);
+  const providers = readFileSync("packages/agent-core/src/provider-models.ts","utf8");
+  const assistance = readFileSync("packages/agent-core/src/model-assistance.ts","utf8");
+  assert.doesNotMatch(agent, /@langchain\/openai|new ChatOpenAI|new OpenAIEmbeddings/,
+    "editor model calls belong to the shared service");
+  assert.match(agent, /client\.assistModel/);
+  assert.equal(count(providers, /new ChatOpenAICompletions\s*\(/g),1);
+  assert.equal(count(providers, /new ChatOpenAIResponses\s*\(/g),1);
+  assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g),1);
+  assert.equal(count(assistance, /new OpenAIEmbeddings\s*\(/g),1);
+  assert.match(providers, /fetch:gatewayFetch\(responses\?responsesUrl/);
+  assert.match(providers, /fetch: gatewayFetch\(embeddingsUrl/);
+  assert.match(assistance, /fetch: options\.fetch/);
   assert.match(semanticMemory, /options\.fetch \? \{ fetch: options\.fetch \} : \{\}/);
   assert.match(gateway, /validateGatewayRequest\(input, init, allowedUrl\)/);
   assert.match(gateway, /redirect: "manual"/);

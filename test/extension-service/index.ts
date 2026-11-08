@@ -16,6 +16,13 @@ export async function run(){
  const memento={keys:()=>[...storage.keys()],get:(key:string,fallback:unknown)=>storage.get(key)??fallback,update:async(key:string,value:unknown)=>{storage.set(key,JSON.parse(JSON.stringify(value)));}};
  const context={extensionPath:root,extensionMode:vscode.ExtensionMode.Development,globalStorageUri:vscode.Uri.file(path.join(root,'storage')),workspaceState:memento,globalState:memento,secrets:{get:async()=>undefined}} as unknown as vscode.ExtensionContext;
  const create=()=>new DevelopmentAgent(context,new ContextCollector(),new ProjectMemory(),new ChangeReviewManager(),new EditorServiceRuntime(context,{stateDirectory:state,bundleDirectory:bundle,signed:process.env.COMPANION_FIXTURE_SIGNED === "1"}));
+ const assistance=create();
+ assert.match(await assistance.invokeOllamaAdvisor(process.env.COMPANION_FIXTURE_PROVIDER!,'fixture','Return a setup JSON object'),/fixtureAdvisor/);
+ const diagnostics=await assistance.diagnoseConnection({connection:{provider:'ollama',endpoint:process.env.COMPANION_FIXTURE_PROVIDER!,model:'fixture',apiKey:'',authHeader:'authorization'},profile:{}});
+ assert.equal(diagnostics.find(row=>row.id==='chat')?.status,'passed',JSON.stringify(diagnostics));
+ const generated=await assistance.generateMcpCatalogItem('Create a reviewable fixture catalog; never connect to it.');
+ assert.equal(generated.catalog.catalogVersion,1);
+ assistance.dispose();
  for(const runtime of ['standard','deep']){
   await configuration.update('agentRuntime',runtime,vscode.ConfigurationTarget.Workspace);
   const agent=create();const events:any[]=[];

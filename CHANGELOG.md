@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.2
+
+- Complete the independent shared engine and Mac/VS Code clients; keep KidOS deployment on hold.
+- Route MCP catalog authoring, Ollama setup advice and model/embedding diagnostics through authenticated model assistance in the service. Preserve product provider restrictions and temporary credential leases.
+- Reject child access, foreign attachments and arbitrary helper tools; model probes never execute returned tool calls.
+- Add thin SDK methods and shared schemas for model assistance, including chunked transfer support.
+- Align private package and Python SDK versions with engine 1.0.0; preserve immutable prior release artifacts.
+
 ## 0.11.15
 
 - Move active VS Code standard/Deep executions to the shared per-user service; preserve the editor's tools and exact approvals.

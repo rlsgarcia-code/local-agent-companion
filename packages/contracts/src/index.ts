@@ -68,6 +68,18 @@ export const message = z
   .strict()
   .refine((message) => message.role === "user" || typeof message.content === "string" || message.content.every((block) => block.type === "text"),
     "Images are accepted only in user messages.");
+/** Read-only, single-call model tasks. These never admit tools or parental authority. */
+export const modelAssistance = z.discriminatedUnion("purpose", [
+  z.object({ purpose: z.literal("catalog"), provider: providerSpec,
+    instructions: z.string().max(1_000_000), images: z.array(identifier).max(4).default([]) }).strict(),
+  z.object({ purpose: z.literal("advisor"), provider: providerSpec, prompt: z.string().max(100_000) }).strict(),
+  z.object({ purpose: z.literal("connection"), provider: providerSpec }).strict(),
+  z.object({ purpose: z.literal("embedding"), provider: providerSpec,
+    model: z.string().min(1).max(200), endpoint: z.string().url().optional() }).strict(),
+]);
+export type ModelAssistance = z.infer<typeof modelAssistance>;
+export type ModelAssistanceResult = { text: string; dimensions?: number };
+
 export const toolSpec = z
   .object({
     name: identifier,

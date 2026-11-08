@@ -62,10 +62,11 @@ test("generates a complete allowlisted inventory for the production bundle", asy
     outputDirectory
   });
 
-  assert.equal(manifest.packageCount, 58, "dependency inventory changed; review licenses before updating this expectation");
+  assert.equal(manifest.packageCount, 56, "dependency inventory changed; review licenses before updating this expectation");
   assert.equal(manifest.packages.length, manifest.packageCount);
   assert.ok(manifest.packages.some((entry) => entry.name === nativePackage && entry.nativeComponent));
   assert.ok(manifest.packages.some((entry) => entry.name === "langchain"));
+  assert.ok(!manifest.packages.some((entry) => ["@langchain/openai", "openai"].includes(entry.name)), "model provider clients belong to the shared engine");
   assert.ok(!manifest.packages.some((entry) => entry.name === "chromadb"), "semantic-memory clients belong to the shared engine");
   assert.ok(manifest.packages.some((entry) => entry.name === "@langchain/mcp-adapters" && entry.license === "MIT"));
   assert.ok(manifest.packages.some((entry) => entry.name === "@modelcontextprotocol/client" && entry.license === "Apache-2.0"));

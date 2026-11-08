@@ -42,7 +42,8 @@ export async function signReleaseArtifacts(directory, key, metadata) {
   await visit(directory);
   if (!Object.keys(files).length) throw new Error("The candidate has no artifacts.");
   const bytes = Buffer.from(JSON.stringify({ schema: 1, kind: "companion-suite-candidate", ...metadata,
-    acceptance: "pending-three-client-installed-validation", files }, null, 2) + "\n");
+    scope: ["companion-engine", "companion-mac", "companion-vscode"], deferredConsumers: ["kidos"],
+    acceptance: "pending-desktop-installed-validation", files }, null, 2) + "\n");
   await writeFile(path.join(directory, MANIFEST), bytes);
   await writeFile(path.join(directory, SIGNATURE), sign(null, bytes, key));
 }

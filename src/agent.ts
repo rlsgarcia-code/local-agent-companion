@@ -11,9 +11,8 @@ import * as path from "node:path";
 import { rootCertificates } from "node:tls";
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { BaseMessage, HumanMessage, RemoveMessage, SystemMessage } from "@langchain/core/messages";
+import { BaseMessage, RemoveMessage } from "@langchain/core/messages";
 import type { LLMResult } from "@langchain/core/outputs";
-import { ChatOpenAICompletions, ChatOpenAIResponses, OpenAIEmbeddings } from "@langchain/openai";
 import { tool } from "langchain";
 import { Agent as UndiciAgent, fetch as undiciFetch } from "undici";
 import * as vscode from "vscode";
@@ -390,93 +389,49 @@ export class DevelopmentAgent implements vscode.Disposable {
       ? { api: "chat_completions" as const, preset: "custom" as const }
       : liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
     if (connection.provider !== "ollama") validateLiteLlmModelProfile(connection.model, profile, true);
-    const api = connection.provider === "ollama" ? "chat_completions" as const : resolveLiteLlmModelApi(connection.model, profile);
-    const authentication = modelClientAuthentication(connection);
-    const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
-      ? await this.certificateAuthorities(workspace.uri.fsPath)
-      : undefined;
-    const dispatcher = certificateAuthorities ? new UndiciAgent({ connect: { ca: certificateAuthorities } }) : undefined;
-    try {
-      const model = api === "responses"
-        ? new ChatOpenAIResponses({
-            model: connection.model,
-            apiKey: authentication.apiKey,
-            streaming: false,
-            maxRetries: 1,
-            timeout: 90_000,
-            configuration: {
-              baseURL: responsesBaseUrl(connection, connection.model),
-              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
-              fetch: gatewayFetch(responsesUrl(connection, connection.model), authentication.stripAuthorization, dispatcher)
-            }
-          })
-        : new ChatOpenAICompletions({
-            model: connection.model,
-            apiKey: authentication.apiKey,
-            streaming: false,
-            streamUsage: true,
-            maxRetries: 1,
-            timeout: 90_000,
-            ...(connection.provider === "ollama" ? {} : chatCompletionsModelOptions(profile)),
-            configuration: {
-              baseURL: chatCompletionsBaseUrl(connection),
-              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
-              fetch: gatewayFetch(chatCompletionsUrl(connection), authentication.stripAuthorization, dispatcher)
-            }
-          });
-      const content: Array<
-        { type: "text"; text: string }
-        | { type: "image_url"; image_url: { url: string } }
-      > = [{
-        type: "text" as const,
-        text: instructions.trim() || "No text was supplied. Read the attached screenshot(s)."
-      }];
-      for (const image of images.slice(0, 4)) {
-        content.push({ type: "image_url" as const, image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
-      }
-      const response = await model.invoke([
-        new SystemMessage(`You are an MCP catalog author. Convert the supplied documentation and images into JSON only. Never connect to, install, or test an MCP. Never preserve live credentials. Return an object with catalogVersion: 1, name, description, sourceNotes, confidence, missingInputs, and mcpServers. mcpServers must use the portable format accepted by the Companion. Use type http with a complete HTTPS URL, or type stdio with command, args, and env. Use <secret:Human-readable title> for every credential and <input:Human-readable title> for every value the user must provide. Preserve exact package versions and argument order; never invent missing values and never use @latest. missingInputs must distinguish secret, input, and confirmation entries. If a detail is absent or ambiguous, leave a placeholder and explain it in missingInputs. tools may be an empty array when the documentation does not list a safe allowlist.`),
-        new HumanMessage({ content })
-      ], { signal: AbortSignal.timeout(90_000) });
-      const raw = response.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-      if (raw.length > 64_000) throw new Error("The generated MCP catalog item is too large.");
-      const generated = JSON.parse(raw) as Record<string, unknown>;
-      if (!generated || typeof generated !== "object" || !generated.mcpServers || typeof generated.mcpServers !== "object") {
-        throw new Error("The model did not return a valid mcpServers catalog.");
-      }
-      const normalizedServers = this.sanitizeGeneratedMcpServers(generated.mcpServers as Record<string, unknown>);
-      parseMcpTemplate(JSON.stringify({ mcpServers: normalizedServers }));
-      const serverName = Object.keys(normalizedServers)[0] || "mcp-server";
-      const catalog = {
-        catalogVersion: 1,
-        generatedAt: new Date().toISOString(),
-        name: typeof generated.name === "string" ? generated.name.trim().slice(0, 160) : serverName,
-        description: typeof generated.description === "string" ? redactSensitiveText(generated.description.trim().slice(0, 1_000), []) : "Model-generated MCP catalog item; review required.",
-        sourceNotes: Array.isArray(generated.sourceNotes)
-          ? generated.sourceNotes.filter((item): item is string => typeof item === "string").slice(0, 20).map((item) => redactSensitiveText(item.slice(0, 500), []))
-          : [],
-        confidence: typeof generated.confidence === "string" ? generated.confidence.slice(0, 200) : "Model-generated; review required",
-        missingInputs: Array.isArray(generated.missingInputs)
-          ? generated.missingInputs.slice(0, 50).flatMap((item) => {
-              if (!item || typeof item !== "object") return [];
-              const candidate = item as Record<string, unknown>;
-              const kind = candidate.kind === "secret" || candidate.kind === "input" || candidate.kind === "confirmation" ? candidate.kind : "confirmation";
-              const title = typeof candidate.title === "string" ? candidate.title.trim().slice(0, 160) : "Unspecified value";
-              const reason = typeof candidate.reason === "string" ? redactSensitiveText(candidate.reason.slice(0, 500), []) : "Confirm this value from the source documentation.";
-              return [{ kind, title, reason }];
-            })
-          : [],
-        mcpServers: normalizedServers
-      };
-      const slug = serverName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "mcp-server";
-      const directory = vscode.Uri.joinPath(workspace.uri, ".local-agent", "mcp", "catalog");
-      await vscode.workspace.fs.createDirectory(directory);
-      const destination = vscode.Uri.joinPath(directory, `${slug}.json`);
-      await vscode.workspace.fs.writeFile(destination, new TextEncoder().encode(`${JSON.stringify(catalog, null, 2)}\n`));
-      return { path: destination.fsPath, catalog };
-    } finally {
-      await dispatcher?.close();
+    const {client,provider:providerSpec} = await this.modelAssistanceClient(connection,profile);
+    const attachments: string[] = [];
+    for (const image of images.slice(0,4)) {
+      const transfer = await client.upload(`catalog-image:${contentHash(image)}`,Buffer.from(image.data,"base64"),image.mimeType);
+      attachments.push(transfer.id);
     }
+    const response = await client.assistModel({purpose:"catalog",provider:providerSpec,instructions,images:attachments});
+    const raw = response.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    if (raw.length > 64_000) throw new Error("The generated MCP catalog item is too large.");
+    const generated = JSON.parse(raw) as Record<string, unknown>;
+    if (!generated || typeof generated !== "object" || !generated.mcpServers || typeof generated.mcpServers !== "object") {
+      throw new Error("The model did not return a valid mcpServers catalog.");
+    }
+    const normalizedServers = this.sanitizeGeneratedMcpServers(generated.mcpServers as Record<string, unknown>);
+    parseMcpTemplate(JSON.stringify({ mcpServers: normalizedServers }));
+    const serverName = Object.keys(normalizedServers)[0] || "mcp-server";
+    const catalog = {
+      catalogVersion: 1,
+      generatedAt: new Date().toISOString(),
+      name: typeof generated.name === "string" ? generated.name.trim().slice(0, 160) : serverName,
+      description: typeof generated.description === "string" ? redactSensitiveText(generated.description.trim().slice(0, 1_000), []) : "Model-generated MCP catalog item; review required.",
+      sourceNotes: Array.isArray(generated.sourceNotes)
+        ? generated.sourceNotes.filter((item): item is string => typeof item === "string").slice(0, 20).map((item) => redactSensitiveText(item.slice(0, 500), []))
+        : [],
+      confidence: typeof generated.confidence === "string" ? generated.confidence.slice(0, 200) : "Model-generated; review required",
+      missingInputs: Array.isArray(generated.missingInputs)
+        ? generated.missingInputs.slice(0, 50).flatMap((item) => {
+            if (!item || typeof item !== "object") return [];
+            const candidate = item as Record<string, unknown>;
+            const kind = candidate.kind === "secret" || candidate.kind === "input" || candidate.kind === "confirmation" ? candidate.kind : "confirmation";
+            const title = typeof candidate.title === "string" ? candidate.title.trim().slice(0, 160) : "Unspecified value";
+            const reason = typeof candidate.reason === "string" ? redactSensitiveText(candidate.reason.slice(0, 500), []) : "Confirm this value from the source documentation.";
+            return [{ kind, title, reason }];
+          })
+        : [],
+      mcpServers: normalizedServers
+    };
+    const slug = serverName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "mcp-server";
+    const directory = vscode.Uri.joinPath(workspace.uri, ".local-agent", "mcp", "catalog");
+    await vscode.workspace.fs.createDirectory(directory);
+    const destination = vscode.Uri.joinPath(directory, `${slug}.json`);
+    await vscode.workspace.fs.writeFile(destination, new TextEncoder().encode(`${JSON.stringify(catalog, null, 2)}\n`));
+    return { path: destination.fsPath, catalog };
   }
 
   private sanitizeGeneratedMcpServers(value: Record<string, unknown>): Record<string, unknown> {
@@ -652,24 +607,24 @@ export class DevelopmentAgent implements vscode.Disposable {
       apiKey: "",
       authHeader: "authorization"
     });
-    const authentication = modelClientAuthentication(connection);
-    const model = new ChatOpenAICompletions({
-      model: connection.model,
-      apiKey: authentication.apiKey,
-      streaming: false,
-      streamUsage: true,
-      maxRetries: 1,
-      timeout: 90_000,
-      configuration: {
-        baseURL: chatCompletionsBaseUrl(connection),
-        fetch: gatewayFetch(chatCompletionsUrl(connection), authentication.stripAuthorization, undefined)
-      }
-    });
-    const response = await model.invoke([
-      new SystemMessage("You are a local Ollama setup advisor. Return only the requested JSON object."),
-      new HumanMessage(prompt)
-    ], { signal: AbortSignal.timeout(90_000) });
-    return response.text;
+    const {client,provider:spec} = await this.modelAssistanceClient(connection,{});
+    return (await client.assistModel({purpose:"advisor",provider:spec,prompt})).text;
+  }
+
+  private async modelAssistanceClient(connection:ModelConnection,profile:LiteLlmModelProfile) {
+    const workspace=vscode.workspace.workspaceFolders?.[0];
+    if(!workspace || !vscode.workspace.isTrusted) throw new Error("Open and trust a workspace before requesting model assistance.");
+    const client=await this.serviceRuntime.connect(await realpath(workspace.uri.fsPath));
+    const reference=`model-assistance:${crypto.randomUUID()}`;
+    if(connection.apiKey) await client.call("credentials.lease",{reference,value:connection.apiKey});
+    const ca=modelProviderSupportsCorporateCa(connection.provider)?await this.certificateAuthorities(workspace.uri.fsPath):undefined;
+    const provider:RunSpec["provider"]={kind:connection.provider,endpoint:connection.endpoint,
+      roles:{executor:connection.model},authHeader:connection.authHeader,
+      ...(connection.apiKey?{credentialRef:reference}:{}),
+      ...(connection.provider === "litellm"?{profile}:{}),
+      ...(ca?{corporateCa:ca.map(value=>value.toString())}:{}),
+    };
+    return {client,provider};
   }
 
   private async listOllamaModels(endpointInput: string): Promise<ModelCatalogResult> {
@@ -776,19 +731,6 @@ export class DevelopmentAgent implements vscode.Disposable {
     const dispatcher = certificateAuthorities
       ? new UndiciAgent({ connect: { ca: certificateAuthorities } })
       : undefined;
-    const chatFetch = gatewayFetch(
-      chatCompletionsUrl(connection),
-      authentication.stripAuthorization,
-      dispatcher
-    );
-    const embeddingConnection = options.embeddingEndpoint?.trim()
-      ? { ...connection, endpoint: options.embeddingEndpoint }
-      : connection;
-    const embeddingFetch = gatewayFetch(
-      embeddingsUrl(embeddingConnection, options.embeddingModel, Boolean(options.embeddingEndpoint?.trim())),
-      authentication.stripAuthorization,
-      dispatcher
-    );
     const diagnostics: ConnectionDiagnostic[] = [];
 
     try {
@@ -818,68 +760,18 @@ export class DevelopmentAgent implements vscode.Disposable {
         : resolveLiteLlmModelApi(connection.model, options.profile);
       const modelApi = resolvedApi === "responses" ? "Responses API" : "Chat Completions";
       diagnostics.push(await runDiagnostic("chat", modelApi, async () => {
-        const model = resolvedApi === "responses"
-          ? new ChatOpenAIResponses({
-              model: connection.model,
-              apiKey: authentication.apiKey,
-              streaming: true,
-              maxRetries: 0,
-              timeout: 20_000,
-              configuration: {
-                baseURL: responsesBaseUrl(connection, connection.model),
-                ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
-                fetch: gatewayFetch(responsesUrl(connection, connection.model), authentication.stripAuthorization, dispatcher)
-              }
-            })
-          : new ChatOpenAICompletions({
-              model: connection.model,
-              apiKey: authentication.apiKey,
-              streaming: true,
-              streamUsage: true,
-              maxRetries: 0,
-              timeout: 20_000,
-              ...chatCompletionsModelOptions(options.profile),
-              configuration: {
-                baseURL: chatCompletionsBaseUrl(connection),
-                ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
-                fetch: chatFetch
-              }
-            });
-        const connectionProbe = tool(
-          () => "probe-ok",
-          {
-            name: "connection_probe",
-            description: `A harmless local tool exposed only to verify ${modelApi} tool compatibility.`,
-            schema: z.object({})
-          }
-        );
-        await model.bindTools([connectionProbe]).invoke([
-          new HumanMessage("Connection diagnostic only. Reply with OK without calling the available tool.")
-        ], { signal: AbortSignal.timeout(20_000) });
+        const {client,provider} = await this.modelAssistanceClient(connection,options.profile);
+        await client.assistModel({purpose:"connection",provider});
         return `Model “${connection.model}” accepted ${modelApi} streaming and function tools`;
       }, [connection.apiKey], { authHeader: connection.authHeader, surface: "chat" }));
 
       const embeddingModel = options.embeddingModel?.trim();
       if (embeddingModel) {
         diagnostics.push(await runDiagnostic("embeddings", "Embeddings", async () => {
-          const embeddings = new OpenAIEmbeddings({
-            model: embeddingModel,
-            apiKey: authentication.apiKey,
-            maxRetries: 0,
-            timeout: 20_000,
-            configuration: {
-              baseURL: embeddingsBaseUrl(embeddingConnection, embeddingModel, Boolean(options.embeddingEndpoint?.trim())),
-              ...(authentication.defaultHeaders
-                ? { defaultHeaders: authentication.defaultHeaders }
-                : {}),
-              fetch: embeddingFetch
-            }
-          });
-          const vector = await embeddings.embedQuery("Local Agent Companion connection diagnostic");
-          if (!Array.isArray(vector) || !vector.length) {
-            throw new Error("The embeddings endpoint returned an empty vector.");
-          }
-          return `Model “${embeddingModel}” returned ${vector.length} dimensions`;
+          const {client,provider} = await this.modelAssistanceClient(connection,options.profile);
+          const result = await client.assistModel({purpose:"embedding",provider,model:embeddingModel,
+            ...(options.embeddingEndpoint?.trim()?{endpoint:options.embeddingEndpoint.trim()}:{})});
+          return result.text;
         }, [connection.apiKey], { authHeader: connection.authHeader, surface: "embeddings" }));
       } else {
         diagnostics.push({

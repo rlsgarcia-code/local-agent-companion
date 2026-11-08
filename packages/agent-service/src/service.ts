@@ -20,6 +20,7 @@ import {
   PROTOCOL_VERSION,
   negotiate,
   runSpec,
+  modelAssistance,
   terminalStates,
   type Registration,
   type Run,
@@ -33,6 +34,7 @@ import { Transfers } from "./transfers";
 import { Goals } from "./goals";
 import { workspaceToolResult } from "../../contracts/src/workspace-receipts";
 import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { assistModel } from "../../agent-core/src/model-assistance";
 import { ProviderModels } from "../../agent-core/src/provider-models";
 import { message } from "../../contracts/src/index";
 import { WorkspaceProcesses } from "./workspace-processes";
@@ -81,6 +83,7 @@ export class AgentService {
   private readonly models: Models;
   private readonly desktopRuntimes = new Map<string, OllamaDesktopRuntime>();
   private readonly semanticMemory = new Map<string, SemanticProjectMemory>();
+  private readonly modelTasks = new Map<string, {controller:AbortController;promise:Promise<unknown>}>();
   private readonly advisors = new Map<string, AbortController>();
   constructor(
     readonly store: Store,
@@ -163,8 +166,8 @@ export class AgentService {
     // Leased secrets must not reach event/history persistence, even through provider errors.
     this.store.append(reg, session, type, this.protect(reg, data), run);
   }
-  private protect<T>(reg: Registration, value: T): T {
-    const secrets = this.secrets(reg).flatMap((secret) =>
+  private protect<T>(reg: Registration, value: T, additionalSecrets: string[] = []): T {
+    const secrets = [...this.secrets(reg),...additionalSecrets].flatMap((secret) =>
       secret ? [secret, JSON.stringify(secret).slice(1, -1)] : [],
     );
     return JSON.parse(
@@ -226,6 +229,29 @@ export class AgentService {
     // Scope comes exclusively from the authenticated immutable registration.
     const p = params ?? {};
     switch (method) {
+      case "models.assist": {
+        if (reg.product === "kidos") throw new AgentError(errors.forbidden,"KidOS inference requires its protected adapter.");
+        const envelope = z.union([modelAssistance,z.object({transferId:identifier}).strict()]).parse(p);
+        const request = "transferId" in envelope ? modelAssistance.parse(this.transfers.json(reg,envelope.transferId)) : envelope;
+        validateProvider(reg, request.provider);
+        if (request.purpose === "advisor" && request.provider.kind !== "ollama")
+          throw new AgentError(errors.forbidden,"The local setup advisor requires Ollama.");
+        const images = request.purpose === "catalog" ? request.images.map(id=>this.transfers.image(reg,id)) : [];
+        const operation = randomUUID(), controller = new AbortController();
+        const signal = AbortSignal.any([controller.signal,AbortSignal.timeout(request.purpose === "connection" || request.purpose === "embedding" ? 25_000 : 95_000)]);
+        const credential = request.provider.credentialRef ? this.credentials.acquire(reg,request.provider.credentialRef,operation) : undefined;
+        if (request.provider.credentialRef && !credential) throw new AgentError(errors.unavailable,"Reconnect the credential host before model assistance.");
+        const promise = assistModel(request,credential,signal,images);
+        this.modelTasks.set(operation,{controller,promise});
+        try {
+          return this.protect(reg,await promise,credential?[credential]:[]);
+        } catch(error) {
+          const detail = this.protect(reg,error instanceof Error ? error.message : "Model assistance failed.",credential?[credential]:[]);
+          throw new AgentError(errors.unavailable,detail);
+        } finally {
+          this.credentials.release(operation);this.modelTasks.delete(operation);
+        }
+      }
       case "models.invoke": {
         const v=z.object({runId:identifier,role:z.literal("vision"),messages:z.array(message).min(1).max(10)}).strict().parse(p);
         const run=this.store.run(reg,v.runId);
@@ -375,6 +401,7 @@ export class AgentService {
             "durable-approvals",
             "bound-tool-receipts",
             "ollama-model-jobs",
+            "model-assistance",
             "public-session-snapshots",
           ],
         };
@@ -384,7 +411,7 @@ export class AgentService {
       case "engine.shutdownIfIdle": {
         z.object({}).strict().parse(p);
         const active = this.store.db.prepare("SELECT id FROM runs WHERE state NOT IN ('completed','failed','cancelled') LIMIT 1").get();
-        if (active || this.workspaceProcesses.busy || this.running.size || this.advisors.size || this.models.busy || [...this.desktopRuntimes.values()].some((runtime) => runtime.hasActiveResources))
+        if (active || this.workspaceProcesses.busy || this.running.size || this.advisors.size || this.modelTasks.size || this.models.busy || [...this.desktopRuntimes.values()].some((runtime) => runtime.hasActiveResources))
           return { accepted: false, reason: "Work is active. The prepared update will wait without cancelling it." };
         this.quiescing = true;
         return { accepted: true };
@@ -1082,6 +1109,7 @@ export class AgentService {
   close(): Promise<void> {
     if (this.closing) return this.closing;
     this.closed = true;
+    for (const task of this.modelTasks.values()) task.controller.abort();
     this.credentials.clear();
     for (const memory of this.semanticMemory.values()) memory.dispose();
     this.semanticMemory.clear();
@@ -1090,7 +1118,7 @@ export class AgentService {
       wait.reject(new Error("Service stopping."));
     this.pending.clear();
     const resources = [...this.desktopRuntimes.values()].map((runtime) => runtime.shutdown());
-    resources.push(this.models.close(),this.workspaceProcesses.close());
+    resources.push(this.models.close(),this.workspaceProcesses.close(),...[...this.modelTasks.values()].map(task=>task.promise.then(()=>{},()=>{})));
     for (const controller of this.advisors.values()) controller.abort();
     for (const saver of this.checkpointers.values()) saver.db.close();
     this.store.close();

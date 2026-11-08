@@ -1,35 +1,37 @@
 # Local Agent Companion
 
-> **Motor independente + Mac + VS Code: piloto 1.0.0-rc.7 validado neste Mac
-> Apple Silicon**, com clientes 0.11.15. O KidOS está em espera por solicitação
-> do responsável e não condiciona esta entrega. A branch
-> `codex/companion-suite-engine` permanece no [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15), em revisão.
+> A entrega **motor 1.0.0 + clientes Mac/VS Code 0.12.2** está em validação
+> final na branch `codex/companion-suite-engine`, [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
+> KidOS permanece em espera por solicitação do responsável e não condiciona
+> esta entrega. O núcleo funciona sem nenhuma interface instalada.
 >
-> Os executores principais usam LangChain/Deep Agent e o saver SQLite oficial
-> no serviço. O editor fornece suas ferramentas autorizadas; modelos, avaliação
-> de conclusão, memória semântica, objetivos e processos retidos rodam no motor.
-> SDKs não contêm runtime de agente. Leitores legados permanecem para migração;
-> indisponibilidade do serviço produz diagnóstico recuperável.
+> Os executores e todas as chamadas de modelo das interfaces rodam no serviço
+> comum: LangChain/DeepAgents, saver SQLite oficial, planejamento, conclusão,
+> memória semântica, objetivos, recomendações e diagnósticos. As interfaces
+> mantêm apresentação, contexto e ferramentas autorizadas do host. Recursos
+> dependentes do editor aguardam sua reconexão; indisponibilidade do serviço
+> produz diagnóstico recuperável, sem outro executor como fallback.
 >
-> [Relatório de aceite e limites](docs/desktop-pilot-rc7.json): 318 testes,
-> 23 verificações do repositório, motor assinado avulso com inferência Ollama nos
-> dois modos, execução/recuperação no editor real com inferência simulada e
-> instalação/ativação do VSIX distribuído. O Mac instalado recuperou o resultado
-> após fechamento e demonstrou rollback sem alterar o histórico. Os três usam
-> o mesmo manifesto do motor. Não houve novo teste do gateway LiteLLM configurado
-> nem conferência visual enquanto o Mac estava bloqueado. Assinatura Apple ad-hoc,
-> sem notarização; promoção final continua sujeita à revisão.
+> A versão anterior rc.7 e seus pacotes permanecem imutáveis para rollback.
+> O [relatório rc.7](docs/desktop-pilot-rc7.json) é evidência histórica; não
+> comprova sozinho a aceitação dos novos artefatos 1.0.0. A nova publicação
+> exige seus próprios testes, instalação e revisão dos pacotes exatos.
 
-O kit local `release/Companion-Core-Mac-VSCode-rc7-arm64/` reúne o motor,
-SDKs, aplicativo Mac e VSIX OpenAI, preservando a configuração LiteLLM existente.
-`node verify-delivery.mjs` verifica os quatro arquivos contra o índice original
-assinado, sem alterá-lo. `readiness.json` registra o aceite local; não substitui
-uma autorização assinada de publicação. Dados pessoais e backups ficam fora do kit.
+O kit é montado por `scripts/assemble-desktop-delivery.mjs` a partir de um
+índice assinado e dos artefatos exatos. `node verify-delivery.mjs` verifica sua
+assinatura e os quatro arquivos incluídos. O relatório de aceite local não
+substitui a assinatura original. Dados pessoais e backups ficam fora do kit.
 Para reproduzir o aceite no VS Code já instalado, os scripts
 `scripts/test-editor-service.mjs` e `scripts/run-vsix-install-tests.mjs` aceitam
 `VSCODE_EXECUTABLE_PATH`; o primeiro também aceita `--bundle-dir` e `--report`.
 O smoke avulso `scripts/smoke-shared-engine.mjs` aceita `--bundle-dir` e `--sdk-dir`
 para validar exatamente os artefatos assinados.
+
+`models.assist` executa tarefas pontuais de autoria de catálogo MCP, conselho
+Ollama e diagnóstico de chat/embeddings pelo mesmo cliente LangChain do motor.
+Os SDKs transferem anexos em partes e enviam apenas referências de credenciais.
+O diagnóstico de tools publica o schema, sem executar chamadas devolvidas pelo
+modelo. O KidOS não pode usar essa rota para contornar seu gateway protegido.
 
 Candidate recovery behavior: cancellation remains `cancelling` until execution
 settles; disconnected UI tools wait, while unknown dispatched effects require

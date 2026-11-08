@@ -15,7 +15,10 @@ const server=createServer((request,response)=>{let raw='';request.on('data',part
  const body=JSON.parse(raw);requests.push({url:request.url,body});
  const system=body.messages.filter(message=>message.role==='system').map(message=>message.content).join('\n');
  let content,toolCalls;
- if(body.response_format?.json_schema?.name==='task_contract'||system.includes("Interpret the user's intended outcome"))content=JSON.stringify({outcome:'answer',objective:'Read approved fixture',requiredEvidence:'none',acceptanceCriteria:['Read the actual file']});
+ if(system.includes('local Ollama setup advisor'))content=JSON.stringify({fixtureAdvisor:true});
+ else if(system.includes('MCP catalog author'))content=JSON.stringify({name:'Fixture',mcpServers:{fixture:{type:'http',url:'https://approved.invalid/mcp',tools:[]}}});
+ else if(body.tools?.some(tool=>tool.function.name==='connection_probe'))content='OK';
+ else if(body.response_format?.json_schema?.name==='task_contract'||system.includes("Interpret the user's intended outcome"))content=JSON.stringify({outcome:'answer',objective:'Read approved fixture',requiredEvidence:'none',acceptanceCriteria:['Read the actual file']});
  else if(!body.tools?.length)content=JSON.stringify({verdict:'satisfied',reason:'The actual fixture was read'});
  else if(!body.messages.some(message=>message.role==='tool')){
   const tool=body.tools.find(tool=>tool.function.name==='read_file');if(!tool)throw Error('Actual editor tool missing');
@@ -43,7 +46,7 @@ try{
  if(requests.some(request=>request.url!=='/v1/chat/completions'))throw Error('Unexpected inference route');
  if(!requests.length)throw Error('The editor fixture made no inference requests.');
  const report=argument('--report');
- if(report)await writeFile(path.resolve(report),JSON.stringify({engine:manifest.version,commit:manifest.commit,target:manifest.target,manifestSha256:createHash('sha256').update(manifestBytes).digest('hex'),signed,inference:'simulated-loopback-only',requests:requests.length,scenarios:['standard','deep','actual-editor-read','detach-and-recover'],kidOSRequired:false},null,2)+'\n');
+ if(report)await writeFile(path.resolve(report),JSON.stringify({engine:manifest.version,commit:manifest.commit,target:manifest.target,manifestSha256:createHash('sha256').update(manifestBytes).digest('hex'),signed,inference:'simulated-loopback-only',requests:requests.length,scenarios:['standard','deep','actual-editor-read','detach-and-recover','model-assistance'],kidOSRequired:false},null,2)+'\n');
  console.log('EDITOR_SERVICE_ROUTING_OK',requests.length);
 }catch(error){await writeFile(path.join(tmpdir(),'editor-service-fixture-requests.json'),JSON.stringify(requests,null,2));await cp(state,path.join(tmpdir(),'editor-service-fixture-state'),{recursive:true,force:true,filter:async file=>!(await lstat(file)).isSocket()});console.error(errors);throw error;}
 finally{engine.kill('SIGTERM');await new Promise(resolve=>server.close(resolve));await rm(root,{recursive:true,force:true,maxRetries:3,retryDelay:200});}

@@ -60,14 +60,14 @@ export class ProviderModels {
       this.dispatcher=new UndiciAgent({connect:{ca:provider.corporateCa}});
     }
   }
-  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor") {
+  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number } = {}) {
     const provider=this.provider,profile=role==="executor"?provider.profile??{}:{};
     if(provider.kind==="kidos-gateway")throw new AgentError(errors.unavailable,"Install the protected KidOS model adapter.");
     if(provider.kind!=="litellm"&&profile.api==="responses")throw new AgentError(errors.forbidden,"This product permits only Chat Completions for this provider.");
     if(provider.kind==="litellm")validateLiteLlmModelProfile(provider.roles[role]||provider.roles.executor,profile,true);
     const connection={endpoint:provider.endpoint,model:provider.roles[role]||provider.roles.executor,apiKey:this.credential||"ollama-local",authHeader:provider.authHeader};
     const responses=provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile)==="responses";
-    const common={model:connection.model,apiKey:connection.apiKey,streaming,disableStreaming:!streaming,maxRetries:0,
+    const common={model:connection.model,apiKey:connection.apiKey,streaming,disableStreaming:!streaming,maxRetries:options.maxRetries ?? 0,...(options.timeout ? {timeout:options.timeout}:{}),
       configuration:{baseURL:responses?responsesBaseUrl(connection,connection.model):chatCompletionsBaseUrl(connection),
         ...(this.credential&&provider.authHeader!=="authorization"?{defaultHeaders:{[provider.authHeader]:this.credential}}:{}),
         fetch:gatewayFetch(responses?responsesUrl(connection,connection.model):chatCompletionsUrl(connection),provider.authHeader!=="authorization",this.dispatcher,this.signal)}};

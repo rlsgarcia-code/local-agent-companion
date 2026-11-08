@@ -62,7 +62,7 @@ const contracts = require(
   path.resolve(output, "typescript/contracts/src/index.cjs"),
 );
 await mkdir(path.join(output, "contracts"), { recursive: true });
-for (const name of ["runSpec", "providerSpec", "toolSpec"])
+for (const name of ["runSpec", "providerSpec", "toolSpec", "modelAssistance"])
   await writeFile(
     path.join(output, "contracts", `${name}.schema.json`),
     JSON.stringify(z.toJSONSchema(contracts[name]), null, 2) + "\n",
