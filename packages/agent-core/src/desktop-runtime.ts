@@ -249,6 +249,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
       });
       const completionGate = createTaskCompletionMiddleware({
         model: evaluatorModel,
+        structuredOutput: true,
         mode: options.mode,
         responseLanguage: "pt-BR",
         conversation: [

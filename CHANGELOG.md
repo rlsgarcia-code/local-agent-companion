@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.12
+
+- Use LangChain schema-constrained Ollama output for task classification and evidence verification. Preserve scalar legacy criteria without relaxing task outcomes or tool authority.
+
 ## 0.11.11
 
 - Shared-engine candidate: recoverable Mac service client, durable approvals and effect receipts, isolated model jobs and chunked domain migration. Full VS Code/Navi conversion and installed suite acceptance remain pending.

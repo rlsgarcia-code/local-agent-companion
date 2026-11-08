@@ -107,6 +107,7 @@ export class OllamaModels {
       model: modelName,
       apiKey: "ollama-local",
       streaming,
+      disableStreaming: !streaming,
       streamUsage: true,
       maxRetries: streaming ? 0 : 1,
       timeout,
