@@ -9,6 +9,7 @@ permissions:
   contents: read
 jobs:
   engine:
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -62,9 +63,11 @@ jobs:
       - name: Compile packaged-client acceptance tests
         run: npm run compile:extension-host-tests
       - name: Install and activate the signed OpenAI VSIX on Linux
+        timeout-minutes: 5
         if: startsWith(matrix.target, 'linux-')
         run: xvfb-run -a node scripts/run-vsix-install-tests.mjs local-agent-companion-${{ steps.application.outputs.version }}-openai-${{ matrix.target }}.vsix
       - name: Install and activate the signed OpenAI VSIX on Mac and Windows
+        timeout-minutes: 5
         if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: node scripts/run-vsix-install-tests.mjs local-agent-companion-${{ steps.application.outputs.version }}-openai-${{ matrix.target }}.vsix
       - name: Build thin SDK bundles

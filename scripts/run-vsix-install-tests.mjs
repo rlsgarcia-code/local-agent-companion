@@ -1,11 +1,12 @@
 import * as path from "node:path";
-import { access, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { access, mkdtemp, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { runTests, runVSCodeCommand, resolveCliPathFromVSCodeExecutablePath } from "@vscode/test-electron";
+import { runTests, downloadAndUnzipVSCode } from "@vscode/test-electron";
+
+import { runBoundedCli } from "./editor-test-cli.mjs";
+import { installedVSIXDirectory } from "./verify-installed-vsix.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requestedVsix = process.argv[2]?.trim();
@@ -47,23 +48,24 @@ try {
     `--user-data-dir=${userDataDirectory}`,
     `--extensions-dir=${extensionsDirectory}`
   ];
+  const vscodeExecutable=configuredExecutable || await downloadAndUnzipVSCode({version});
+  const cli=path.join(path.dirname(vscodeExecutable),process.platform==='darwin'?'../Resources/app/out/cli.js':'resources/app/out/cli.js');
+  await access(cli,constants.R_OK);
   try {
-    if (configuredExecutable && process.platform !== "win32") {
-      await promisify(execFile)(resolveCliPathFromVSCodeExecutablePath(configuredExecutable), installArgs, { timeout: 120_000 });
-    } else {
-      await runVSCodeCommand(installArgs, { version });
-    }
+    await runBoundedCli(vscodeExecutable,[cli,...installArgs],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1'}});
   } catch (error) {
-    // Some Windows VS Code builds exit with V8 code 134 after the CLI has
-    // already installed the VSIX. Continue only when the package is present
-    // in the isolated extension directory; a real install failure remains fatal.
-    if (process.platform !== "win32" || !(await installedExtensionPresent(extensionsDirectory))) throw error;
-    console.warn("PACKAGED_EXTENSION_TEST_INSTALL_WARNING VS Code CLI crashed after installing the VSIX; continuing with the verified isolated copy.");
+    // Electron 1.106 may abort after a successful CLI install on Mac/Windows.
+    // Accept only that known crash and only a byte-verified payload; activation still runs below.
+    const diagnostic=[error?.message,error?.stdout,error?.stderr].filter(value=>typeof value==='string').join('\n');
+    if(!/v8::ToLocalChecked Empty MaybeLocal/.test(diagnostic)||!(await installedVSIXDirectory(vsixPath,extensionsDirectory)))throw error;
+    console.warn("PACKAGED_EXTENSION_TEST_INSTALL_WARNING Known VS Code CLI shutdown crash; the exact installed payload was verified.");
   }
+
+  if(!(await installedVSIXDirectory(vsixPath,extensionsDirectory)))throw new Error("The installed copy does not match the exact VSIX.");
 
   await runTests({
     version,
-    vscodeExecutablePath: configuredExecutable,
+    vscodeExecutablePath: vscodeExecutable,
     extensionDevelopmentPath: path.join(projectRoot, "test", "fixtures", "vsix-test-harness"),
     extensionTestsPath: path.join(projectRoot, "dist-extension-tests", "index.js"),
     extensionTestsEnv: {
@@ -90,17 +92,4 @@ try {
   } else {
     console.error(`PACKAGED_EXTENSION_TEST_PROFILE_PRESERVED ${profileRoot}`);
   }
-}
-
-async function installedExtensionPresent(extensionsDirectory) {
-  let entries;
-  try { entries = await readdir(extensionsDirectory, { withFileTypes: true }); } catch { return false; }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    try {
-      const manifest = JSON.parse(await readFile(path.join(extensionsDirectory, entry.name, "package.json"), "utf8"));
-      if (manifest.name === "local-agent-companion" && typeof manifest.version === "string") return true;
-    } catch { /* ignore incomplete install entries */ }
-  }
-  return false;
 }
