@@ -202,6 +202,8 @@ COMPANION_ENGINE_BUNDLE=/caminho/do/motor-assinado-arm64 npm run desktop:package
 # Repita com o motor darwin-x64 e --arch=x64 para Intel.
 ```
 
+O candidato piloto usa assinatura ad hoc do aplicativo e verifica novamente o motor após a montagem. Assinatura Developer ID e notarização não são realizadas por esse fluxo. O manifesto assinado registra essa condição.
+
 Os artefatos ficam em `release/desktop/`. Builds locais são deliberadamente não assinados; para distribuição ampla, configure a identidade Apple Developer ID e notarização no pipeline de release antes de entregá-los a outros usuários.
 
 O desktop é uma superfície Ollama dedicada. Ele não expõe LiteLLM, OpenAI, MCP corporativo, ChromaDB ou APIs do editor do VS Code. Sua navegação é uma superfície visual isolada e controlada pelo usuário; não adiciona uma ferramenta autônoma de browser ao runtime. A extensão continua sendo a variante completa para os demais fluxos.

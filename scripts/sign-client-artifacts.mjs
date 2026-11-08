@@ -18,7 +18,7 @@ for (const extension of ["zip", "dmg"]) {
 }
 const manifest = Buffer.from(JSON.stringify({ schema: 1, kind: "companion-mac", version,
   engine: versions.engine, protocol: versions.protocol, node: versions.node, commit, target,
-  appleSigning: "not-distribution-signed-or-notarized", files }, null, 2) + "\n");
+  appleSigning: "ad-hoc-not-notarized", files }, null, 2) + "\n");
 const name = path.join(directory, `Local-Companion-${version}-${target}.manifest`);
 await writeFile(`${name}.json`, manifest);
 await writeFile(`${name}.sig`, sign(null, manifest, key));

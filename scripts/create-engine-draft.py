@@ -31,5 +31,5 @@ if existing.returncode == 0:
         raise SystemExit("Refusing to replace a published release.")
     raise SystemExit("A draft with this version already exists. Choose a new reviewed version.")
 notes = Path("engine-release-notes.txt")
-notes.write_text(f"Companion engine candidate. Signed Ed25519 manifests and bundled Node {versions['node']}.\n\nMac packages contain the signed native engines; their Apple distribution signing/notarization has not been performed by this workflow. This draft does not establish three-client acceptance, installed compatibility or release promotion. Review the exact commit and acceptance report before publication.\n")
+notes.write_text(f"Companion engine candidate. Signed Ed25519 manifests and bundled Node {versions['node']}.\n\nMac packages contain the signed native engines; they use ad-hoc Apple sealing, without Developer ID distribution signing or notarization. This draft does not establish three-client acceptance, installed compatibility or release promotion. Review the exact commit and acceptance report before publication.\n")
 subprocess.run(["gh", "release", "create", tag, "--repo", repository, "--target", os.environ["GITHUB_SHA"], "--draft", "--prerelease", "--title", f"Companion engine {version}", "--notes-file", str(notes), *map(str, assets)], check=True)

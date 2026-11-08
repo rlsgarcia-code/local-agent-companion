@@ -25,6 +25,7 @@ try {
   await verifyBundle(bundle, publicKey, false, `darwin-${architecture}`);
   execFileSync(process.execPath, ["scripts/build-desktop.mjs"], { stdio: "inherit" });
   const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
+  let verifiedApplication = false;
   await build({
     projectDir: path.resolve("desktop-dist"),
     targets: Platform.MAC.createTarget(process.argv.includes("--dir") ? ["dir"] : ["dmg", "zip"], architecture === "arm64" ? Arch.arm64 : Arch.x64),
@@ -32,6 +33,14 @@ try {
       extends: path.resolve("desktop/electron-builder.yml"),
       electronVersion: lock.packages["node_modules/electron"].version,
       extraResources: [{ from: bundle, to: "companion-engine" }],
+      afterSign: async (context) => {
+        const application = path.join(context.appOutDir, "Local Companion.app");
+        // Apple sealing must never rewrite the separately signed engine bytes.
+        await verifyBundle(path.join(application, "Contents/Resources/companion-engine"), publicKey, false, `darwin-${architecture}`);
+        execFileSync("/usr/bin/codesign", ["--verify", "--strict", application], { stdio: "inherit" });
+        verifiedApplication = true;
+      },
     },
   });
+  if (!verifiedApplication) throw new Error("The Mac application was not signed and verified. No candidate can be released.");
 } finally { await rm(staging, { recursive: true, force: true }); }
