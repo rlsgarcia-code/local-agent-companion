@@ -50,6 +50,8 @@ export class AgentService {
   private readonly specs = new Map<string, RunSpec>();
   private readonly desktopRuntimes = new Map<string, OllamaDesktopRuntime>();
   private readonly advisors = new Map<string, AbortController>();
+  private readonly credentialUsers = new Map<string, number>();
+  private readonly credentialTimers = new Map<string, NodeJS.Timeout>();
   constructor(
     readonly store: Store,
     readonly directory: string,
@@ -313,6 +315,20 @@ export class AgentService {
           this.credentialLeases.get(reg.id) ?? new Map<string, string>();
         leases.set(v.reference, v.value);
         this.credentialLeases.set(reg.id, leases);
+        clearTimeout(this.credentialTimers.get(reg.id));
+        const expire = () => {
+          if ((this.credentialUsers.get(reg.id) ?? 0) > 0) {
+            const timer = setTimeout(expire, 300_000);
+            timer.unref();
+            this.credentialTimers.set(reg.id, timer);
+          } else {
+            this.credentialLeases.delete(reg.id);
+            this.credentialTimers.delete(reg.id);
+          }
+        };
+        const timer = setTimeout(expire, 300_000);
+        timer.unref();
+        this.credentialTimers.set(reg.id, timer);
         return { accepted: true };
       }
       case "runs.start": {
@@ -496,6 +512,10 @@ export class AgentService {
       return;
     }
     const controller = new AbortController();
+    this.credentialUsers.set(
+      reg.id,
+      (this.credentialUsers.get(reg.id) ?? 0) + 1,
+    );
     this.running.set(run.id, controller);
     this.store.updateRun(reg, run.id, "running");
     void this.executor(spec, {
@@ -532,15 +552,30 @@ export class AgentService {
         for (const secret of this.credentialLeases.get(reg.id)?.values() ?? [])
           message = message.split(secret).join("[credential redacted]");
         const state = this.store.run(reg, run.id).state;
+        const authenticationFailed =
+          Boolean(spec.provider.credentialRef) &&
+          [401, 403].includes(Number((error as { status?: number })?.status));
         this.store.updateRun(
           reg,
           run.id,
-          state === "awaiting_reconciliation" ? state : "failed",
+          state === "awaiting_reconciliation"
+            ? state
+            : authenticationFailed
+              ? "awaiting_credentials"
+              : "failed",
           { error: message },
         );
       })
       .finally(() => {
         this.running.delete(run.id);
+        const remaining = (this.credentialUsers.get(reg.id) ?? 1) - 1;
+        if (remaining > 0) this.credentialUsers.set(reg.id, remaining);
+        else {
+          this.credentialUsers.delete(reg.id);
+          this.credentialLeases.delete(reg.id);
+          clearTimeout(this.credentialTimers.get(reg.id));
+          this.credentialTimers.delete(reg.id);
+        }
       });
   }
   private async invokeTool(
@@ -650,6 +685,8 @@ export class AgentService {
     }
   }
   close(): void {
+    for (const timer of this.credentialTimers.values()) clearTimeout(timer);
+    this.credentialLeases.clear();
     for (const controller of this.running.values()) controller.abort();
     for (const wait of this.pending.values())
       wait.reject(new Error("Service stopping."));

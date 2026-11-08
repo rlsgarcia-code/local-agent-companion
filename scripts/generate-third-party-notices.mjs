@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 
-export const APPROVED_LICENSE_EXPRESSIONS = Object.freeze(["Apache-2.0", "ISC", "MIT"]);
+export const APPROVED_LICENSE_EXPRESSIONS = Object.freeze(["0BSD", "Apache-2.0", "BSD-3-Clause", "ISC", "MIT"]);
 
 const LICENSE_FILE_PATTERN = /^(?:licen[cs]e|copying|notice)(?:$|[ ._-])/i;
 const LICENSE_OVERRIDES = Object.freeze({
