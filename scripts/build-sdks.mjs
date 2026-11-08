@@ -7,6 +7,7 @@ import { z } from "zod";
 import { generateThirdPartyNotices } from "./generate-third-party-notices.mjs";
 import * as path from "node:path";
 const output = "release/sdk";
+const lockedDependencies=JSON.parse(await readFile("package-lock.json","utf8"));
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await esbuild
@@ -72,6 +73,7 @@ await writeFile(
       version: "1.0.0-rc.1",
       node: "22.23.4",
       protocol: "1.0",
+      dependencies:{zod:lockedDependencies.packages["node_modules/zod"].version},
       main: "./typescript/client-ts/src/index.cjs",
       types: "./typescript/client-ts/src/index.d.ts",
       exports: {
