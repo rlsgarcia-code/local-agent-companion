@@ -26,7 +26,8 @@ Ollama model jobs are independent of conversation cancellation and survive clien
 closure. Engine restart preserves an interrupted job with a diagnostic and
 requires a new explicit request. The Mac's model UI uses `models.*`; the older
 `desktop.*` model routes remain temporary compatibility adapters. Other providers'
-model-management migration and the VS Code semantic-memory adapter remain pending.
+model-management surfaces retain their existing provider restrictions. The VS Code
+semantic-memory adapter now runs in the shared service.
 The bundled Node version is read from `packages/contracts/src/version.json`;
 installations stage verified, content-addressed version directories and activate
 only after the old service confirms it is idle.
@@ -98,7 +99,7 @@ Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, f
 - Navegação completa por teclado na sidebar, com foco devolvido ao controle de origem, fechamento de painéis por `Esc`, anúncios concisos para leitores de tela e suporte a alto contraste/redução de movimento.
 - Centro de revisão ao final de cada execução, reunindo resultado, plano final, arquivos, diffs, restauração, comandos, saídas, verificações, memória e uso do modelo.
 - Revisão por arquivo com diff nativo **before ↔ after**, restauração individual e uma ação para desfazer em conjunto todas as alterações de arquivo completamente capturadas, sempre protegidas contra a perda de edições posteriores.
-- Checkpoints das threads da sessão gerenciados por `MemorySaver`, com projeções limitadas de usuário/assistente no armazenamento local do workspace para restauração após reiniciar o VS Code.
+- Checkpoints dos grafos no saver SQLite oficial do serviço por namespace, com projeções limitadas de usuário/assistente no estado local do workspace para apresentação e importação legada.
 - Memória durável e auditável em `.local-agent/memory.md`, com recuperação semântica opcional pelo ChromaDB local.
 - Memória categorizada com proveniência opcional por arquivo: fatos e resumos derivados do código deixam de ser recuperados automaticamente quando a fonte muda, e o recibo da execução mostra quais lembranças influenciaram o turno.
 - Central de memória na sidebar para consultar, adicionar, editar e excluir entradas duráveis, abrir a fonte Markdown e compreender o modo de recuperação ativo.
@@ -585,7 +586,7 @@ No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. 
 - Erros operacionais, diagnósticos, resultados de leitura/pesquisa e stdout/stderr passam por remoção local de chaves conhecidas, cabeçalhos de autenticação, credenciais em URLs, tokens comuns e blocos de chave privada antes de aparecerem na interface ou retornarem ao modelo.
 - A memória do projeto recusa entradas que contenham a chave configurada ou padrões reconhecíveis de credenciais; mensagens normais do usuário e respostas do agente não são reescritas silenciosamente.
 - Arquivos normalmente usados para credenciais — como `.env`, `.npmrc`, PEM/chaves privadas, keystores, `tfvars` e credenciais cloud — ficam fora do contexto automático, do seletor e de buscas amplas. Uma leitura direta exige confirmação local para aquele arquivo e ainda remove padrões reconhecidos antes de enviar o texto ao modelo.
-- Conversas ficam somente no `workspaceState` local e limitado do VS Code; não são copiadas para `.local-agent/memory.md`.
+- Conversas e checkpoints ficam no namespace privado do serviço; a extensão mantém uma projeção limitada no `workspaceState`. Não são copiados para `.local-agent/memory.md`.
 - LiteLLM e OpenAI exigem HTTPS; Ollama aceita somente `http(s)` em loopback.
 - O certificado PEM opcional é validado e copiado para o armazenamento global local da extensão; o caminho original não é persistido.
 - Arquivos só podem ser lidos ou alterados dentro do workspace aberto.
@@ -593,8 +594,8 @@ No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. 
 - Servidores MCP `stdio` são uma classe separada de comando: somente uma cópia exata importada e aprovada é iniciada, com ambiente reduzido, pacote fixado e encerramento junto da sessão. O processo e cada ferramenta continuam capazes de executar o comportamento documentado pelo servidor; revise o catálogo e cada aprovação.
 - Interpretadores, código inline, wrappers, clientes de rede e operações de download, publicação e Git remoto são bloqueados nas ferramentas do agente.
 - A política de comandos é uma defesa local em profundidade, não um sandbox do sistema operacional: um script já presente no workspace e aprovado pelo usuário pode conter comportamento próprio. Revise o comando e os scripts associados antes de autorizar.
-- O histórico do agente fica no armazenamento local do workspace do VS Code; não é copiado para `memory.md`.
-- A projeção limitada da conversa fica no estado local do workspace; os vetores Chroma ficam no armazenamento privado local da extensão, fora do repositório.
+- O histórico do agente fica no namespace do serviço vinculado ao produto e workspace; a projeção do editor não é copiada para `memory.md`.
+- A projeção limitada da conversa fica no estado local do workspace; o serviço administra os vetores Chroma no armazenamento privado autorizado, fora do repositório.
 - O provedor selecionado recebe apenas as mensagens necessárias para inferência, incluindo trechos de arquivos e resultados de ferramentas usados naquele turno. Isso inclui resultados de um MCP corporativo quando o usuário aprovou a chamada e o agente precisa usá-los como contexto. No modo Ollama local, essas chamadas permanecem em loopback.
 - Revise as alterações antes de fazer commit.
 
@@ -630,38 +631,22 @@ O prefixo `localAgentCompanion` foi mantido para que configurações e segredos 
 ## Arquitetura
 
 ```text
-VS Code Secondary Sidebar
+macOS Companion / VS Code / Navi
     │
-    ├── AgentViewProvider ── chat, threads, timeline, plano e configurações
-    ├── ContextCollector ─── editor, seleção, diagnósticos, arquivos e orientação do projeto
-    ├── ProjectMemory ────── .local-agent/memory.md (fonte de verdade)
-    ├── ChangeReviewManager  snapshots efêmeros, diff e restauração protegida
-    ├── VsCodeIntelligence ─ Problems, símbolos, navegação, code actions e rename
-    ├── LocalProjectIndex ── mapa estrutural local, testes relacionados e playbooks
-    ├── LocalProcessManager  servidores/watchers do usuário, sem shell ou daemon
-    └── DevelopmentAgent ─── orquestra primitivas LangChain
+    ├── apresentação, contexto e credenciais do host
+    ├── SDK sem grafo ou loop de ferramentas
+    │
+    └── JSON-RPC autenticado em socket Unix / named pipe
             │
-            ├── runtime escolhido por workspace
-            │     ├── createAgent · enxuto e explícito
-            │     └── createDeepAgent · planejamento, compactação e subagentes
-            ├── MemorySaver + até 30 projeções locais limitadas
-            ├── Chroma vector store local ──► 127.0.0.1 (opcional)
-            ├── ChatOpenAICompletions
-            ├── LocalToolHost (`tool()` + Zod)
-            │     ├── list/search/read
-            │     ├── edit/create
-            │     ├── approved command execution
-            │     ├── plan/memory/inteligência VS Code
-            │     ├── processos locais aprovados ──► loopback
-            │     └── browser local aprovado ──► Chrome/Edge instalado ──► loopback
-            │
-            ├── HTTPS ──► LiteLLM POST /v1/chat/completions
-            ├── HTTPS ──► LiteLLM POST /v1/embeddings (opcional)
-            ├── loopback ──► Ollama /v1/chat/completions|embeddings (VSIX opcional)
-            ├── HTTPS fixo ──► OpenAI /v1/chat/completions|embeddings (VSIX opcional)
-            ├── HTTPS ──► catálogo GET /models (opcional e sob demanda)
-            ├── HTTPS ──► MCP corporativo exato (opcional, allowlist + aprovação)
-            └── stdio ──► processo MCP local aprovado (opcional, sem shell)
+            └── Agent Service (Node 22.23.4 empacotado, por usuário)
+                  ├── namespace por produto/perfil/workspace
+                  ├── Agent Core: createAgent / createDeepAgent
+                  ├── saver SQLite oficial, eventos e recibos
+                  ├── planejamento, avaliação, memória e objetivos
+                  ├── adaptadores de inferência e processos aprovados
+                  ├── ferramentas do editor aguardam o host disponível
+                  └── KidOS: adaptador assinado, gateway protegido e Core
+                         sob o UID real, sem shell/filesystem genérico
 ```
 
 ## Limitações
