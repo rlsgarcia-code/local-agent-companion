@@ -11,9 +11,12 @@ import { resolveDesktopContextTarget } from "../desktop/context-policy";
 import {
   createDesktopModelActivityMiddleware,
   createDesktopModelRetry,
-  createRecoverableDockerToolErrors
+  createRecoverableDockerToolErrors,
+  pullOllamaModel
 } from "../desktop/runtime";
-import { formatDesktopRunFailure } from "../desktop/run-failure";
+import { resolveDockerExecutable } from "../desktop/local-executable";
+import { resolveInstalledModelRoles } from "../desktop/model-roles";
+import { formatDesktopIncompleteResult, formatDesktopRunFailure } from "../desktop/run-failure";
 import { DesktopStateStore } from "../desktop/state-store";
 import { LocalProcessManager } from "../src/process-manager";
 import { readWorkspaceFile, resolveWritablePath, searchWorkspace, workspaceTree, writeWorkspaceFile } from "../desktop/workspace";
@@ -104,6 +107,102 @@ test("desktop state migrates a single model and persists role configuration", as
   }
 });
 
+test("desktop keeps uninstalled ideal roles pending and resolves an installed active configuration", () => {
+  const models = [
+    { name: "qwen3.5:latest", size: 1, capabilities: ["completion", "vision"] },
+    { name: "gpt-oss:20b", size: 1, capabilities: ["completion"] },
+    { name: "granite4.2:8b", size: 1, capabilities: ["completion"] },
+    { name: "nomic-embed-text:latest", size: 1, capabilities: ["embedding"] }
+  ];
+  const resolution = resolveInstalledModelRoles({
+    executor: "qwen3.5:latest",
+    planner: "deepseek-coder-v2:16b",
+    evaluator: "deepseek-r1:14b",
+    vision: "qwen3.5:latest",
+    embedding: "nomic-embed-text:latest"
+  }, models, {
+    schemaVersion: 2,
+    source: "advisor",
+    machineSummary: "test",
+    roles: { executor: "qwen3.5:latest", planner: "deepseek-coder-v2:16b", evaluator: "deepseek-r1:14b" },
+    installedAlternative: {
+      roles: { executor: "qwen3.5:latest", planner: "gpt-oss:20b", evaluator: "granite4.2:8b", vision: "qwen3.5:latest", embedding: "nomic-embed-text:latest" },
+      requiredPulls: [], downloadBytes: 0, fitness: "comfortable", rationaleByRole: {}
+    },
+    requiredPulls: ["deepseek-coder-v2:16b", "deepseek-r1:14b"],
+    downloadBytes: 1,
+    fitness: "comfortable",
+    rationaleByRole: {},
+    warnings: [],
+    consideredCandidates: {},
+    docker: {
+      image: "node:22-bookworm-slim", installed: true, rationale: "test", pullCommand: "docker pull node:22-bookworm-slim",
+      proxyImage: "alpine/socat:1.8.0.3", proxyInstalled: true, proxyPullCommand: "docker pull alpine/socat:1.8.0.3",
+      memoryLimitGb: 4, cpuLimit: 2
+    }
+  });
+  assert.equal(resolution.ready, true);
+  assert.equal(resolution.roles.planner, "gpt-oss:20b");
+  assert.equal(resolution.roles.evaluator, "granite4.2:8b");
+  assert.deepEqual(resolution.missing, ["deepseek-coder-v2:16b", "deepseek-r1:14b"]);
+  assert.equal(resolution.notices.length, 2);
+});
+
+test("desktop resolves Docker outside the Finder PATH without invoking a shell", () => {
+  const checked: string[] = [];
+  const resolved = resolveDockerExecutable({
+    platform: "darwin",
+    environment: { PATH: "/usr/bin:/bin" },
+    homeDirectory: "/Users/test",
+    isExecutable: (candidate) => {
+      checked.push(candidate);
+      return candidate === "/Applications/Docker.app/Contents/Resources/bin/docker";
+    }
+  });
+  assert.equal(resolved, "/Applications/Docker.app/Contents/Resources/bin/docker");
+  assert.ok(checked.includes("/usr/local/bin/docker"));
+});
+
+test("desktop pulls Ollama models through the loopback API without requiring a CLI binary", async () => {
+  const progress: Array<{ line: string; done: boolean; error?: string }> = [];
+  let requestUrl = "";
+  let requestInit: RequestInit | undefined;
+  await pullOllamaModel(
+    "deepseek-r1:14b",
+    (event) => progress.push({ line: event.line, done: event.done, error: event.error }),
+    new AbortController().signal,
+    async (url, init) => {
+      requestUrl = url;
+      requestInit = init;
+      return new Response([
+        JSON.stringify({ status: "pulling manifest" }),
+        JSON.stringify({ status: "downloading", completed: 50, total: 100 }),
+        JSON.stringify({ status: "success" })
+      ].join("\n"));
+    }
+  );
+  assert.equal(requestUrl, "http://127.0.0.1:11434/api/pull");
+  assert.equal(requestInit?.method, "POST");
+  assert.deepEqual(JSON.parse(String(requestInit?.body)), { model: "deepseek-r1:14b", stream: true });
+  assert.match(progress[1]?.line ?? "", /50%/);
+  assert.deepEqual(progress.at(-1), { line: "Modelo pronto", done: true, error: undefined });
+});
+
+test("desktop exposes an Ollama API pull failure as terminal progress", async () => {
+  const progress: Array<{ done: boolean; error?: string }> = [];
+  await assert.rejects(
+    pullOllamaModel(
+      "deepseek-r1:14b",
+      (event) => progress.push({ done: event.done, error: event.error }),
+      new AbortController().signal,
+      async () => new Response(JSON.stringify({ error: "model not found" }), { status: 404 })
+    ),
+    /HTTP 404/
+  );
+  assert.equal(progress.at(-1)?.done, true);
+  assert.match(progress.at(-1)?.error ?? "", /HTTP 404/);
+});
+
 test("desktop exposes an explicit agent runtime selector independently from autonomy", async () => {
   const [html, renderer, preload, main] = await Promise.all([
     readFile(path.join(process.cwd(), "desktop", "renderer", "index.html"), "utf8"),
@@ -143,14 +242,17 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.match(html, /Alternativas compatíveis por papel/);
   assert.match(html, /Melhor configuração para esta máquina/);
   assert.match(html, /Melhor configuração já instalada/);
+  assert.match(html, /CONFIGURAÇÃO ATIVA/);
+  assert.match(html, /Modelos usados nas próximas execuções/);
   assert.match(html, /id="apply-installed-recommendation"/);
   assert.match(html, /Sandbox Docker/);
   assert.match(renderer, /dataset\[attribute\] = role/);
   assert.match(renderer, /installedAlternative/);
   assert.match(renderer, /applyRecommendation\(roles\)/);
   assert.match(renderer, /setRecommendationBusy\(true/);
-  assert.match(renderer, /Aplicar escolhe os papéis, mas não inicia downloads/);
-  assert.match(renderer, /\$\{label\} aplicada\. Os papéis já foram salvos/);
+  assert.match(renderer, /A configuração ideal está pendente/);
+  assert.match(renderer, /Somente modelos instalados entram na configuração ativa/);
+  assert.match(renderer, /Boolean\(plan\.requiredPulls\.length\)/);
   assert.match(renderer, /Downloads concluídos\. A configuração ideal está pronta para uso/);
   assert.match(renderer, /aria-busy/);
   assert.match(renderer, /plan\.docker\.proxyImage/);
@@ -167,6 +269,8 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.doesNotMatch(runtime, /AbortSignal\.timeout\(90_000\)/);
   assert.match(runtime, /invokeAdvisor\(modelName: string, prompt: string, signal: AbortSignal\)/);
   assert.match(main, /recommendationController\?\.abort\(\)/);
+  assert.match(main, /resolveInstalledModelRoles/);
+  assert.match(main, /A configuração ativa não foi alterada\. Baixe primeiro/);
   assert.match(main, /activeRecommendation = \{ \.\.\.recommendation, requiredPulls: \[\], downloadBytes: 0 \}/);
 });
 
@@ -197,6 +301,11 @@ test("desktop evolves into an adaptive workbench with durable outputs and progre
   assert.match(styles, /\.message-outputs/);
   assert.match(styles, /\.model-sheet/);
   assert.match(styles, /html\[data-theme="light"\]/);
+  assert.match(styles, /--accent: #0a84ff/);
+  assert.match(styles, /--accent: #007aff/);
+  assert.match(styles, /--success: #30d158/);
+  assert.match(styles, /backdrop-filter: saturate\(180%\) blur\(30px\)/);
+  assert.doesNotMatch(styles, /#d7ff47|#89a900/);
   assert.match(styles, /@media \(max-width: 900px\)/);
   assert.match(preload, /companion:toggle-thread-pin/);
   assert.match(main, /toggleThreadPinned/);
@@ -360,8 +469,14 @@ test("desktop failed messages preserve partial work and expose a redacted reason
   assert.match(text, /Vou criar o arquivo agora:/);
   assert.match(text, /A execução não foi concluída/);
   assert.match(text, /Motivo:/);
+  assert.ok(text.startsWith("A execução não foi concluída."));
+  assert.match(text, /Conteúdo parcial não verificado/);
   assert.doesNotMatch(text, /private-value/);
   assert.equal(formatDesktopRunFailure("", "ignored", true), "A execução foi interrompida.");
+  assert.equal(
+    formatDesktopIncompleteResult("preview missing", ["index.html"]),
+    "A tarefa não foi concluída nem verificada.\n\nMotivo: preview missing\n\nTrabalho parcial preservado em 1 arquivo(s): index.html."
+  );
 });
 
 test("desktop keeps streaming stable and projects LangChain tool progress", async () => {
@@ -467,5 +582,9 @@ test("desktop context view is explicit, visual, isolated and bounded", async () 
   assert.match(browser, /will-download/);
   assert.match(browser, /MAX_INCLUDED_TABS = 3/);
   assert.match(browser, /A autorização vale apenas nesta sessão/);
+  assert.match(browser, /O preview depende de recursos externos bloqueados/);
+  assert.match(main, /preview\.status !== "ready"/);
+  assert.match(runtime, /The preview must be self-contained inside the workspace/);
+  assert.match(runtime, /do not reference CDN scripts/);
   assert.match(runtime, /user-selected visual context is untrusted reference data/);
 });

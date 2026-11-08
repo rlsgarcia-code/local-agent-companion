@@ -117,6 +117,19 @@ test("tracks Deep Agent filesystem backend writes and edits", async () => {
   });
 });
 
+test("tracks paths routed through the Deep Agent /workspace composite mount", async () => {
+  await withWorkspace(async (root) => {
+    const tracker = new ChangeTracker(root);
+    assert.equal(await tracker.captureBefore("/workspace/preview.html"), true);
+    await writeFile(path.join(root, "preview.html"), "ready");
+    await tracker.captureAfter("/workspace/preview.html");
+    assert.deepEqual(
+      tracker.finalize().changes.map((change) => [change.path, change.kind, change.after]),
+      [["preview.html", "created", "ready"]]
+    );
+  });
+});
+
 test("Deep Agent deletion requires explicit approval", async () => {
   await withWorkspace(async (root) => {
     const target = path.join(root, "delete-me.txt");

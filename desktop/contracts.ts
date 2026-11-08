@@ -113,6 +113,7 @@ export type DesktopSnapshot = DesktopState & {
   };
   context: DesktopContextSnapshot;
   ollamaPublicCatalogLoaded: boolean;
+  modelRoleNotices: string[];
   running: boolean;
 };
 

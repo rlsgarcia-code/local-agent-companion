@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { LocalProcessManager, type LocalProcessSnapshot } from "../src/process-manager";
 import { DOCKER_SANDBOX_PROXY_IMAGE } from "../src/docker-recommendation";
 import { dockerResourceLimits } from "../src/docker-recommendation";
+import { resolveDockerExecutable } from "./local-executable";
 
 const SANDBOX_NETWORK = "local-companion-sandbox";
 const IMAGE_ALIAS = /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,255}$/;
@@ -111,12 +112,12 @@ export class DockerSandboxManager {
       options.image, options.executable, ...options.args
     ];
     const process = await this.processes.start({
-      command: "docker",
+      command: resolveDockerExecutable(),
       args,
       cwd: options.workspacePath,
       knownUrls: [url],
       onExit: () => {
-        const cleanup = spawn("docker", ["rm", "--force", proxyContainerName], { shell: false, stdio: "ignore", env: dockerEnvironment() });
+        const cleanup = spawn(resolveDockerExecutable(), ["rm", "--force", proxyContainerName], { shell: false, stdio: "ignore", env: dockerEnvironment() });
         cleanup.unref();
       }
     });
@@ -165,7 +166,7 @@ export class DockerSandboxManager {
 
   public dispose(): void {
     for (const entry of this.entries.values()) {
-      const cleanup = spawn("docker", ["rm", "--force", entry.proxyContainerName, entry.containerName], { shell: false, stdio: "ignore", env: dockerEnvironment() });
+      const cleanup = spawn(resolveDockerExecutable(), ["rm", "--force", entry.proxyContainerName, entry.containerName], { shell: false, stdio: "ignore", env: dockerEnvironment() });
       cleanup.unref();
     }
     this.processes.dispose();
@@ -235,7 +236,7 @@ async function availableLoopbackPort(): Promise<number> {
 
 async function runDocker(args: string[], signal?: AbortSignal, timeoutMs = 30_000, cwd?: string): Promise<{ output: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
-    const child = spawn("docker", args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"], env: dockerEnvironment() });
+    const child = spawn(resolveDockerExecutable(), args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"], env: dockerEnvironment() });
     let output = "";
     const append = (chunk: Buffer) => { if (output.length < MAX_OUTPUT) output += chunk.toString("utf8").slice(0, MAX_OUTPUT - output.length); };
     child.stdout.on("data", append);

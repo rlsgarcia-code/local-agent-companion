@@ -19,6 +19,7 @@ import type {
 import { redactSensitiveText } from "../src/redaction";
 import { OllamaDesktopRuntime } from "./runtime";
 import { formatDesktopRunFailure } from "./run-failure";
+import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
 import { DesktopStateStore } from "./state-store";
 import { OLLAMA_CATALOG } from "../src/ollama-catalog";
 import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "../src/ollama-public-catalog";
@@ -43,6 +44,7 @@ let cancellationRequested = false;
 let publicOllamaCatalog: PublicOllamaCatalog | undefined;
 let activeRecommendation: OllamaRecommendationPlan | undefined;
 let recommendationController: AbortController | undefined;
+let modelRoleNotices: string[] = [];
 
 app.setName("Local Companion");
 
@@ -175,6 +177,15 @@ function registerIpc(): void {
     const recommendation = activeRecommendation ?? store.snapshot().lastRecommendation;
     if (!recommendation) throw new Error("Analyze this machine before applying a recommendation.");
     const roles = parseModelRoles(roleInput);
+    cachedOllama = await runtime.ollamaStatus();
+    hasCheckedOllama = true;
+    if (!cachedOllama.connected) throw new Error(cachedOllama.error || "Inicie o Ollama antes de aplicar uma configuração.");
+    const installed = new Set(cachedOllama.models.map((model) => model.name.toLowerCase()));
+    const missing = [...new Set(Object.values(roles).filter((model): model is string => Boolean(model) && !installed.has(model.toLowerCase())))];
+    if (missing.length) {
+      throw new Error(`A configuração ativa não foi alterada. Baixe primeiro: ${missing.join(", ")}.`);
+    }
+    modelRoleNotices = [];
     await store.update({ modelRoles: roles, lastRecommendation: recommendation });
     return publishSnapshot();
   });
@@ -261,9 +272,13 @@ async function send(request: SendRequest): Promise<void> {
   const text = typeof request?.text === "string" ? request.text.trim() : "";
   if (!text) throw new Error("Write a request first.");
   if (runtime.running) throw new Error("Wait for or cancel the current run.");
+  await snapshot(true);
   const state = store.snapshot();
   if (!state.workspacePath) throw new Error("Choose a workspace before starting.");
   if (!state.modelRoles.executor) throw new Error("Choose an installed Ollama executor model.");
+  if (!cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())) {
+    throw new Error(`O executor ${state.modelRoles.executor} não está instalado. Abra Modelos e execução para baixar o modelo ou aplicar a configuração instalada.`);
+  }
   const priorThread = structuredClone(store.thread(request.threadId));
   const userMessage: DesktopMessage = { id: randomUUID(), role: "user", text, createdAt: Date.now(), status: "complete" };
   const assistantMessageId = randomUUID();
@@ -290,6 +305,18 @@ async function send(request: SendRequest): Promise<void> {
   cancellationRequested = false;
   await store.appendMessage(request.threadId, userMessage);
   publish({ type: "run-start", threadId: request.threadId, message: userMessage, assistantMessageId });
+  for (const notice of modelRoleNotices) {
+    const activity: DesktopActivity = {
+      id: randomUUID(),
+      kind: "verification",
+      title: "Configuração local protegida",
+      detail: notice,
+      status: "complete",
+      createdAt: Date.now()
+    };
+    runActivities.set(activity.id, activity);
+    publish({ type: "activity", activity });
+  }
   try {
     const result = await runtime.run({
       thread: priorThread,
@@ -301,7 +328,12 @@ async function send(request: SendRequest): Promise<void> {
       agentRuntime: state.agentRuntime,
       assistantMessageId,
       openPreview: async (url) => {
-        await contextBrowser.open(url);
+        const context = await contextBrowser.open(url);
+        const preview = context.tabs.find((tab) => tab.id === context.activeTabId && tab.url === url)
+          ?? context.tabs.find((tab) => tab.url === url);
+        if (!preview || preview.status !== "ready") {
+          throw new Error(preview?.error || "O preview local não terminou de carregar corretamente.");
+        }
         publish({ type: "context-focus", url });
       },
       callbacks: {
@@ -445,11 +477,36 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
     cachedOllama = await runtime.ollamaStatus();
     hasCheckedOllama = true;
   }
+  if (cachedOllama.connected) {
+    let state = store.snapshot();
+    if (state.lastRecommendation) {
+      const installed = new Set(cachedOllama.models.map((model) => model.name.toLowerCase()));
+      const requiredPulls = state.lastRecommendation.requiredPulls.filter((model) => !installed.has(model.toLowerCase()));
+      if (requiredPulls.length !== state.lastRecommendation.requiredPulls.length) {
+        const lastRecommendation = {
+          ...state.lastRecommendation,
+          requiredPulls,
+          ...(requiredPulls.length ? {} : { downloadBytes: 0 })
+        };
+        activeRecommendation = lastRecommendation;
+        await store.update({ lastRecommendation });
+        state = store.snapshot();
+      }
+    }
+    const resolution = resolveInstalledModelRoles(state.modelRoles, cachedOllama.models, state.lastRecommendation);
+    modelRoleNotices = resolution.notices;
+    if (resolution.ready && !sameModelRoles(state.modelRoles, resolution.roles)) {
+      await store.update({ modelRoles: resolution.roles });
+    }
+  } else {
+    modelRoleNotices = [];
+  }
   return {
     ...store.snapshot(),
     ollama: cachedOllama,
     context: contextBrowser.snapshot(),
     ollamaPublicCatalogLoaded: Boolean(publicOllamaCatalog),
+    modelRoleNotices,
     running: runtime.running
   };
 }

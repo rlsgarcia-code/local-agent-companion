@@ -99,7 +99,10 @@ export class ChangeTracker {
 
   private relativePath(requestedPath: string): string | undefined {
     if (!requestedPath || requestedPath.includes("\0")) return undefined;
-    const virtualRelative = requestedPath.replace(/^[/\\]+/, "");
+    const normalized = requestedPath.replace(/\\/g, "/");
+    const virtualRelative = normalized.startsWith("/workspace/")
+      ? normalized.slice("/workspace/".length)
+      : normalized.replace(/^\/+/, "");
     const candidate = path.resolve(this.workspaceRoot, virtualRelative);
     const relative = path.relative(path.resolve(this.workspaceRoot), candidate);
     if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return undefined;

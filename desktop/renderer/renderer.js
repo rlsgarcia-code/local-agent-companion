@@ -32,6 +32,7 @@ const el = Object.fromEntries([
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "theme-control",
+  "active-model-roles", "active-model-status",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
   "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
@@ -523,6 +524,19 @@ function renderInspector() {
 function renderRecommendation() {
   const snapshot = appState.snapshot;
   const plan = snapshot.lastRecommendation;
+  const activeLabels = { executor: "Executor", planner: "Planner", evaluator: "Evaluator", vision: "Vision", embedding: "Embedding" };
+  el["active-model-roles"].replaceChildren(...Object.entries(snapshot.modelRoles || {}).map(([role, model]) => {
+    const row = document.createElement("div");
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    label.textContent = activeLabels[role] || role;
+    value.textContent = model;
+    row.append(label, value);
+    return row;
+  }));
+  el["active-model-status"].textContent = snapshot.modelRoleNotices?.length
+    ? snapshot.modelRoleNotices.join(" ")
+    : "Somente modelos instalados entram na configuração ativa.";
   el["docker-sandbox-toggle"].checked = Boolean(snapshot.dockerSandboxEnabled);
   el["docker-sandbox-status"].textContent = snapshot.dockerSandboxEnabled
     ? "Ativo: comandos usam somente Docker; não existe fallback nativo."
@@ -589,11 +603,12 @@ function renderRecommendation() {
     return row;
   }));
   el["pull-recommended"].disabled = !plan.requiredPulls.length;
+  el["apply-recommendation"].disabled = Boolean(plan.requiredPulls.length);
   if (appState.recommendationNotice) {
     setRecommendationNotice(appState.recommendationNotice.text, appState.recommendationNotice.kind);
   } else {
     const nextStep = plan.requiredPulls.length
-      ? `Aplicar escolhe os papéis, mas não inicia downloads. Depois, use “Baixar ausentes” para obter ${plan.requiredPulls.length} modelo(s).`
+      ? `A configuração ideal está pendente. Baixe ${plan.requiredPulls.length} modelo(s) antes de aplicá-la; a configuração ativa permanece pronta para uso.`
       : "Aplicar escolhe os papéis imediatamente; nenhum download adicional é necessário.";
     setRecommendationNotice(nextStep, "neutral", false);
   }
@@ -618,6 +633,7 @@ function setRecommendationBusy(busy, title = "Analisando máquina e modelos…")
   }
   if (!busy && appState.snapshot?.lastRecommendation) {
     el["pull-recommended"].disabled = !appState.snapshot.lastRecommendation.requiredPulls.length;
+    el["apply-recommendation"].disabled = Boolean(appState.snapshot.lastRecommendation.requiredPulls.length);
   }
 }
 
@@ -640,16 +656,13 @@ async function applyRoleConfiguration(roles, label) {
   setRecommendationNotice(`Aplicando ${label.toLowerCase()}…`, "active");
   try {
     appState.snapshot = await window.companion.applyRecommendation(roles);
-    const missing = label === "Configuração ideal" ? appState.snapshot.lastRecommendation?.requiredPulls?.length || 0 : 0;
-    setRecommendationNotice(missing
-      ? `${label} aplicada. Os papéis já foram salvos; agora baixe ${missing} modelo(s) ausente(s).`
-      : `${label} aplicada e pronta para uso.`, "success");
+    setRecommendationNotice(`${label} aplicada e pronta para uso.`, "success");
     render();
   } catch (error) {
     setRecommendationNotice(error?.message || String(error), "error");
     showError(error);
   } finally {
-    el["apply-recommendation"].disabled = false;
+    el["apply-recommendation"].disabled = Boolean(appState.snapshot?.lastRecommendation?.requiredPulls?.length);
     el["apply-installed-recommendation"].disabled = false;
     el["reanalyze-models"].disabled = false;
     el["pull-recommended"].disabled = !appState.snapshot?.lastRecommendation?.requiredPulls?.length;
