@@ -12,6 +12,7 @@ import {
   type RpcResponse,
   type Run,
   type Session,
+  type SessionSnapshot,
   type RunState,
 } from "../../contracts/src/index";
 import { MAX_TRANSFER_BYTES, TRANSFER_CHUNK_BYTES, type Transfer } from "../../contracts/src/transfers";
@@ -210,14 +211,23 @@ export class AgentClient {
     const transfer = await this.call<Transfer>("sessions.export", { id });
     return JSON.parse((await this.download(transfer.id)).toString("utf8"));
   }
+  async snapshotSession(id: string): Promise<SessionSnapshot> {
+    const transfer = await this.call<Transfer>("sessions.snapshot", { id });
+    const snapshot = JSON.parse((await this.download(transfer.id)).toString("utf8")) as SessionSnapshot;
+    await this.hydrateEvents(snapshot.events);
+    return snapshot;
+  }
   async readEvents(sessionId: string, cursor = 0): Promise<EngineEvent[]> {
     const events = await this.call<EngineEvent[]>("events.read", { sessionId, cursor });
+    await this.hydrateEvents(events);
+    return events;
+  }
+  private async hydrateEvents(events: EngineEvent[]): Promise<void> {
     for (const event of events) {
       const data = event.data as { kind?: string; id?: string } | null;
       if (data?.kind === "agent-event-transfer" && data.id)
         event.data = JSON.parse((await this.download(data.id)).toString("utf8"));
     }
-    return events;
   }
   async waitForRun(
     id: string,

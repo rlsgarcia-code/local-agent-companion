@@ -5,9 +5,9 @@ import * as path from "node:path";
 import {
   LocalProcessManager,
   type LocalProcessSnapshot,
-} from "../../../src/process-manager";
-import { DOCKER_SANDBOX_PROXY_IMAGE } from "../../../src/docker-recommendation";
-import { dockerResourceLimits } from "../../../src/docker-recommendation";
+} from "./process-manager";
+import { DOCKER_SANDBOX_PROXY_IMAGE } from "../../agent-core/src/docker-recommendation";
+import { dockerResourceLimits } from "../../agent-core/src/docker-recommendation";
 import { resolveDockerExecutable } from "./local-executable";
 
 const SANDBOX_NETWORK = "local-companion-sandbox";

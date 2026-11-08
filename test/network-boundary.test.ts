@@ -4,7 +4,8 @@ import test from "node:test";
 
 const sourceFiles = readdirSync("src")
   .filter((name) => name.endsWith(".ts"))
-  .map((name) => `src/${name}`);
+  .map((name) => `src/${name}`)
+  .concat(["packages/adapter-workspace/src/process-manager.ts", "packages/adapter-workspace/src/browser-policy.ts"]);
 const sources = new Map(sourceFiles.map((file) => [file, readFileSync(file, "utf8")]));
 const agent = sources.get("src/agent.ts") ?? "";
 const semanticMemory = sources.get("src/semantic-memory.ts") ?? "";
@@ -12,7 +13,7 @@ const gateway = readFileSync("packages/agent-core/src/gateway.ts", "utf8");
 const chroma = sources.get("src/chroma.ts") ?? "";
 const mcpCatalog = sources.get("src/mcp-catalog.ts") ?? "";
 const ollamaPublicCatalog = sources.get("src/ollama-public-catalog.ts") ?? "";
-const processManager = sources.get("src/process-manager.ts") ?? "";
+const processManager = sources.get("packages/adapter-workspace/src/process-manager.ts") ?? "";
 
 function count(source: string, pattern: RegExp): number {
   return [...source.matchAll(pattern)].length;
@@ -63,7 +64,7 @@ test("keeps direct source-level network calls inside the reviewed gateway and lo
 
 test("keeps browser automation local and approval-gated", () => {
   const browser = sources.get("src/browser.ts") ?? "";
-  const browserPolicy = sources.get("src/browser-policy.ts") ?? "";
+  const browserPolicy = sources.get("packages/adapter-workspace/src/browser-policy.ts") ?? "";
   const tools = sources.get("src/tools.ts") ?? "";
 
   assert.match(browserPolicy, /Browser access is restricted to credential-free http\(s\) loopback URLs/);

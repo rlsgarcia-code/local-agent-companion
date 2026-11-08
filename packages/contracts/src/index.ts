@@ -5,6 +5,8 @@ export { identifier } from "./schema";
 export * from "./goals";
 export * from "./memory";
 export * from "./models";
+export * from "./execution";
+export * from "./ollama";
 
 export const PROTOCOL_VERSION = versions.protocol;
 export const ENGINE_VERSION = versions.engine;
@@ -137,6 +139,19 @@ export type EngineEvent = {
   type: string;
   data: unknown;
   correlationId?: string;
+};
+/** An atomic public view. Graph checkpoints and private model context are excluded. */
+export type SessionSnapshot = {
+  schema: 1;
+  session: Session;
+  runs: Run[];
+  domain: unknown;
+  events: EngineEvent[];
+  cursor: number;
+  /** Recent events are bounded; older activity can be replayed from zero. */
+  eventsComplete: boolean;
+  pendingApprovals: { id: string; runId: string; payload: unknown; actionable: boolean }[];
+  reconciliation: { runId: string; operationId: string; callId: string; tool: string }[];
 };
 export type RpcRequest = {
   jsonrpc: "2.0";

@@ -48,7 +48,7 @@ import type {
   OllamaModel,
   PullProgress,
 } from "../../contracts/src/desktop";
-import type { OllamaRoleConfiguration } from "../../../src/ollama-recommendation";
+import type { OllamaRoleConfiguration } from "../../contracts/src/ollama";
 import {
   readWorkspaceFile,
   resolveWritablePath,

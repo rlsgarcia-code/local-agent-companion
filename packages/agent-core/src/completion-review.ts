@@ -1,8 +1,8 @@
-import type { RunEvidenceSnapshot } from "../../../src/run-evidence";
+import type { RunEvidenceSnapshot } from "./run-evidence";
 import type { TrackedFileChange } from "../../adapter-workspace/src/change-tracker";
 import { redactSensitiveText } from "./redaction";
 import { isSensitiveWorkspacePath } from "../../adapter-workspace/src/sensitive-files";
-import type { RunMode } from "../../../src/types";
+import type { RunMode } from "../../contracts/src/execution";
 import { responseLanguageInstruction, type ResponseLanguage } from "../../contracts/src/response-language";
 
 const MAX_DIFF_EVIDENCE = 20_000;

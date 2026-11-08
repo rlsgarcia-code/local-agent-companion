@@ -2,7 +2,7 @@
   "name": "local-agent-companion",
   "displayName": "Local Agent Companion",
   "description": "A local LangChain agent foundation for VS Code with user-configured LiteLLM and approval-gated corporate MCP connections.",
-  "version": "0.11.12",
+  "version": "0.11.13",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/rlsgarcia-code/local-agent-companion#readme",
@@ -467,10 +467,11 @@
     "package:verified": "npm run verify && node scripts/package-native.mjs",
     "package:verified:ollama": "npm run verify && node esbuild.mjs --provider=ollama && node scripts/package-native.mjs --provider=ollama",
     "package:verified:openai": "npm run verify && node esbuild.mjs --provider=openai && node scripts/package-native.mjs --provider=openai",
-    "engine:build": "node scripts/build-engine.mjs",
+    "engine:build": "npm run engine:check && node scripts/build-engine.mjs",
     "engine:test": "npm run compile:tests && node --test dist-tests/test/engine-*.test.js",
     "engine:package": "node scripts/package-engine.mjs",
-    "suite:check": "npm run check && npm test && npm run engine:build"
+    "suite:check": "npm run check && npm test && npm run engine:build",
+    "engine:check": "tsc --noEmit -p tsconfig.engine.json"
   },
   "dependencies": {
     "@langchain/community": "^1.1.29",

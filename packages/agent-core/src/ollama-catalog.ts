@@ -5,7 +5,8 @@
  * runtime catalogue. Local availability is still verified with /api/tags and
  * /api/show before a model is selected.
  */
-export type OllamaRole = "executor" | "planner" | "vision" | "evaluator" | "embedding";
+import type { OllamaRole } from "../../contracts/src/ollama";
+export type { OllamaRole } from "../../contracts/src/ollama";
 
 export type OllamaCatalogEntry = {
   pull: string;

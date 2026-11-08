@@ -92,6 +92,26 @@ test("SDK imports a domain larger than a frame and exports history produced afte
     assert.equal(exported.productState.goals[0]?.objective, "Preserve this goal in rollback");
     assert.equal(exported.productState.memory[0]?.content, "Keep a local-only engine");
     assert.equal(exported.productState.modelConfiguration.roles.executor, "fixture");
+    // A bounded activity tail must not make older public conversation disappear
+    // from the authoritative view used after a cold client reconnect.
+    for (let index = 0; index < 510; index++)
+      store.append(reg, session.id, "activity", { index }, run.id);
+    const frozen = await client.call<{ id: string }>("sessions.snapshot", { id: session.id });
+    const later = store.append(reg, session.id, "activity", { afterSnapshot: true }, run.id);
+    const frozenData = JSON.parse((await client.download(frozen.id)).toString()) as { cursor: number };
+    assert.ok(frozenData.cursor < later.sequence);
+    assert.equal((await client.readEvents(session.id, frozenData.cursor))[0]?.id, later.id);
+    const snapshot = await client.snapshotSession(session.id);
+    assert.equal(snapshot.schema, 1);
+    assert.equal(snapshot.eventsComplete, false);
+    assert.equal(snapshot.events.length, 500);
+    assert.equal(snapshot.cursor, later.sequence);
+    assert.deepEqual((snapshot.domain as { messages: unknown }).messages, exported.messages);
+    assert.deepEqual((snapshot.domain as { files: unknown }).files, exported.files);
+    assert.equal(snapshot.runs[0]?.state, "completed");
+    assert.deepEqual(snapshot.pendingApprovals, []);
+    assert.deepEqual(snapshot.reconciliation, []);
+    await assert.rejects(service.dispatch({ ...reg, profile: "other" }, "sessions.snapshot", { id: session.id }, "other"), /not found/);
     const fork = await client.call<Session>("sessions.fork", { id: session.id, key: "branch", throughRunId: run.id });
     assert.notEqual(fork.id, session.id);
     assert.equal(store.runs(reg, fork.id).length, 0);
@@ -115,6 +135,13 @@ test("image attachments are namespace-bound, typed and never interpreted as exte
     transfers.append(reg, invalid.id, 0, Buffer.from("bad"));
     transfers.commit(reg, invalid.id);
     assert.throws(() => transfers.image(reg, invalid.id), /declared media type/);
+    const gif = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64");
+    const animatedAttachment = transfers.begin(reg, { key: "gif", size: gif.length,
+      sha256: createHash("sha256").update(gif).digest("hex"), mime: "image/gif" });
+    transfers.append(reg, animatedAttachment.id, 0, gif);
+    transfers.commit(reg, animatedAttachment.id);
+    assert.equal(transfers.image(reg, animatedAttachment.id).mime, "image/gif");
+    assert.equal(transfers.image(reg, animatedAttachment.id).data, gif.toString("base64"));
     assert.deepEqual(message.parse({ role: "user", content: [{ type: "text", text: "Look" }, { type: "image", attachmentId: image.id }] }).role, "user");
     assert.throws(() => message.parse({ role: "user", content: [{ type: "image", url: "https://example.com/image.png" }] }));
     assert.throws(() => message.parse({ role: "system", content: [{ type: "image", attachmentId: image.id }] }));

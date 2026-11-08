@@ -1,3 +1,5 @@
+import type { OllamaRoleConfiguration, OllamaRecommendationOption, OllamaRecommendationPlan } from "../../contracts/src/ollama";
+export type { OllamaRoleConfiguration, OllamaRecommendationOption, OllamaRecommendationPlan } from "../../contracts/src/ollama";
 import * as os from "node:os";
 import { statfs } from "node:fs/promises";
 import { z } from "zod";
@@ -31,34 +33,7 @@ export type OllamaModelCandidate = {
   installed: boolean;
 };
 
-export type OllamaRoleConfiguration = {
-  executor: string;
-  planner?: string;
-  evaluator?: string;
-  vision?: string;
-  embedding?: string;
-};
-
-export type OllamaRecommendationOption = {
-  roles: OllamaRoleConfiguration;
-  requiredPulls: string[];
-  downloadBytes: number;
-  fitness: "comfortable" | "borderline";
-  rationaleByRole: Partial<Record<OllamaRole, string>>;
-};
-
 export const OLLAMA_RECOMMENDATION_SCHEMA_VERSION = 2 as const;
-
-export type OllamaRecommendationPlan = OllamaRecommendationOption & {
-  schemaVersion: typeof OLLAMA_RECOMMENDATION_SCHEMA_VERSION;
-  source: "baseline" | "advisor";
-  advisorModel?: string;
-  machineSummary: string;
-  installedAlternative?: OllamaRecommendationOption;
-  consideredCandidates?: Partial<Record<OllamaRole, string[]>>;
-  docker: DockerExecutionRecommendation;
-  warnings: string[];
-};
 
 export type InstalledOllamaModel = {
   name: string;

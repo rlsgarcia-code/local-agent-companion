@@ -222,7 +222,7 @@ export class Store {
   snapshot(
     reg: Registration,
     sessionId: string,
-  ): { session: Session; runs: Run[]; events: EngineEvent[]; cursor: number } {
+  ): { session: Session; runs: Run[]; events: EngineEvent[]; cursor: number; eventsComplete: boolean } {
     const session = this.session(reg, sessionId);
     const rows = this.db.prepare("SELECT sequence,value FROM events WHERE namespace=? AND session=? ORDER BY sequence DESC LIMIT 500")
       .all(namespace(reg), sessionId) as { sequence: number; value: string }[];
@@ -239,6 +239,8 @@ export class Store {
       runs: this.runs(reg, sessionId),
       events,
       cursor: events.at(-1)?.sequence ?? 0,
+      eventsComplete: !this.db.prepare("SELECT 1 FROM events WHERE namespace=? AND session=? AND sequence<? LIMIT 1")
+        .get(namespace(reg), sessionId, events[0]?.sequence ?? 0),
     };
   }
   updateRun(

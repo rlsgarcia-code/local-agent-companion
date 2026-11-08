@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./packages",
+    "types": ["node"]
+  },
+  "include": [
+    "packages/contracts/**/*.ts",
+    "packages/agent-core/**/*.ts",
+    "packages/agent-service/**/*.ts",
+    "packages/adapter-workspace/**/*.ts"
+  ]
+}

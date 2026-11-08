@@ -5,10 +5,11 @@ import * as path from "node:path";
 import test from "node:test";
 import { AgentService, type GraphExecutor } from "../packages/agent-service/src/service";
 import { Store } from "../packages/agent-service/src/store";
+import { Transfers } from "../packages/agent-service/src/transfers";
 import { LocalServer } from "../packages/agent-service/src/server";
 import { authorizeProvisionedClient } from "../packages/agent-service/src/provisioning";
 import { contentHash } from "../packages/contracts/src/identity";
-import { runSpec, type Registration, type Run, type ToolSpec } from "../packages/contracts/src/index";
+import { runSpec, type Registration, type Run, type ToolSpec, type SessionSnapshot } from "../packages/contracts/src/index";
 
 const tool: ToolSpec = {
   name: "write_fixture", description: "Write fixture",
@@ -99,11 +100,18 @@ test("a pending exact approval survives a service restart without being denied o
     const run = await service.dispatch(reg, "runs.start", { sessionId: session.id, key: "approval", spec: { ...spec, mode: "review" } }, "before") as Run;
     const before = await poll(async () => service.dispatch(reg, "host.poll", {}, "before") as Promise<Request[]>, (value) => value.length > 0);
     assert.equal(before[0]!.kind, "approval");
-    service.close();
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    const snapshot = async () => {
+      const transfer = await service.dispatch(reg, "sessions.snapshot", { id: session.id }, "viewer") as { id: string };
+      return new Transfers(store).json(reg, transfer.id) as SessionSnapshot;
+    };
+    assert.equal((await snapshot()).pendingApprovals[0]?.id, before[0]!.id);
+    assert.equal((await snapshot()).pendingApprovals[0]?.actionable, true);
+    await service.close();
     store = new Store(path.join(dir, "metadata.sqlite"));
     service = new AgentService(store, dir, executor);
     assert.equal(store.run(reg, run.id).state, "awaiting_host");
+    assert.equal((await snapshot()).pendingApprovals[0]?.id, before[0]!.id);
+    assert.equal((await snapshot()).pendingApprovals[0]?.actionable, false);
     await service.dispatch(reg, "runs.resume", { id: run.id }, "after");
     const after = await poll(async () => service.dispatch(reg, "host.poll", {}, "after") as Promise<Request[]>, (value) => value.length > 0);
     assert.equal(after[0]!.id, before[0]!.id);

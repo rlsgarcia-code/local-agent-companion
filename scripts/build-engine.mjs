@@ -16,6 +16,7 @@ import * as path from "node:path";
 const versions = JSON.parse(await readFile("packages/contracts/src/version.json", "utf8"));
 
 const root = path.resolve("engine-dist");
+const legacyRoots = ["src", "desktop"].map((directory) => path.resolve(directory) + path.sep);
 await rm(root, { recursive: true, force: true });
 await mkdir(root, { recursive: true });
 const built = await esbuild.build({
@@ -33,6 +34,12 @@ const built = await esbuild.build({
     {
       name: "headless-boundary",
       setup(build) {
+        build.onResolve({ filter: /^(?:\.|\/|[A-Za-z]:[\\/])/ }, (args) => {
+          const resolved = path.resolve(args.resolveDir, args.path);
+          if (legacyRoots.some((directory) => resolved.startsWith(directory)))
+            return { errors: [{ text: `Legacy interface module imported into the engine: ${args.path}` }] };
+          return undefined;
+        });
         build.onResolve(
           { filter: /^(?:vscode|electron|gtk|SwiftUI)$/ },
           (args) => ({

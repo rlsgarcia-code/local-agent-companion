@@ -1,7 +1,7 @@
 import type {
   OllamaRecommendationPlan,
   OllamaRoleConfiguration,
-} from "../../../src/ollama-recommendation";
+} from "./ollama";
 import { z } from "zod";
 import { modelRoles, type RunState } from "./index";
 

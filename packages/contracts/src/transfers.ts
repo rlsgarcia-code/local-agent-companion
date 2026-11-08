@@ -7,7 +7,7 @@ export const transferBegin = z.object({
   key: identifier,
   size: z.number().int().nonnegative().max(MAX_TRANSFER_BYTES),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
-  mime: z.enum(["application/json", "image/png", "image/jpeg", "image/webp", "text/plain", "application/octet-stream"]),
+  mime: z.enum(["application/json", "image/png", "image/jpeg", "image/webp", "image/gif", "text/plain", "application/octet-stream"]),
 }).strict();
 export const transferAppend = z.object({
   id: identifier,

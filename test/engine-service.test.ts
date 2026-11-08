@@ -160,6 +160,11 @@ test("a lost tool acknowledgement is interrupted and reconciled without repeatin
       "awaiting_reconciliation",
     );
     assert.deepEqual(await client.call("host.poll"), []);
+    const interrupted = await client.snapshotSession(session.id);
+    assert.equal(interrupted.runs[0]?.state, "awaiting_reconciliation");
+    assert.deepEqual(interrupted.reconciliation, [{ runId: run.id,
+      operationId: `${run.id}:${(offered[0]!.payload as { callId: string }).callId}`,
+      callId: (offered[0]!.payload as { callId: string }).callId, tool: "write_fixture" }]);
     await assert.rejects(
       client.call("runs.resume", { id: run.id }),
       /Reconcile/,

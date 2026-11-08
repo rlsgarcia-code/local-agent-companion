@@ -129,13 +129,22 @@ class AgentClient:
         transfer = self.call("sessions.export", {"id": identifier})
         return json.loads(self.download(transfer["id"]))
 
+    def snapshot_session(self, identifier: str) -> dict:
+        transfer = self.call("sessions.snapshot", {"id": identifier})
+        snapshot = json.loads(self.download(transfer["id"]))
+        self._hydrate_events(snapshot["events"])
+        return snapshot
+
     def read_events(self, session_id: str, cursor: int = 0) -> list[dict]:
         events = self.call("events.read", {"sessionId": session_id, "cursor": cursor})
+        self._hydrate_events(events)
+        return events
+
+    def _hydrate_events(self, events: list[dict]) -> None:
         for event in events:
             data = event.get("data")
             if isinstance(data, dict) and data.get("kind") == "agent-event-transfer":
                 event["data"] = json.loads(self.download(data["id"]))
-        return events
 
     def wait(self, run: dict, on_event: Callable[[dict], None], host: Callable[[dict], object] | None = None, *, cursor: int = 0) -> dict:
         while True:

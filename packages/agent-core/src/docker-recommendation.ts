@@ -1,19 +1,9 @@
+import type { DockerExecutionRecommendation } from "../../contracts/src/ollama";
+export type { DockerExecutionRecommendation } from "../../contracts/src/ollama";
 export type DockerImageCandidate = {
   alias: string;
   architectures: string[];
   purpose: string;
-};
-
-export type DockerExecutionRecommendation = {
-  image: string;
-  installed: boolean;
-  rationale: string;
-  pullCommand: string;
-  proxyImage: string;
-  proxyInstalled: boolean;
-  proxyPullCommand: string;
-  memoryLimitGb: number;
-  cpuLimit: number;
 };
 
 export const DOCKER_SANDBOX_PROXY_IMAGE = "alpine/socat:1.8.0.3";

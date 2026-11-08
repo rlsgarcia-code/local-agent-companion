@@ -8,7 +8,7 @@ import { completionReviewChanges } from "./completion-review";
 import { extractFinalAssistantText } from "./assistant-final";
 import { redactSensitiveText } from "./redaction";
 import { responseLanguageInstruction, type ResponseLanguage } from "../../contracts/src/response-language";
-import type { RunMode } from "../../../src/types";
+import type { RunMode } from "../../contracts/src/execution";
 
 const contractSchema = z.object({
   outcome: z.enum(["answer", "plan", "workspace_change", "execution", "uncertain"]),

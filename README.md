@@ -1,6 +1,6 @@
 # Local Agent Companion
 
-> Shared-engine candidate **1.0.0-rc.4** is in progress on
+> Shared-engine candidate **1.0.0-rc.5** is in progress on
 > `codex/companion-suite-engine` (PR #15). The generic and Mac profiles now use
 > one prepared LangChain/Deep Agent executor with the official SQLite saver.
 > Bound effect receipts, durable approvals, credential leases, chunked domain
@@ -39,6 +39,8 @@ helper under the verified bundled Node/SQLite. Closing or crashing its owner
 releases the OS lock. An older client cannot automatically downgrade a newer
 engine or replace another artifact under the same production version. Large
 public events use verified transfers just like domain imports and results.
+An atomic `sessions.snapshot` transfers complete public conversation state, all run summaries, pending approvals and unknown-effect identities. Its bounded recent activity tail explicitly declares when older activity requires replay. Both SDKs hydrate snapshot transfers.
+The engine now type-checks independently of the legacy `src/` and `desktop/` trees; its bundle rejects imports from either interface tree.
 
 The Mac Ollama profile constrains classifier/verifier responses with [LangChain structured output](https://docs.langchain.com/oss/javascript/langchain/models#structured-output), using the existing Chat Completions route and [Ollama response_format support](https://docs.ollama.com/capabilities/structured-outputs). Evidence and tool authorization remain enforced by the engine.
 

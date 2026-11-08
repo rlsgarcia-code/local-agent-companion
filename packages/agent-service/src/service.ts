@@ -23,6 +23,7 @@ import {
   type Registration,
   type Run,
   type RunSpec,
+  type SessionSnapshot,
   type ToolSpec,
 } from "../../contracts/src/index";
 import { namespace } from "./security";
@@ -332,6 +333,7 @@ export class AgentService {
             "durable-approvals",
             "bound-tool-receipts",
             "ollama-model-jobs",
+            "public-session-snapshots",
           ],
         };
       case "engine.shutdownIfIdle": {
@@ -363,6 +365,38 @@ export class AgentService {
           reg,
           z.object({ id: identifier }).strict().parse(p).id,
         );
+      case "sessions.snapshot": {
+        const { id } = z.object({ id: identifier }).strict().parse(p);
+        // Capture domain, public activity and outstanding work before releasing
+        // the database read view. Transfer downloads can then overlap new work
+        // without moving this snapshot's replay cursor.
+        return this.store.db.transaction(() => {
+          const recent = this.store.snapshot(reg, id);
+          const runs = (this.store.db.prepare("SELECT id FROM runs WHERE namespace=? AND session=? ORDER BY rowid")
+            .all(namespace(reg), id) as { id: string }[]).map((run) => this.runSummary(reg, run.id));
+          const approvals = this.store.db.prepare(`SELECT receipts.id,receipts.run,receipts.value FROM receipts
+            JOIN runs ON runs.id=receipts.run WHERE receipts.namespace=? AND runs.session=?
+            AND receipts.id LIKE 'wait:%' AND receipts.status='waiting'
+            AND runs.state NOT IN ('completed','cancelled','failed') ORDER BY receipts.rowid`)
+            .all(namespace(reg), id) as { id: string; run: string; value: string }[];
+          const unknown = this.store.db.prepare(`SELECT receipts.id,receipts.run,operation_identities.tool FROM receipts
+            JOIN runs ON runs.id=receipts.run JOIN operation_identities ON operation_identities.id=receipts.id
+            WHERE receipts.namespace=? AND runs.session=? AND receipts.status='started' ORDER BY receipts.rowid`)
+            .all(namespace(reg), id) as { id: string; run: string; tool: string }[];
+          const snapshot: SessionSnapshot = {
+            schema: 1, ...recent, runs,
+            domain: this.store.exportDomain(reg, id, (transfer) => this.transfers.json(reg, transfer)),
+            pendingApprovals: approvals.map((row) => {
+              const requestId = row.id.slice(5), pending = this.pending.get(requestId);
+              return { id: requestId, runId: row.run, payload: JSON.parse(row.value),
+                actionable: pending?.reg.id === reg.id && pending.kind === "approval" };
+            }),
+            reconciliation: unknown.map((row) => ({ runId: row.run, operationId: row.id,
+              callId: row.id.slice(row.run.length + 1), tool: row.tool })),
+          };
+          return this.persistTransfer(reg, `snapshot:${id}`, this.protect(reg, snapshot));
+        })();
+      }
       case "transfers.begin":
         return this.transfers.begin(reg, transferBegin.parse(p));
       case "transfers.get":

@@ -89,14 +89,15 @@ export class Transfers {
   }
   image(reg: Registration, id: string): { mime: string; data: string } {
     const transfer = this.get(reg, id);
-    if (!transfer.committed || !["image/png", "image/jpeg", "image/webp"].includes(transfer.mime) || transfer.size > 20 * 1024 * 1024)
-      throw new AgentError(errors.invalid, "Image requires a verified PNG, JPEG or WebP attachment of at most 20 MiB. The source was preserved.");
+    if (!transfer.committed || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(transfer.mime) || transfer.size > 20 * 1024 * 1024)
+      throw new AgentError(errors.invalid, "Image requires a verified PNG, JPEG, WebP or GIF attachment of at most 20 MiB. The source was preserved.");
     const rows = this.store.db.prepare("SELECT data FROM transfer_parts WHERE id=? ORDER BY offset").all(id) as { data: Buffer }[];
     const data = Buffer.concat(rows.map((row) => row.data));
     const signatures: Record<string, boolean> = {
       "image/png": data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
       "image/jpeg": data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff,
       "image/webp": data.subarray(0, 4).toString() === "RIFF" && data.subarray(8, 12).toString() === "WEBP",
+      "image/gif": ["GIF87a", "GIF89a"].includes(data.subarray(0, 6).toString()),
     };
     if (!signatures[transfer.mime]) throw new AgentError(errors.invalid, "Image content does not match its declared media type.");
     return { mime: transfer.mime, data: data.toString("base64") };

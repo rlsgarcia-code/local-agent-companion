@@ -5,7 +5,7 @@ import test from "node:test";
 const tools = readFileSync("src/tools.ts", "utf8");
 const agent = readFileSync("src/agent.ts", "utf8");
 const intelligence = readFileSync("src/vscode-intelligence.ts", "utf8");
-const processes = readFileSync("src/process-manager.ts", "utf8");
+const processes = readFileSync("packages/adapter-workspace/src/process-manager.ts", "utf8");
 const memory = readFileSync("src/memory.ts", "utf8");
 
 test("exposes VS Code language intelligence through LangChain tools", () => {
