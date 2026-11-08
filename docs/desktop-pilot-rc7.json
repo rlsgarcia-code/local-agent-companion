@@ -1,0 +1,167 @@
+{
+  "scope": "companion-engine-mac-vscode",
+  "status": "pilot-ready",
+  "engine": "1.0.0-rc.7",
+  "engineCommit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+  "application": "0.11.15",
+  "node": "22.23.4",
+  "protocol": "1.0",
+  "target": "darwin-arm64",
+  "checks": {
+    "applicationTests": 318,
+    "repositoryChecks": 23,
+    "failed": 0,
+    "typeCheck": "passed",
+    "applicationBuild": "passed",
+    "independentEngineBuild": "passed",
+    "signedStandaloneInference": {
+      "version": "1.0.0-rc.7",
+      "protocol": "1.0",
+      "node": "22.23.4",
+      "build": {
+        "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+        "target": "darwin-arm64",
+        "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c"
+      },
+      "model": "qwen3.5:latest",
+      "results": [
+        {
+          "runtime": "standard",
+          "state": "completed",
+          "response": "MOTOR_OK"
+        },
+        {
+          "runtime": "deep",
+          "state": "completed",
+          "response": "MOTOR_OK"
+        }
+      ]
+    },
+    "editorService": {
+      "engine": "1.0.0-rc.7",
+      "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+      "target": "darwin-arm64",
+      "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c",
+      "signed": true,
+      "inference": "simulated-loopback-only",
+      "requests": 9,
+      "scenarios": [
+        "standard",
+        "deep",
+        "actual-editor-read",
+        "detach-and-recover"
+      ],
+      "kidOSRequired": false
+    },
+    "distributedVSIXInstallAndActivation": "passed",
+    "identicalSignedEngine": [
+      {
+        "component": "standalone",
+        "version": "1.0.0-rc.7",
+        "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+        "node": "22.23.4",
+        "target": "darwin-arm64",
+        "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c"
+      },
+      {
+        "component": "mac",
+        "version": "1.0.0-rc.7",
+        "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+        "node": "22.23.4",
+        "target": "darwin-arm64",
+        "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c"
+      },
+      {
+        "component": "vscode",
+        "version": "1.0.0-rc.7",
+        "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+        "node": "22.23.4",
+        "target": "darwin-arm64",
+        "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c"
+      }
+    ],
+    "installedMacClientRecovery": {
+      "runtime": "deep",
+      "clientClosedBeforeCompletion": true,
+      "response": "4",
+      "publicMessages": 2,
+      "changes": []
+    },
+    "realProviderRecovery": {
+      "version": "1.0.0-rc.7",
+      "node": "22.23.4",
+      "build": {
+        "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+        "target": "darwin-arm64",
+        "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c"
+      },
+      "profile": "desktop-service-not-gui",
+      "model": "qwen3.5:latest",
+      "results": [
+        {
+          "runtime": "standard",
+          "recovery": "client-disconnect-and-reattach",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "standard",
+          "recovery": "service-restart-and-explicit-resume",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "deep",
+          "recovery": "client-disconnect-and-reattach",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "deep",
+          "recovery": "service-restart-and-explicit-resume",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        }
+      ]
+    },
+    "macRollback": {
+      "state": "candidate-reactivated",
+      "previous": "0.11.10",
+      "candidate": "0.11.15",
+      "historySha256Before": "2bf5e12aebe87deaa41348f4c4b57d06c52da532b145d56c544237af880dff6d",
+      "conversationsBefore": 14,
+      "conversationsAfter": 14,
+      "historySha256After": "2bf5e12aebe87deaa41348f4c4b57d06c52da532b145d56c544237af880dff6d"
+    }
+  },
+  "installed": {
+    "mac": "0.11.15",
+    "vscode": "0.11.15-openai",
+    "providerSettingsPreserved": true,
+    "priorVersionAndPersonalBackupsPreserved": true
+  },
+  "kidOS": {
+    "status": "on-hold",
+    "requiredForThisDelivery": false,
+    "remoteInstallationsResumed": false
+  },
+  "publication": {
+    "state": "draft-review-required",
+    "originalSignedIndexUnmodified": true,
+    "ci": "https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42486990923",
+    "pullRequest": "https://github.com/rlsgarcia-code/local-agent-companion/pull/15"
+  },
+  "limitations": [
+    "Pilot acceptance on this Mac covers darwin-arm64. Five-platform build results are in the referenced CI; installed interactive acceptance on all other platforms is not claimed.",
+    "No fresh visual inspection was performed while the Mac was locked. The installed Mac close/reopen and rollback proof comes from the preceding acceptance run.",
+    "The configured VS Code LiteLLM gateway was not exercised in this run; executor tests use a simulated loopback provider and actual editor tools. Real read-only inference and service restart/resume were demonstrated with Ollama.",
+    "Apple application signing is ad-hoc; Developer ID and notarization are pending distribution identity.",
+    "Main client executors use the service. Auxiliary host-side model probes, MCP catalog helpers and the extension Ollama advisor have not all moved into the service.",
+    "Concurrent changes in the original developer checkout were preserved and are not incorporated into this immutable candidate.",
+    "This readiness report is local validation evidence, not a newly signed release authorization. The original rc.7 acceptance field remains unchanged; KidOS acceptance is deferred by the user."
+  ]
+}

@@ -1,17 +1,35 @@
 # Local Agent Companion
 
-> Shared-engine candidate **1.0.0-rc.7** is in progress on
-> `codex/companion-suite-engine` (PR #15). Mac and VS Code execution use the
-> prepared LangChain/Deep Agent executor and official SQLite saver. The editor
-> supplies its approved workspace/language tools; its models, completion gate,
-> semantic memory, goal evaluation and retained processes run in the service.
-> SDKs have no agent runtime. KidOS supplies a separately signed service-side
-> gateway/Core adapter under its system-provisioned UID/product/profile policy.
+> **Motor independente + Mac + VS Code: piloto 1.0.0-rc.7 validado neste Mac
+> Apple Silicon**, com clientes 0.11.15. O KidOS está em espera por solicitação
+> do responsável e não condiciona esta entrega. A branch
+> `codex/companion-suite-engine` permanece no [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15), em revisão.
 >
-> Candidate acceptance remains pending the exact signed installed packages,
-> recovery and rollback report. Development tests are not proof of installed
-> compatibility. Legacy import readers are retained; unavailable services fail
-> with a recoverable diagnostic instead of selecting the legacy executor.
+> Os executores principais usam LangChain/Deep Agent e o saver SQLite oficial
+> no serviço. O editor fornece suas ferramentas autorizadas; modelos, avaliação
+> de conclusão, memória semântica, objetivos e processos retidos rodam no motor.
+> SDKs não contêm runtime de agente. Leitores legados permanecem para migração;
+> indisponibilidade do serviço produz diagnóstico recuperável.
+>
+> [Relatório de aceite e limites](docs/desktop-pilot-rc7.json): 318 testes,
+> 23 verificações do repositório, motor assinado avulso com inferência Ollama nos
+> dois modos, execução/recuperação no editor real com inferência simulada e
+> instalação/ativação do VSIX distribuído. O Mac instalado recuperou o resultado
+> após fechamento e demonstrou rollback sem alterar o histórico. Os três usam
+> o mesmo manifesto do motor. Não houve novo teste do gateway LiteLLM configurado
+> nem conferência visual enquanto o Mac estava bloqueado. Assinatura Apple ad-hoc,
+> sem notarização; promoção final continua sujeita à revisão.
+
+O kit local `release/Companion-Core-Mac-VSCode-rc7-arm64/` reúne o motor,
+SDKs, aplicativo Mac e VSIX OpenAI, preservando a configuração LiteLLM existente.
+`node verify-delivery.mjs` verifica os quatro arquivos contra o índice original
+assinado, sem alterá-lo. `readiness.json` registra o aceite local; não substitui
+uma autorização assinada de publicação. Dados pessoais e backups ficam fora do kit.
+Para reproduzir o aceite no VS Code já instalado, os scripts
+`scripts/test-editor-service.mjs` e `scripts/run-vsix-install-tests.mjs` aceitam
+`VSCODE_EXECUTABLE_PATH`; o primeiro também aceita `--bundle-dir` e `--report`.
+O smoke avulso `scripts/smoke-shared-engine.mjs` aceita `--bundle-dir` e `--sdk-dir`
+para validar exatamente os artefatos assinados.
 
 Candidate recovery behavior: cancellation remains `cancelling` until execution
 settles; disconnected UI tools wait, while unknown dispatched effects require
@@ -57,9 +75,9 @@ Uma extensão de Visual Studio Code com dois runtimes de agente construídos exc
 
 ### Objetivos persistentes
 
-Use o botão **Goal** no compositor para transformar uma solicitação em um objetivo de longo prazo. O objetivo fica ligado à thread atual e é salvo sem conversa ou credenciais em `.local-agent/goals/<goal-id>.json`. O arquivo mantém critérios, marcos, evidências, próximo passo e um histórico resumido. Depois de ativar o rascunho, objetivos ativos com retomada automática podem continuar após reiniciar o VS Code; cada iteração usa o runtime e o modo de autonomia salvos e passa por uma avaliação estruturada antes de marcar critérios como concluídos. Sem evidência suficiente, o objetivo continua; após duas iterações sem progresso ou 20 iterações, ele é pausado com diagnóstico.
+Use o botão **Goal** no compositor para transformar uma solicitação em um objetivo de longo prazo. O objetivo fica ligado à sessão do produto no serviço. O arquivo `.local-agent/goals/<goal-id>.json` permanece como projeção local legível e fonte de importação legada, com backup antes da migração. O registro mantém critérios, marcos, evidências, próximo passo e um histórico resumido. Depois de ativar o rascunho, objetivos ativos com retomada automática podem continuar após reiniciar o VS Code; cada iteração usa o runtime e o modo de autonomia salvos e passa por uma avaliação estruturada antes de marcar critérios como concluídos. Sem evidência suficiente, o objetivo continua; após duas iterações sem progresso ou 20 iterações, ele é pausado com diagnóstico.
 
-O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), estado (`MemorySaver`), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As únicas chamadas externas feitas pela extensão são:
+O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), checkpoints (saver SQLite oficial no serviço), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As únicas chamadas externas feitas pela extensão são:
 
 ```text
 POST <LITELLM_BASE_URL>/chat/completions
@@ -86,7 +104,7 @@ Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, f
 - Rascunho independente por thread, preservado localmente ao trocar de conversa ou recarregar a sidebar.
 - Resposta textual progressiva em uma única mensagem, com identidade estável do runtime até o histórico final, sem transformar chamadas de ferramenta em mensagens permanentes da conversa.
 - Recuperação de solicitações interrompidas com **Try again**, **Edit & resend** ou descarte confirmado, sem duplicar a mensagem no contexto do agente nem apagar turnos já concluídos.
-- Detecção de execução abandonada após reiniciar o Extension Host, com preservação local da resposta parcial, **Restart request** explícito e manutenção do modo original.
+- Reconexão ao serviço após reiniciar o Extension Host, com snapshot público, aprovações pendentes e recuperação sem duplicar mensagens ou efeitos.
 - Coordenação defensiva entre janelas: uma execução ativa em outro processo do VS Code bloqueia uma segunda execução no mesmo workspace e oferece atualização manual de status.
 - Seletor visível entre **LangChain Agent** e **Deep Agent**, persistido por workspace.
 - Contexto automático do arquivo ativo, seleção, cursor, diagnósticos, arquivos abertos e amostra da árvore.
@@ -458,7 +476,7 @@ A escolha muda somente o cabeçalho HTTPS enviado ao gateway configurado. A chav
 
 ### Erro “Function tools with reasoning_effort are not supported”
 
-Algumas implantações usam reasoning por padrão, mas não aceitam reasoning junto de function tools no endpoint Chat Completions. Como o agente precisa das ferramentas locais e este projeto não usa Responses API, abra **LiteLLM** e selecione `none` em **Reasoning effort** para o alias afetado.
+Algumas implantações usam reasoning por padrão, mas não aceitam reasoning junto de function tools no endpoint Chat Completions. Para o perfil Chat Completions afetado, abra **LiteLLM** e selecione `none` em **Reasoning effort** para o alias afetado.
 
 O formulário detecta a família pelo alias e limita as opções conhecidas, mas o preset pode ser alterado manualmente. Se aparecer erro de temperatura incompatível, deixe **Temperature** e **Top P** em branco ou use o preset customizado conforme o contrato real do gateway.
 
@@ -469,7 +487,7 @@ Em cada turno, o runtime local:
 1. recupera a thread local selecionada e salva imediatamente a mensagem do usuário; em uma recuperação, substitui a solicitação pendente em vez de duplicá-la;
 2. coleta o contexto atual do editor;
 3. lê a memória durável do projeto;
-4. reconstrói o turno a partir da projeção local limitada da conversa; `MemorySaver` guarda apenas o estado do ciclo LangGraph em andamento, não um checkpoint persistente entre reinícios;
+4. recupera a sessão e os checkpoints persistentes pelo saver SQLite oficial no namespace autenticado do produto; a projeção da interface é reconstruída pelo snapshot público;
 5. quando configurado, indexa e consulta a memória do projeto no ChromaDB local por meio do vector store LangChain;
 6. instancia `ChatOpenAICompletions` sobre a base URL do LiteLLM;
 7. entrega mensagens e ferramentas ao `createAgent` ou `createDeepAgent`, conforme a escolha do usuário, e consome o `streamEvents` nativo do LangChain;
@@ -481,9 +499,9 @@ No **LangChain Agent**, a janela de conversa é limitada por middleware e todas 
 
 O contrato de conclusão não procura verbos específicos na mensagem mais recente: uma frase curta como “aplique as críticas” é interpretada junto com a revisão anterior. A classificação e a verificação usam o modelo configurado e podem acrescentar chamadas Chat Completions ao turno; seus JSONs internos não aparecem no diálogo. Um diff não basta por si só: o verificador deve considerá-lo pertinente ao objetivo. Um projeto já correto pode ser aceito sem edição somente quando houve leitura real do workspace e o verificador fundamenta o resultado. A revisão final opcional da interface é uma camada adicional de diagnóstico, não substitui esse gate.
 
-Durante uma execução, a thread persiste metadados mínimos da tentativa — identificador, modo, runtime, horários e processo proprietário — e uma projeção limitada da resposta parcial mais recente para recuperação de interface. Essa projeção não é adicionada à memória do projeto nem ao contexto como resposta concluída; ela é removida ao consolidar a mensagem final ou descartar a solicitação. Um lease atômico separado, mantido no armazenamento privado global da extensão e nunca no repositório, impede que duas janelas executem o agente simultaneamente sobre o mesmo workspace. Se o processo proprietário desaparecer antes de salvar a resposta, o lease pode ser recuperado, a tentativa passa para **interrupted** e o texto parcial permanece visível como incompleto. O botão **Restart request** repete o último pedido desde o início usando a projeção local restaurada; ele não afirma continuar do ponto exato de um checkpoint perdido. `MemorySaver` permanece o único checkpointer do runtime LangGraph.
+O serviço persiste sessões, estados, eventos públicos e recibos, com checkpoints SQLite dos grafos. Ao reabrir, a interface recupera o snapshot e retoma os eventos sem duplicar a resposta. Fechar o cliente preserva trabalho independente dele; ferramentas que precisam do editor aguardam sua reconexão. Após reiniciar o serviço, uma execução interrompida exige continuação explícita; credenciais ausentes e efeitos de resultado desconhecido produzem esperas distintas. Um efeito desconhecido precisa ser reconciliado antes de repetir a operação. O coordenador do serviço impede execuções concorrentes sobre o mesmo workspace entre produtos, mantendo históricos e memória isolados.
 
-Não existe cliente HTTP alternativo nem loop manual de function calling no projeto. A classe `ChatOpenAICompletions` força o caminho Chat Completions e não usa Responses API. O tracing externo do LangChain/LangSmith é explicitamente desativado pelo runtime.
+LangChain/DeepAgents controlam o ciclo de ferramentas no serviço; as interfaces não criam outro executor como fallback. `ChatOpenAICompletions` mantém sua rota Chat Completions. Perfis LiteLLM Responses explicitamente selecionados conservam suas rotas e restrições próprias; a variante OpenAI direta continua limitada a Chat Completions. O tracing externo LangChain/LangSmith permanece desativado.
 
 As ferramentas de leitura usam caminhos relativos e validam caminhos reais para impedir escape por `..` ou links simbólicos. Os comandos não passam por um shell, sempre exigem confirmação e recebem somente um conjunto mínimo de variáveis do sistema — nunca uma chave de provedor. A política local bloqueia interpretadores de shell, código inline, wrappers de comandos, clientes de rede, URLs remotas, downloads/publicações por gerenciadores de pacotes e operações Git remotas. Comandos capazes de remover ou descartar dados recebem um aviso destrutivo específico antes da execução.
 
@@ -573,7 +591,7 @@ O companion separa memória durável, histórico de conversa e estado transitór
 - **Rascunho**: texto por thread no `workspaceState`/estado da webview, até 50 mil caracteres; é temporário e não vira memória automaticamente.
 - **Registro de execução**: `.local-agent/threads/<thread-id>/runs/<run-id>.json`, com status, arquivos lidos, mudanças e evidências sanitizadas, sem conversa bruta, tokens ou segredos.
 - **Índice semântico**: vetores locais do Chroma derivados apenas de `memory.md`; o Markdown continua sendo a fonte de verdade e o índice pode ser recriado.
-- **Objetivos persistentes**: `.local-agent/goals/<goal-id>.json`, com critérios, marcos, evidências, iteração, diagnóstico de estagnação e próximo passo.
+- **Objetivos persistentes**: registros isolados no serviço, com projeção local em `.local-agent/goals/<goal-id>.json` e backup dos arquivos legados; preservam critérios, marcos, evidências, iteração, diagnóstico de estagnação e próximo passo.
 - **Contexto do turno**: seleção do editor, arquivo ativo, diagnósticos, orientação do repositório e itens fixados; é reunido sob limite por execução e não é memória durável.
 
 No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. A ação **Copy** aparece em cada mensagem completa; **Branch current conversation** cria uma nova thread com o histórico visível copiado, sem copiar rascunho, recuperação ativa ou checkpoint do LangGraph.

@@ -10,8 +10,10 @@ const model = process.argv.find((value) => value.startsWith("--ollama-model="))?
 if (!model || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model))
   throw new Error("Pass the exact already-configured model with --ollama-model=<name>.");
 const require = createRequire(import.meta.url);
-const { AgentClient } = require(path.resolve("release/sdk/typescript/client-ts/src/index.cjs"));
-const { verifyBundle } = require(path.resolve("release/sdk/typescript/client-ts/src/bootstrap.cjs"));
+const selectedSdk = process.argv.find((value) => value.startsWith("--sdk-dir="))?.slice("--sdk-dir=".length);
+const sdk = path.resolve(selectedSdk || "release/sdk");
+const { AgentClient } = require(path.join(sdk, "typescript/client-ts/src/index.cjs"));
+const { verifyBundle } = require(path.join(sdk, "typescript/client-ts/src/bootstrap.cjs"));
 const selectedBundle = process.argv.find((value) => value.startsWith("--bundle-dir="))?.slice("--bundle-dir=".length);
 const bundle = path.resolve(selectedBundle || "engine-dist");
 await verifyBundle(bundle, selectedBundle ? await readFile("release-keys/companion-ed25519.pub", "utf8") : undefined, !selectedBundle);

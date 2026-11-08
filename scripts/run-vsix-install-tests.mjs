@@ -3,7 +3,9 @@ import { access, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { runTests, runVSCodeCommand } from "@vscode/test-electron";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { runTests, runVSCodeCommand, resolveCliPathFromVSCodeExecutablePath } from "@vscode/test-electron";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requestedVsix = process.argv[2]?.trim();
@@ -30,6 +32,7 @@ try {
 }
 
 const version = process.env.VSCODE_TEST_VERSION?.trim() || "1.106.0";
+const configuredExecutable = process.env.VSCODE_EXECUTABLE_PATH?.trim();
 const shortTemporaryRoot = process.platform === "win32" ? tmpdir() : "/tmp";
 const profileRoot = await mkdtemp(path.join(shortTemporaryRoot, "ldc-vsix-"));
 const userDataDirectory = path.join(profileRoot, "user");
@@ -45,7 +48,11 @@ try {
     `--extensions-dir=${extensionsDirectory}`
   ];
   try {
-    await runVSCodeCommand(installArgs, { version });
+    if (configuredExecutable && process.platform !== "win32") {
+      await promisify(execFile)(resolveCliPathFromVSCodeExecutablePath(configuredExecutable), installArgs, { timeout: 120_000 });
+    } else {
+      await runVSCodeCommand(installArgs, { version });
+    }
   } catch (error) {
     // Some Windows VS Code builds exit with V8 code 134 after the CLI has
     // already installed the VSIX. Continue only when the package is present
@@ -56,6 +63,7 @@ try {
 
   await runTests({
     version,
+    vscodeExecutablePath: configuredExecutable,
     extensionDevelopmentPath: path.join(projectRoot, "test", "fixtures", "vsix-test-harness"),
     extensionTestsPath: path.join(projectRoot, "dist-extension-tests", "index.js"),
     extensionTestsEnv: {
