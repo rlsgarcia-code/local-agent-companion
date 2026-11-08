@@ -84,9 +84,10 @@ export class OllamaDesktopRuntime extends OllamaModels {
   private readonly hydratedThreads = new Set<string>();
   private dockerSandbox = new DockerSandboxManager();
   private controller?: AbortController;
+  private configuration?: Promise<void>;
 
   public get running(): boolean {
-    return Boolean(this.controller);
+    return Boolean(this.controller || this.configuration);
   }
   public get hasActiveResources(): boolean {
     return this.running || this.downloading || this.dockerSandbox.hasActiveResources;
@@ -104,6 +105,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
   public async shutdown(): Promise<void> {
     this.cancel();
     this.cancelDownload();
+    await this.configuration?.catch(() => {});
     await this.dockerSandbox.shutdown();
   }
 
@@ -111,9 +113,13 @@ export class OllamaDesktopRuntime extends OllamaModels {
     return this.dockerSandbox.status();
   }
 
-  public configureDockerSandbox(enabled: boolean): void {
-    this.dockerSandbox.dispose();
-    if (enabled) this.dockerSandbox = new DockerSandboxManager();
+  public async configureDockerSandbox(enabled: boolean): Promise<void> {
+    if (this.running) throw new Error("Wait for the current run or configuration before changing Docker resources.");
+    this.configuration = (async () => {
+      await this.dockerSandbox.shutdown();
+      if (enabled) this.dockerSandbox = new DockerSandboxManager();
+    })();
+    try { await this.configuration; } finally { this.configuration = undefined; }
   }
 
   public async run(options: {
@@ -137,7 +143,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
       requireCheckpoint?: boolean;
     };
   }): Promise<{ message: DesktopMessage; changes: DesktopChange[] }> {
-    if (this.controller) throw new Error("A run is already active.");
+    if (this.running) throw new Error("A run or configuration is already active.");
     if (!MODEL_NAME.test(options.modelRoles.executor))
       throw new Error("Choose a valid local Ollama executor model.");
     this.controller = new AbortController();

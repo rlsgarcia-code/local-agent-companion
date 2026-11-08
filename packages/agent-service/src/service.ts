@@ -233,7 +233,7 @@ export class AgentService {
         return this.desktop(reg).dockerStatus();
       case "desktop.configureDocker": {
         const v = z.object({ enabled: z.boolean() }).strict().parse(p);
-        this.desktop(reg).configureDockerSandbox(v.enabled);
+        await this.desktop(reg).configureDockerSandbox(v.enabled);
         return { accepted: true };
       }
       case "desktop.advisor": {
@@ -444,18 +444,11 @@ export class AgentService {
         const created = this.store.db.transaction(() => {
           const admitted = this.store.start(reg, v.sessionId, v.key, spec);
           if (admitted.created && spec.goalId) this.goals.begin(reg, spec.goalId, v.sessionId, admitted.run.id);
+          if (admitted.created) this.store.append(reg, v.sessionId, "message.user",
+            [...spec.messages].reverse().find((message) => message.role === "user") ?? null, admitted.run.id);
           return admitted;
         })();
         if (created.created) {
-          this.store.append(
-            reg,
-            v.sessionId,
-            "message.user",
-            [...spec.messages]
-              .reverse()
-              .find((message) => message.role === "user") ?? null,
-            created.run.id,
-          );
           this.start(reg, created.run, spec);
         }
         return this.store.run(reg, created.run.id);

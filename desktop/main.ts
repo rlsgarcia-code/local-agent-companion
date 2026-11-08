@@ -222,7 +222,7 @@ function registerIpc(): void {
   ipcMain.handle("companion:set-docker-sandbox", async (_event, enabled: unknown) => {
     if (typeof enabled !== "boolean") throw new Error("Invalid Docker sandbox preference.");
     if (runtime.running) throw new Error("Wait for or cancel the current run before changing the Docker sandbox.");
-    runtime.configureDockerSandbox(enabled);
+    await runtime.configureDockerSandbox(enabled);
     await store.update({ dockerSandboxEnabled: enabled, lastRecommendation: undefined });
     activeRecommendation = undefined;
     return publishSnapshot();

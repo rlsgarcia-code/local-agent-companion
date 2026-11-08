@@ -41,6 +41,7 @@ export class OllamaDesktopRuntime {
   private active?: { id: string; client: AgentClient };
   private detached = false;
   private preparing = false;
+  private cancelRequested = false;
   private currentState?: RunState;
   private downloadJob?: string;
   private recommendationJob?: string;
@@ -78,6 +79,7 @@ export class OllamaDesktopRuntime {
     return this.client;
   }
   cancel(): void {
+    if (this.running) this.cancelRequested = true;
     void this.active?.client.call("runs.cancel", { id: this.active.id });
   }
   cancelDownload(): void {
@@ -151,10 +153,8 @@ export class OllamaDesktopRuntime {
   async dockerStatus(): ReturnType<EngineRuntime["dockerStatus"]> {
     return (await this.connect()).call("desktop.dockerStatus");
   }
-  configureDockerSandbox(enabled: boolean): void {
-    void this.connect().then((c) =>
-      c.call("desktop.configureDocker", { enabled }),
-    );
+  async configureDockerSandbox(enabled: boolean): Promise<void> {
+    await (await this.connect()).call("desktop.configureDocker", { enabled });
   }
   async invokeAdvisor(
     model: string,
@@ -189,8 +189,9 @@ export class OllamaDesktopRuntime {
   ): ReturnType<EngineRuntime["run"]> {
     if (this.running) throw new Error("A run is already active.");
     this.preparing = true;
+    this.cancelRequested = false;
     try {
-      const client = await this.connect(options.workspacePath);
+      let client = await this.connect(options.workspacePath);
       const key = `desktop:${options.thread.id}`;
       const existing = (await client.call<Session[]>("sessions.list")).find(
         (session) => session.importedFrom === key,
@@ -200,8 +201,18 @@ export class OllamaDesktopRuntime {
         (await client.importSession(key, { thread: options.thread }));
       const { callbacks, openPreview, execution: _execution, ...provided } = options;
       const spec = { ...provided, workspacePath: client.options.credential.registration.workspace };
-      const run = await client.startRun(session.id, options.assistantMessageId, spec, "desktop");
+      if (this.cancelRequested) throw new Error("Run cancelled before admission.");
+      let run: Run | undefined;
+      for (let attempt = 0; !run; attempt++) {
+        try { run = await client.startRun(session.id, options.assistantMessageId, spec, "desktop"); }
+        catch (error) {
+          if (error instanceof AgentError && error.code !== errors.unavailable || attempt >= 2 || this.detached) throw error;
+          // Lost acknowledgements retry the exact admission key, never a new run.
+          client = await this.connect(options.workspacePath);
+        }
+      }
       this.active = { id: run.id, client };
+      if (this.cancelRequested) await client.call("runs.cancel", { id: run.id });
       const result = await this.observe(client, run, session.id, callbacks, openPreview);
       if (result.state !== "completed")
         throw new Error(result.error || "Execution did not complete.");
