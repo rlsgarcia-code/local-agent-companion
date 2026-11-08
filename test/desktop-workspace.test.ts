@@ -227,7 +227,7 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
     readFile(path.join(process.cwd(), "desktop", "renderer", "renderer.js"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "preload.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "main.ts"), "utf8"),
-    readFile(path.join(process.cwd(), "desktop", "runtime.ts"), "utf8")
+    readFile(path.join(process.cwd(), "packages", "agent-core", "src", "desktop-runtime.ts"), "utf8")
   ]);
   assert.match(html, /Recomendação para esta máquina/);
   assert.match(html, /Incluir catálogo público do projeto/);
@@ -267,7 +267,7 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.match(runtime, /options\.modelRoles\.evaluator \|\| options\.modelRoles\.executor/);
   assert.match(runtime, /options\.agentRuntime === "deep" && options\.modelRoles\.planner/);
   assert.doesNotMatch(runtime, /AbortSignal\.timeout\(90_000\)/);
-  assert.match(runtime, /invokeAdvisor\(modelName: string, prompt: string, signal: AbortSignal\)/);
+  assert.match(runtime, /invokeAdvisor\(\s*modelName: string,\s*prompt: string,\s*signal: AbortSignal,?\s*\)/);
   assert.match(main, /recommendationController\?\.abort\(\)/);
   assert.match(main, /resolveInstalledModelRoles/);
   assert.match(main, /A configuração ativa não foi alterada\. Baixe primeiro/);
@@ -281,7 +281,7 @@ test("desktop evolves into an adaptive workbench with durable outputs and progre
     readFile(path.join(process.cwd(), "desktop", "renderer", "styles.css"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "preload.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "main.ts"), "utf8"),
-    readFile(path.join(process.cwd(), "desktop", "contracts.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "contracts", "src", "desktop.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "state-store.ts"), "utf8")
   ]);
   assert.match(html, /id="thread-search"/);
@@ -337,11 +337,11 @@ test("managed Docker client processes retain a known loopback URL for readiness"
 
 test("desktop wires opt-in Docker-only execution to a visible Context preview", async () => {
   const [contracts, main, renderer, runtime, sandbox, stateStore, html, preload] = await Promise.all([
-    readFile(path.join(process.cwd(), "desktop", "contracts.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "contracts", "src", "desktop.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "main.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "renderer", "renderer.js"), "utf8"),
-    readFile(path.join(process.cwd(), "desktop", "runtime.ts"), "utf8"),
-    readFile(path.join(process.cwd(), "desktop", "docker-sandbox.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "agent-core", "src", "desktop-runtime.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "adapter-workspace", "src", "docker-sandbox.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "state-store.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "renderer", "index.html"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "preload.ts"), "utf8")
@@ -362,12 +362,12 @@ test("desktop wires opt-in Docker-only execution to a visible Context preview", 
   assert.match(runtime, /evaluateCommandPolicy\(executable, args\)/);
   assert.match(runtime, /createRecoverableDockerToolErrors\(signal\)/);
   assert.match(runtime, /const planningActivityId = activity/);
-  assert.match(runtime, /updateActivity\(planningActivityId/);
+  assert.match(runtime, /updateActivity\(\s*planningActivityId/);
   assert.match(runtime, /dockerSandbox\.dispose\(\)/);
-  assert.match(sandbox, /"--cap-drop", "ALL"/);
-  assert.match(sandbox, /"--security-opt", "no-new-privileges:true"/);
-  assert.match(sandbox, /"--network", "none"/);
-  assert.match(sandbox, /"--internal", SANDBOX_NETWORK/);
+  assert.match(sandbox, /"--cap-drop",\s*"ALL"/);
+  assert.match(sandbox, /"--security-opt",\s*"no-new-privileges:true"/);
+  assert.match(sandbox, /"--network",\s*"none"/);
+  assert.match(sandbox, /"--internal",\s*SANDBOX_NETWORK/);
   assert.match(sandbox, /127\.0\.0\.1:\$\{hostPort\}/);
   assert.doesNotMatch(sandbox, /docker\.sock/);
   assert.match(main, /contextBrowser\.open\(url\)/);
@@ -483,7 +483,7 @@ test("desktop keeps streaming stable and projects LangChain tool progress", asyn
   const [html, renderer, runtime, styles] = await Promise.all([
     readFile(path.join(process.cwd(), "desktop", "renderer", "index.html"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "renderer", "renderer.js"), "utf8"),
-    readFile(path.join(process.cwd(), "desktop", "runtime.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "agent-core", "src", "desktop-runtime.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "renderer", "styles.css"), "utf8")
   ]);
 
@@ -519,7 +519,7 @@ test("desktop preserves intermediate model turns in a collapsible execution grou
   const [renderer, styles, runtime, main] = await Promise.all([
     readFile(path.join(process.cwd(), "desktop", "renderer", "renderer.js"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "renderer", "styles.css"), "utf8"),
-    readFile(path.join(process.cwd(), "desktop", "runtime.ts"), "utf8"),
+    readFile(path.join(process.cwd(), "packages", "agent-core", "src", "desktop-runtime.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "main.ts"), "utf8")
   ]);
 
@@ -562,7 +562,7 @@ test("desktop context view is explicit, visual, isolated and bounded", async () 
     readFile(path.join(process.cwd(), "desktop", "preload.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "main.ts"), "utf8"),
     readFile(path.join(process.cwd(), "desktop", "context-browser.ts"), "utf8"),
-    readFile(path.join(process.cwd(), "desktop", "runtime.ts"), "utf8")
+    readFile(path.join(process.cwd(), "packages", "agent-core", "src", "desktop-runtime.ts"), "utf8")
   ]);
 
   assert.match(html, /data-inspector-mode="context"/);

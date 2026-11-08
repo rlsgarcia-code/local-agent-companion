@@ -29,3 +29,9 @@ dist-extension-tests/**
 node_modules/@openai/agent-*/vendor/**/bin/agent-code-mode-host*
 node_modules/@openai/agent-*/vendor/**/agent-resources/**
 node_modules/**
+
+packages/**
+.cache/**
+build/**
+engine-dist/**
+release-keys/**

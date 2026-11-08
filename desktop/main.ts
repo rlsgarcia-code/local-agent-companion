@@ -17,7 +17,7 @@ import type {
   OllamaModel
 } from "./contracts";
 import { redactSensitiveText } from "../src/redaction";
-import { OllamaDesktopRuntime } from "./runtime";
+import { OllamaDesktopRuntime } from "./runtime-client";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
 import { DesktopStateStore } from "./state-store";
@@ -32,7 +32,10 @@ import {
 
 let window: BrowserWindow | undefined;
 let store: DesktopStateStore;
-const runtime = new OllamaDesktopRuntime();
+const runtime = new OllamaDesktopRuntime({
+  bundleDirectory: app.isPackaged ? path.join(process.resourcesPath, "companion-engine") : path.join(__dirname, "..", "engine-dist"),
+  development: !app.isPackaged
+});
 let contextBrowser: DesktopContextBrowser;
 const approvals = new Map<string, (approved: boolean) => void>();
 let cachedOllama: { connected: boolean; version?: string; models: OllamaModel[]; error?: string } = {
@@ -74,7 +77,7 @@ app.on("before-quit", () => {
   recommendationController?.abort();
   runtime.dispose();
   contextBrowser?.close();
-  for (const resolve of approvals.values()) resolve(false);
+  // Pending approvals remain with the service when this interface closes.
   approvals.clear();
 });
 

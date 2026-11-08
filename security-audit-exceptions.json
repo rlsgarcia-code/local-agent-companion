@@ -1,14 +1,4 @@
 {
   "version": 1,
-  "exceptions": [
-    {
-      "advisory": "GHSA-vfj7-8cjw-p6xm",
-      "package": "braces",
-      "severity": "high",
-      "expires": "2027-01-31",
-      "rationale": "No patched braces release exists. The package is bundled transitively by deepagents through micromatch and fast-glob.",
-      "mitigation": "All model-controlled glob inputs are bounded and brace expansion is rejected before the Deep Agent filesystem backend or standard workspace tools invoke a matcher.",
-      "verification": "test/glob-policy.test.ts and test/change-tracker.test.ts"
-    }
-  ]
+  "exceptions": []
 }

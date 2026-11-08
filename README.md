@@ -1,5 +1,13 @@
 # Local Agent Companion
 
+> Shared-engine extraction is in progress on `codex/companion-suite-engine`.
+> `packages/` contains Agent API v1 contracts, a headless LangChain/Deep Agent
+> service with the official SQLite saver, local TLS IPC and thin TypeScript/Python
+> SDKs. The Mac runtime has been moved into the engine and its RPC client builds.
+> The VS Code and Navi runtime conversions, complete client recovery/imports,
+> installed acceptance and signed release activation are still pending. Existing
+> installations have not been switched to this candidate.
+
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
 
 Uma extensão de Visual Studio Code com dois runtimes de agente construídos exclusivamente sobre primitivas do **LangChain**, executados localmente. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.

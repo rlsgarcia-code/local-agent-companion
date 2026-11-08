@@ -10,3 +10,8 @@ release/
 .local-agent/session.json
 .local-agent/logs/
 *.pem
+
+.cache/
+build/
+engine-dist/
+*.key

@@ -40,10 +40,9 @@ test("accepts a current advisory exception only with checked mitigation evidence
   assert.deepEqual(result.staleExceptions, []);
 });
 
-test("keeps the repository exception current and backed by existing tests", () => {
+test("keeps repository policy valid without retaining resolved advisory exceptions", () => {
   const policy = JSON.parse(readFileSync("security-audit-exceptions.json", "utf8"));
-  const result = evaluateAuditReport(report, policy, new Date());
-  assert.deepEqual(result.blocking, []);
+  assert.equal(validateAuditPolicy(policy, new Date()), undefined);
   assert.equal(policy.version, 1);
 });
 

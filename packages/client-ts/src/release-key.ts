@@ -1,0 +1,2 @@
+export const COMPANION_RELEASE_PUBLIC_KEY =
+  "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA6ozpxansR6Zp/KjOYeVhCdiZsoCC3fmR0+T0f4C3GFQ=\n-----END PUBLIC KEY-----\n";

@@ -35,4 +35,7 @@ dmg:
       type: link
       path: /Applications
 npmRebuild: false
+extraResources:
+  - from: ../engine-dist
+    to: companion-engine
 asar: true
