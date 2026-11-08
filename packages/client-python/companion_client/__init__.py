@@ -129,9 +129,17 @@ class AgentClient:
         transfer = self.call("sessions.export", {"id": identifier})
         return json.loads(self.download(transfer["id"]))
 
+    def read_events(self, session_id: str, cursor: int = 0) -> list[dict]:
+        events = self.call("events.read", {"sessionId": session_id, "cursor": cursor})
+        for event in events:
+            data = event.get("data")
+            if isinstance(data, dict) and data.get("kind") == "agent-event-transfer":
+                event["data"] = json.loads(self.download(data["id"]))
+        return events
+
     def wait(self, run: dict, on_event: Callable[[dict], None], host: Callable[[dict], object] | None = None, *, cursor: int = 0) -> dict:
         while True:
-            events = self.call("events.read", {"sessionId": run["sessionId"], "cursor": cursor})
+            events = self.read_events(run["sessionId"], cursor)
             for event in events:
                 if event["sequence"] <= cursor:
                     continue

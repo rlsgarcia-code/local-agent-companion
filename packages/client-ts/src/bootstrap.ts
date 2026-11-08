@@ -15,7 +15,8 @@ import {
 import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
 import { AgentClient } from "./index";
-import { prepareInstallation } from "./installation";
+import { prepareInstallation, assertSafeActivation } from "./installation";
+import { withBootstrapLock } from "./bootstrap-lock";
 import { canonical } from "../../contracts/src/identity";
 import {
   NODE_VERSION,
@@ -95,6 +96,7 @@ export async function verifyBundle(
     throw new Error("A trusted release signing key is required.");
   const required = [
     "service.cjs",
+    "bootstrap-lock.cjs",
     process.platform === "win32" ? "node.exe" : "node",
   ];
   if (required.some((name) => !manifest.files[name]))
@@ -156,6 +158,18 @@ export async function ensureEngine(
   const directory = options.stateDirectory || engineStateDirectory();
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory);
+  if (!info.isDirectory() || info.isSymbolicLink() || process.getuid && info.uid !== process.getuid()) throw new Error("Unsafe engine state directory.");
+  const prepared = await prepareInstallation(options.bundleDirectory, directory, (folder) =>
+    verifyBundle(folder, options.publicKey, options.development));
+  return withBootstrapLock({
+    executable: path.join(prepared.directory, process.platform === "win32" ? "node.exe" : "node"),
+    script: path.join(prepared.directory, "bootstrap-lock.cjs"),
+  }, directory, () => ensureEngineLocked(options, prepared));
+}
+async function ensureEngineLocked(options: BootstrapOptions, prepared: Awaited<ReturnType<typeof prepareInstallation>>): Promise<AgentClient> {
+  const directory = options.stateDirectory || engineStateDirectory();
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const info = await lstat(directory);
   if (
     !info.isDirectory() ||
     info.isSymbolicLink() ||
@@ -163,8 +177,6 @@ export async function ensureEngine(
   )
     throw new Error("Unsafe engine state directory.");
   if (process.platform !== "win32") await chmod(directory, 0o700);
-  const prepared = await prepareInstallation(options.bundleDirectory, directory, (folder) =>
-    verifyBundle(folder, options.publicKey, options.development));
   const workspace = options.workspace ? await realpath(options.workspace) : "";
   const catalog = options.toolCatalog?.length ? options.toolCatalog : undefined;
   if (options.hostTools.length && !catalog)
@@ -220,7 +232,7 @@ export async function ensureEngine(
   });
   if (!live) {
     await verifyBundle(
-      options.bundleDirectory,
+      prepared.directory,
       options.publicKey,
       options.development,
     );
@@ -311,6 +323,7 @@ export async function ensureEngine(
       const info = await client.call<{ version: string; build?: { manifestSha256?: string } }>("engine.info");
       if (info.version !== ENGINE_VERSION || info.build?.manifestSha256 !== prepared.manifestSha256)
       {
+        assertSafeActivation(info.version, ENGINE_VERSION, options.development);
         await writeFile(path.join(directory, "prepared-update.json"), JSON.stringify({
           directory: prepared.directory, manifestSha256: prepared.manifestSha256,
           version: ENGINE_VERSION, previous: info.build, preparedAt: Date.now(),
@@ -319,7 +332,7 @@ export async function ensureEngine(
         if (activation.accepted) {
           for (let wait = 0; wait < 100 && client.connected; wait++)
             await new Promise((resolve) => setTimeout(resolve, 50));
-          if (!client.connected) return ensureEngine(options);
+          if (!client.connected) return ensureEngineLocked(options, prepared);
         }
         throw new Error("The exact engine update is prepared. Finish active work and activate it before using this client; no run was cancelled.");
       }

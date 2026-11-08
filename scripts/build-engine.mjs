@@ -19,8 +19,9 @@ const root = path.resolve("engine-dist");
 await rm(root, { recursive: true, force: true });
 await mkdir(root, { recursive: true });
 const built = await esbuild.build({
-  entryPoints: ["packages/agent-service/src/main.ts"],
-  outfile: path.join(root, "service.cjs"),
+  entryPoints: { service: "packages/agent-service/src/main.ts", "bootstrap-lock": "packages/agent-service/src/bootstrap-lock.ts" },
+  outdir: root,
+  outExtension: { ".js": ".cjs" },
   bundle: true,
   platform: "node",
   format: "cjs",

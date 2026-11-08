@@ -210,6 +210,15 @@ export class AgentClient {
     const transfer = await this.call<Transfer>("sessions.export", { id });
     return JSON.parse((await this.download(transfer.id)).toString("utf8"));
   }
+  async readEvents(sessionId: string, cursor = 0): Promise<EngineEvent[]> {
+    const events = await this.call<EngineEvent[]>("events.read", { sessionId, cursor });
+    for (const event of events) {
+      const data = event.data as { kind?: string; id?: string } | null;
+      if (data?.kind === "agent-event-transfer" && data.id)
+        event.data = JSON.parse((await this.download(data.id)).toString("utf8"));
+    }
+    return events;
+  }
   async waitForRun(
     id: string,
     sessionId: string,
@@ -227,10 +236,7 @@ export class AgentClient {
     const responses: HostResponses = replay.hostResponses ?? new Map();
     while (true) {
       signal?.throwIfAborted();
-      const events = await this.call<EngineEvent[]>("events.read", {
-        sessionId,
-        cursor,
-      });
+      const events = await this.readEvents(sessionId, cursor);
       for (const event of events) {
         if (event.sequence > cursor) {
           cursor = event.sequence;

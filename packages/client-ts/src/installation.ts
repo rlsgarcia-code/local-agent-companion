@@ -2,6 +2,22 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, cp, lstat, mkdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import * as path from "node:path";
 
+/** Old clients cannot silently downgrade a newer service or replace an immutable release. */
+export function assertSafeActivation(installed: string, requested: string, development = false): void {
+  if (development) return;
+  const parse = (value: string): number[] => {
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/.exec(value);
+    if (!match) throw new Error("Unknown engine release ordering. Update the clients or use the explicit rollback procedure.");
+    return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] === undefined ? Number.POSITIVE_INFINITY : Number(match[4])];
+  };
+  const previous = parse(installed), next = parse(requested);
+  for (let i = 0; i < previous.length; i++) {
+    if (previous[i]! < next[i]!) return;
+    if (previous[i]! > next[i]!) throw new Error("A newer engine is installed. Update this client; automatic downgrade is prohibited.");
+  }
+  throw new Error("This engine version has a different signed artifact. Repair the exact client/engine installation; an immutable release cannot be replaced silently.");
+}
+
 /** Copy verified files to a content-addressed version before any process starts. */
 export async function prepareInstallation(
   source: string,

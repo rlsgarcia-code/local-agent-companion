@@ -87,6 +87,11 @@ export class AgentService {
     this.goals = new Goals(store);
     this.memory = new ProductMemory(store);
     this.models = new Models(store, directory);
+    store.encodeEvent = (reg, data) => {
+      const safe = this.protect(reg, data);
+      return Buffer.byteLength(JSON.stringify(safe)) <= 512 * 1024 ? safe
+        : { kind: "agent-event-transfer", ...this.persistTransfer(reg, "event", safe) };
+    };
     if (!options.deferRecovery) this.recover();
   }
   recover(): void {

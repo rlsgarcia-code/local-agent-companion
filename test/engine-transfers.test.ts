@@ -51,7 +51,10 @@ test("SDK imports a domain larger than a frame and exports history produced afte
   const credential = await createClientCredential(directory, reg);
   store.register(credential);
   const identity = await ensureIdentity(directory);
-  const service = new AgentService(store, directory, async () => ({ text: "A new response", files: { "/new.txt": { content: ["new"], created_at: "now", modified_at: "now" } } }));
+  const service = new AgentService(store, directory, async (_spec, context) => {
+    context.emit("text.final", { text: "large-event".repeat(900_000) });
+    return { text: "A new response", files: { "/new.txt": { content: ["new"], created_at: "now", modified_at: "now" } } };
+  });
   const server = new LocalServer(service, directory);
   const client = new AgentClient({ address: ipcPath(directory), certificate: identity.cert, credential });
   await server.listen();
@@ -72,7 +75,12 @@ test("SDK imports a domain larger than a frame and exports history produced afte
       kind: "ollama", endpoint: "http://127.0.0.1:11434/v1", roles: { executor: "fixture" } },
       messages: [{ role: "user", content: "After migration" }], systemPrompt: "Fixture", tools: [] });
     const run = await client.startRun(session.id, "after-migration", spec);
-    await client.waitForRun(run.id, session.id, () => {});
+    let recoveredEvent = false;
+    await client.waitForRun(run.id, session.id, (event) => {
+      if (event.type === "text.final") { assert.equal((event.data as { text: string }).text.length, "large-event".length * 900_000); recoveredEvent = true; }
+    });
+    assert.equal(recoveredEvent, true);
+    assert.ok(Buffer.byteLength(JSON.stringify(await client.call("events.read", { sessionId: session.id }))) < 128 * 1024);
     await client.call("memory.put", { key: "decision", content: "Keep a local-only engine", requestId: "memory", revision: 0 });
     await client.call("models.configure", { revision: 0, roles: { executor: "fixture" } });
     await client.call("goals.create", { key: "goal", sessionId: session.id, runtime: "standard", mode: "plan", objective: "Preserve this goal in rollback" });

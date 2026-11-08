@@ -64,7 +64,7 @@ test("release verification rejects tampering, undeclared files and unsigned prod
   try {
     const node = process.platform === "win32" ? "node.exe" : "node";
     const files: Record<string, string> = {};
-    for (const name of [node, "service.cjs"]) {
+    for (const name of [node, "service.cjs", "bootstrap-lock.cjs"]) {
       await writeFile(path.join(directory, name), "fixture");
       files[name] = createHash("sha256").update("fixture").digest("hex");
     }

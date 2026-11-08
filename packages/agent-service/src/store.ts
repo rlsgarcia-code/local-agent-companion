@@ -24,6 +24,7 @@ import { enforceSystemProvisioning } from "./provisioning";
 
 export class Store {
   readonly db: Database.Database;
+  encodeEvent: (reg: Registration, data: unknown) => unknown = (_reg, data) => data;
   constructor(file: string) {
     this.db = new Database(file);
     if (file !== ":memory:" && process.platform !== "win32")
@@ -279,7 +280,7 @@ export class Store {
       runId,
       timestamp: Date.now(),
       type,
-      data,
+      data: this.encodeEvent(reg, data),
       correlationId,
     };
     event.sequence = Number(
@@ -389,7 +390,11 @@ export class Store {
         const events = this.db.prepare("SELECT value FROM events WHERE namespace=? AND run=? ORDER BY sequence").iterate(namespace(reg), run.id) as Iterable<{ value: string }>;
         for (const row of events) {
           const event = JSON.parse(row.value) as EngineEvent;
-          const data = event.data as { text?: string; delta?: string };
+          let data = event.data as { kind?: string; id?: string; text?: string; delta?: string };
+          if (data?.kind === "agent-event-transfer" && data.id) {
+            if (!readResult) throw new AgentError(errors.unavailable, "Export requires the saved event transfer reader.");
+            data = readResult(data.id) as typeof data;
+          }
           if (event.type === "text.reset" || event.type === "desktop.reset") text = "";
           if (event.type === "text.delta") text += data.text ?? "";
           if (event.type === "desktop.delta") text += data.delta ?? "";

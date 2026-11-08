@@ -1,6 +1,6 @@
 # Local Agent Companion
 
-> Shared-engine candidate **1.0.0-rc.2** is in progress on
+> Shared-engine candidate **1.0.0-rc.3** is in progress on
 > `codex/companion-suite-engine` (PR #15). The generic and Mac profiles now use
 > one prepared LangChain/Deep Agent executor with the official SQLite saver.
 > Bound effect receipts, durable approvals, credential leases, chunked domain
@@ -33,6 +33,12 @@ model-management migration and the VS Code semantic-memory adapter remain pendin
 The bundled Node version is read from `packages/contracts/src/version.json`;
 installations stage verified, content-addressed version directories and activate
 only after the old service confirms it is idle.
+
+Bootstrap is serialized across clients using a transaction held by a short-lived
+helper under the verified bundled Node/SQLite. Closing or crashing its owner
+releases the OS lock. An older client cannot automatically downgrade a newer
+engine or replace another artifact under the same production version. Large
+public events use verified transfers just like domain imports and results.
 
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
 
