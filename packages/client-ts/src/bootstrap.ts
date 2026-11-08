@@ -18,6 +18,7 @@ import { AgentClient } from "./index";
 import {
   NODE_VERSION,
   ENGINE_VERSION,
+  PROTOCOL_VERSION,
   type ClientCredential,
   type Product,
   type ProviderSpec,
@@ -64,11 +65,22 @@ export async function verifyBundle(
   const raw = await readFile(path.join(directory, "manifest.json"));
   const manifest = JSON.parse(raw.toString()) as {
     node: string;
+    version: string;
+    protocol: string;
+    target: string;
     files: Record<string, string>;
     development?: boolean;
   };
   if (manifest.node !== NODE_VERSION)
     throw new Error("Engine runtime does not match the required Node version.");
+  if (
+    manifest.version !== ENGINE_VERSION ||
+    manifest.protocol !== PROTOCOL_VERSION ||
+    manifest.target !== `${process.platform}-${process.arch}`
+  )
+    throw new Error(
+      "Engine release version, protocol or platform does not match this product.",
+    );
   if (publicKey) {
     const signature = await readFile(path.join(directory, "manifest.sig"));
     if (!verify(null, raw, publicKey, signature))

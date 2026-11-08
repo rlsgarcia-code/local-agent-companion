@@ -99,16 +99,25 @@ export class AgentService {
     data: unknown,
   ): void {
     // Leased secrets must not reach event/history persistence, even through provider errors.
-    let encoded = JSON.stringify(data);
-    for (const secret of this.credentialLeases.get(reg.id)?.values() ?? [])
-      if (secret) encoded = encoded.split(secret).join("[credential redacted]");
-    this.store.append(reg, session, type, JSON.parse(encoded), run);
+    this.store.append(reg, session, type, this.protect(reg, data), run);
   }
   private protect<T>(reg: Registration, value: T): T {
-    let encoded = JSON.stringify(value ?? null);
-    for (const secret of this.credentialLeases.get(reg.id)?.values() ?? [])
-      if (secret) encoded = encoded.split(secret).join("[credential redacted]");
-    return JSON.parse(encoded) as T;
+    const secrets = [
+      ...(this.credentialLeases.get(reg.id)?.values() ?? []),
+    ].flatMap((secret) =>
+      secret ? [secret, JSON.stringify(secret).slice(1, -1)] : [],
+    );
+    return JSON.parse(
+      JSON.stringify(value ?? null, (_key, item) =>
+        typeof item === "string"
+          ? secrets.reduce(
+              (text, secret) =>
+                text.split(secret).join("[credential redacted]"),
+              item,
+            )
+          : item,
+      ),
+    ) as T;
   }
   async dispatch(
     reg: Registration,

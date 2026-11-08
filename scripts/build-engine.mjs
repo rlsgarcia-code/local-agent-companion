@@ -85,13 +85,27 @@ async function visit(directory) {
         .digest("hex");
   }
 }
-await generateThirdPartyNotices({metafile:built.metafile,additionalPackages:["better-sqlite3","bindings","file-uri-to-path"],outputDirectory:path.join(root,"licenses")});
-await copyFile("LICENSE",path.join(root,"LICENSE"));
-let copiedNodeLicense=false;
-for(const candidate of [path.resolve(path.dirname(node),"..","LICENSE"),path.resolve(path.dirname(node),"LICENSE")]) {
-  try {await copyFile(candidate,path.join(root,"NODE-LICENSE.txt"));copiedNodeLicense=true;break;}catch(error){if(error.code!=="ENOENT")throw error;}
+await generateThirdPartyNotices({
+  metafile: built.metafile,
+  additionalPackages: ["better-sqlite3", "bindings", "file-uri-to-path"],
+  outputDirectory: path.join(root, "licenses"),
+});
+await copyFile("LICENSE", path.join(root, "LICENSE"));
+let copiedNodeLicense = false;
+for (const candidate of [
+  path.resolve(path.dirname(node), "..", "LICENSE"),
+  path.resolve(path.dirname(node), "LICENSE"),
+]) {
+  try {
+    await copyFile(candidate, path.join(root, "NODE-LICENSE.txt"));
+    copiedNodeLicense = true;
+    break;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
 }
-if(!copiedNodeLicense)throw new Error("The official bundled Node license is required.");
+if (!copiedNodeLicense)
+  throw new Error("The official bundled Node license is required.");
 await visit(root);
 const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
 const manifest = {

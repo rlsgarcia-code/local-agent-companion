@@ -525,7 +525,7 @@ test("desktop preserves intermediate model turns in a collapsible execution grou
 
   assert.match(runtime, /archiveExecutionStep\(streamed\)/);
   assert.match(runtime, /executionSteps\.length > 60/);
-  assert.match(runtime, /executionSteps,\n\s*outputs:/);
+  assert.match(runtime, /executionSteps,\r?\n\s*outputs:/);
   assert.match(main, /type: "assistant-step"/);
   assert.match(renderer, /createExecutionStepsElement/);
   assert.match(renderer, /updateExecutionStepsElement/);

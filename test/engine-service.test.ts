@@ -67,7 +67,15 @@ test("release verification rejects tampering, undeclared files and unsigned prod
       await writeFile(path.join(directory, name), "fixture");
       files[name] = createHash("sha256").update("fixture").digest("hex");
     }
-    const manifest = Buffer.from(JSON.stringify({ node: "22.23.4", files }));
+    const manifest = Buffer.from(
+      JSON.stringify({
+        node: "22.23.4",
+        version: "1.0.0-rc.1",
+        protocol: "1.0",
+        target: `${process.platform}-${process.arch}`,
+        files,
+      }),
+    );
     await writeFile(path.join(directory, "manifest.json"), manifest);
     const keys = generateKeyPairSync("ed25519");
     const publicKey = keys.publicKey
@@ -245,6 +253,8 @@ test("revocation survives registration refresh; recovery never repeats an unknow
   const f = await fixture();
   try {
     const credential = await createClientCredential(f.dir, registration);
+    assert.throws(()=>f.store.register({...credential,registration:{...registration,providers:["openai"]}}),/only Ollama/);
+    assert.throws(()=>f.store.register({...credential,registration:{...registration,product:"kidos",providers:["kidos-gateway"],hostTools:["shell"]}}),/Core adapter/);
     f.store.register(credential);
     assert.equal(
       f.store.authenticate(registration.id, credential.token).product,
@@ -423,6 +433,25 @@ test("missing host credential explicitly blocks a run and never writes a credent
         Buffer.from("secret-fixture-unique"),
       ),
     );
+    const second = (await service.dispatch(
+      reg,
+      "runs.start",
+      {
+        sessionId: session.id,
+        key: "credential-test-second",
+        spec: {
+          ...spec,
+          provider: {
+            kind: "litellm",
+            endpoint: "https://gateway.example/v1",
+            roles: { executor: "test" },
+            credentialRef: "provider",
+          },
+        },
+      },
+      "connection",
+    )) as Run;
+    assert.equal(second.state, "awaiting_credentials");
   } finally {
     service.close();
     await rm(f.dir, { recursive: true, force: true });

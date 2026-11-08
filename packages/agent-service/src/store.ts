@@ -12,7 +12,12 @@ import {
   type RunState,
   type Session,
 } from "../../contracts/src/index";
-import { namespace, tokenDigest, tokenMatches } from "./security";
+import {
+  namespace,
+  tokenDigest,
+  tokenMatches,
+  validateProductRegistration,
+} from "./security";
 
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, item) =>
@@ -48,6 +53,7 @@ export class Store {
     `);
   }
   register(credential: ClientCredential): void {
+    validateProductRegistration(credential.registration);
     const previous = this.db
       .prepare("SELECT registration FROM clients WHERE id=?")
       .get(credential.registration.id) as { registration: string } | undefined;
@@ -78,7 +84,9 @@ export class Store {
         errors.forbidden,
         "Client is not registered or was revoked.",
       );
-    return JSON.parse(row.registration) as Registration;
+    const registration = JSON.parse(row.registration) as Registration;
+    validateProductRegistration(registration);
+    return registration;
   }
   revoke(id: string): void {
     this.db.prepare("UPDATE clients SET revoked=1 WHERE id=?").run(id);

@@ -8,7 +8,7 @@ import {
   X509Certificate,
 } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 import * as path from "node:path";
 import {
   AgentError,
@@ -115,7 +115,7 @@ export function namespace(registration: Registration): string {
   return createHash("sha256")
     .update(
       JSON.stringify([
-        process.getuid?.() ?? process.env.USERNAME,
+        process.getuid?.() ?? userInfo().username,
         registration.product,
         registration.profile,
         registration.workspace,
@@ -124,10 +124,30 @@ export function namespace(registration: Registration): string {
     .digest("hex");
 }
 /** Bootstrap is a filesystem operation by the installer, never an unauthenticated RPC. */
-export async function createClientCredential(
-  directory: string,
-  registration: Registration,
-): Promise<ClientCredential> {
+export function validateProductRegistration(registration: Registration): void {
+  if (
+    !registration ||
+    !["companion-mac", "companion-vscode", "kidos"].includes(
+      registration.product,
+    ) ||
+    typeof registration.id !== "string" ||
+    !/^[a-zA-Z0-9_.:-]{1,128}$/.test(registration.id) ||
+    typeof registration.profile !== "string" ||
+    !registration.profile ||
+    registration.profile.length > 128 ||
+    typeof registration.workspace !== "string" ||
+    registration.workspace.includes("\0") ||
+    !Array.isArray(registration.providers) ||
+    !registration.providers.every((provider) =>
+      ["ollama", "litellm", "openai", "kidos-gateway"].includes(provider),
+    ) ||
+    !Array.isArray(registration.hostTools) ||
+    !registration.hostTools.every(
+      (name) =>
+        typeof name === "string" && /^[a-zA-Z0-9_.:-]{1,128}$/.test(name),
+    )
+  )
+    throw new AgentError(errors.forbidden, "Invalid product registration.");
   if (
     registration.product === "companion-mac" &&
     registration.providers.some((p) => p !== "ollama")
@@ -154,6 +174,13 @@ export async function createClientCredential(
       errors.forbidden,
       "A VSIX cannot enable both optional providers.",
     );
+}
+
+export async function createClientCredential(
+  directory: string,
+  registration: Registration,
+): Promise<ClientCredential> {
+  validateProductRegistration(registration);
   await privateDirectory(directory);
   return { registration, token: randomBytes(32).toString("base64url") };
 }
