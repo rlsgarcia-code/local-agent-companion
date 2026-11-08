@@ -40,6 +40,12 @@ jobs:
         run: npm run engine:package
         env:
           COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+      - name: Exercise signed engine through real Linux editor executors and reconnection
+        if: matrix.target == 'linux-x64'
+        run: xvfb-run -a node scripts/test-editor-service.mjs
+      - name: Exercise signed engine through real Windows editor executors and reconnection
+        if: matrix.target == 'win32-x64'
+        run: node scripts/test-editor-service.mjs
       - name: Package three VS Code provider variants with the exact signed engine
         shell: bash
         run: |

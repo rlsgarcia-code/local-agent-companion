@@ -83,7 +83,7 @@ jobs:
 
       - name: Verify the local packaging entrypoint on Windows
         if: matrix.target == 'win32-x64'
-        run: npm run package
+        run: node --test test/native-package.test.mjs
 
       - name: Verify activation and sidebar commands in Linux VS Code Extension Host
         if: matrix.target == 'linux-x64'

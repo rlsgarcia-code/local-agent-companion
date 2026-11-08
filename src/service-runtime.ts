@@ -21,12 +21,12 @@ export class EditorServiceRuntime {
  private active?:{client:AgentClient;run:Run};
  private detached=false;
  private readonly observers=new Set<AbortController>();
- constructor(private readonly context:vscode.ExtensionContext,private readonly testOptions?:{stateDirectory:string;bundleDirectory:string}){if(testOptions&&context.extensionMode!==vscode.ExtensionMode.Development)throw Error("Isolated fixtures require development mode.");}
+ constructor(private readonly context:vscode.ExtensionContext,private readonly testOptions?:{stateDirectory:string;bundleDirectory:string;signed?:boolean}){if(testOptions&&context.extensionMode!==vscode.ExtensionMode.Development)throw Error("Isolated fixtures require development mode.");}
  get alive(){return !this.detached;}
  async connect(workspace:string,catalog:ToolSpec[]=[]):Promise<AgentClient>{
   const key=contentHash({workspace,catalog});let pending=this.clients.get(key);
   if(!pending){pending=ensureEngine({bundleDirectory:this.testOptions?.bundleDirectory??path.join(this.context.extensionPath,"dist","engine"),stateDirectory:this.testOptions?.stateDirectory,product:"companion-vscode",profile:"default",workspace,providers:[...AVAILABLE_MODEL_PROVIDERS],hostTools:catalog.map(tool=>tool.name),toolCatalog:catalog,
-    development:this.context.extensionMode===vscode.ExtensionMode.Development,publicKey:this.context.extensionMode===vscode.ExtensionMode.Development?undefined:COMPANION_RELEASE_PUBLIC_KEY});
+    development:this.context.extensionMode===vscode.ExtensionMode.Development,publicKey:this.context.extensionMode===vscode.ExtensionMode.Development&&!this.testOptions?.signed?undefined:COMPANION_RELEASE_PUBLIC_KEY});
    this.clients.set(key,pending);pending.catch(()=>this.clients.delete(key));}
   const client=await pending;if(!client.connected){this.clients.delete(key);return this.connect(workspace,catalog);}return client;
  }

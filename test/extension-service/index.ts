@@ -15,7 +15,7 @@ export async function run(){
  const storage=new Map<string,unknown>();
  const memento={keys:()=>[...storage.keys()],get:(key:string,fallback:unknown)=>storage.get(key)??fallback,update:async(key:string,value:unknown)=>{storage.set(key,JSON.parse(JSON.stringify(value)));}};
  const context={extensionPath:root,extensionMode:vscode.ExtensionMode.Development,globalStorageUri:vscode.Uri.file(path.join(root,'storage')),workspaceState:memento,globalState:memento,secrets:{get:async()=>undefined}} as unknown as vscode.ExtensionContext;
- const create=()=>new DevelopmentAgent(context,new ContextCollector(),new ProjectMemory(),new ChangeReviewManager(),new EditorServiceRuntime(context,{stateDirectory:state,bundleDirectory:bundle}));
+ const create=()=>new DevelopmentAgent(context,new ContextCollector(),new ProjectMemory(),new ChangeReviewManager(),new EditorServiceRuntime(context,{stateDirectory:state,bundleDirectory:bundle,signed:process.env.COMPANION_FIXTURE_SIGNED === "1"}));
  for(const runtime of ['standard','deep']){
   await configuration.update('agentRuntime',runtime,vscode.ConfigurationTarget.Workspace);
   const agent=create();const events:any[]=[];
@@ -29,7 +29,7 @@ export async function run(){
  // reopening reconstruct the original stable message without a second run.
  await configuration.update('agentRuntime','standard',vscode.ConfigurationTarget.Workspace);
  const original=create();
- const client=await new EditorServiceRuntime(context,{stateDirectory:state,bundleDirectory:bundle}).connect(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
+ const client=await new EditorServiceRuntime(context,{stateDirectory:state,bundleDirectory:bundle,signed:process.env.COMPANION_FIXTURE_SIGNED === "1"}).connect(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
  const running=original.run('Read README.md; DETACH_FIXTURE after the read.','plan',()=>{});
  let ready=false;
  for(let n=0;n<200&&!ready;n++){const sessions=await client.call<any[]>('sessions.list');for(const session of sessions){const events=await client.readEvents(session.id);if(events.some(event=>event.type==='tool.receipt'&&(event.data as any).tool==='read_file')){const snap=await client.snapshotSession(session.id);ready ||= snap.runs.some(run=>run.state==='running');}}if(!ready)await new Promise(resolve=>setTimeout(resolve,50));}
