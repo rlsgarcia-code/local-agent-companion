@@ -54,7 +54,18 @@ try {
       throw new Error(`Read-only ${runtime} smoke did not complete with the expected response: ${result.state}`);
     results.push({ runtime, state: result.state, response: result.result.text.slice(0, 200) });
   }
-  console.log(JSON.stringify({ version: engine.version, protocol: engine.protocol, node: engine.node, build: engine.build, model, results }));
+  const assistance = [];
+  if (process.argv.includes("--assist")) {
+    if (!engine.capabilities.includes("model-assistance")) throw new Error("The exact engine does not support model assistance.");
+    const provider = {kind:"ollama",endpoint:"http://127.0.0.1:11434/v1",roles:{executor:model},authHeader:"authorization"};
+    const advisor = await client.assistModel({purpose:"advisor",provider,prompt:'Return exactly the JSON object {"ASSISTANCE_OK":true}. Do not use tools or access any resource.'});
+    const parsed = JSON.parse(advisor.text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+    if (parsed.ASSISTANCE_OK !== true) throw new Error("The advisor did not return the requested read-only result.");
+    assistance.push({purpose:"advisor",state:"completed",response:"ASSISTANCE_OK"});
+    await client.assistModel({purpose:"connection",provider});
+    assistance.push({purpose:"connection",state:"completed"});
+  }
+  console.log(JSON.stringify({ version: engine.version, protocol: engine.protocol, node: engine.node, build: engine.build, model, results, assistance }));
 } finally {
   client?.close();
   child.kill("SIGTERM");

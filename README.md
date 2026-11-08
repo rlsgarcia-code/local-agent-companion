@@ -26,6 +26,14 @@ Para reproduzir o aceite no VS Code já instalado, os scripts
 `VSCODE_EXECUTABLE_PATH`; o primeiro também aceita `--bundle-dir` e `--report`.
 O smoke avulso `scripts/smoke-shared-engine.mjs` aceita `--bundle-dir` e `--sdk-dir`
 para validar exatamente os artefatos assinados.
+O parâmetro opcional `--assist` também verifica conselho Ollama e compatibilidade
+com streaming/tools usando inferência real somente de leitura. O script
+`scripts/check-installed-desktop.mjs` compara as assinaturas e o manifesto do
+núcleo avulso com os instalados no Mac e VS Code. O ensaio explícito
+`scripts/smoke-engine-rollback.cjs` verifica os dois SDKs antes de executá-los,
+cria um histórico após a atualização e alterna os binários assinados atual →
+anterior → atual em estado temporário. Ele exige igualdade desse histórico e
+preservação da execução concluída; não altera o serviço instalado.
 
 `models.assist` executa tarefas pontuais de autoria de catálogo MCP, conselho
 Ollama e diagnóstico de chat/embeddings pelo mesmo cliente LangChain do motor.
