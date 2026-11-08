@@ -15,13 +15,7 @@ mac:
   hardenedRuntime: false
   target:
     - target: dmg
-      arch:
-        - arm64
-        - x64
     - target: zip
-      arch:
-        - arm64
-        - x64
 dmg:
   title: Local Companion
   window:
@@ -35,7 +29,4 @@ dmg:
       type: link
       path: /Applications
 npmRebuild: false
-extraResources:
-  - from: ../engine-dist
-    to: companion-engine
 asar: true

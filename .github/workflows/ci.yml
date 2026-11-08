@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      signed_candidate:
+        description: Build signed engine artifacts and reviewable Mac packages; leave a draft only
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -110,3 +115,11 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+  signed-candidate:
+    needs: verify-and-package
+    if: github.event_name == 'workflow_dispatch' && inputs.signed_candidate
+    permissions:
+      contents: write
+    uses: ./.github/workflows/engine-release.yml
+    secrets: inherit

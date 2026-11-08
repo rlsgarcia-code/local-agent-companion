@@ -189,10 +189,11 @@ open -a "Local Companion" --args --enable-docker-sandbox
 LOCAL_COMPANION_DOCKER_SANDBOX=1 "/Applications/Local Companion.app/Contents/MacOS/Local Companion"
 ```
 
-Para gerar os aplicativos Apple Silicon e Intel, além dos respectivos DMGs e ZIPs:
+Para gerar o aplicativo, selecione o motor assinado da arquitetura exata. Apple Silicon e Intel são empacotados em etapas separadas; cada uma inclui seu próprio Node e SQLite:
 
 ```bash
-npm run desktop:package
+COMPANION_ENGINE_BUNDLE=/caminho/do/motor-assinado-arm64 npm run desktop:package -- --arch=arm64
+# Repita com o motor darwin-x64 e --arch=x64 para Intel.
 ```
 
 Os artefatos ficam em `release/desktop/`. Builds locais são deliberadamente não assinados; para distribuição ampla, configure a identidade Apple Developer ID e notarização no pipeline de release antes de entregá-los a outros usuários.

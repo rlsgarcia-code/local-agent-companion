@@ -66,6 +66,7 @@ export async function verifyBundle(
   directory: string,
   publicKey?: string,
   development = false,
+  expectedTarget = `${process.platform}-${process.arch}`,
 ): Promise<void> {
   const raw = await readFile(path.join(directory, "manifest.json"));
   const manifest = JSON.parse(raw.toString()) as {
@@ -81,7 +82,7 @@ export async function verifyBundle(
   if (
     manifest.version !== ENGINE_VERSION ||
     manifest.protocol !== PROTOCOL_VERSION ||
-    manifest.target !== `${process.platform}-${process.arch}`
+    manifest.target !== expectedTarget
   )
     throw new Error(
       "Engine release version, protocol or platform does not match this product.",

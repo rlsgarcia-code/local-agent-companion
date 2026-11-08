@@ -1,6 +1,10 @@
 name: Draft Companion engine release
 on:
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      COMPANION_RELEASE_SIGNING_KEY:
+        required: true
 permissions:
   contents: read
 jobs:
@@ -41,12 +45,27 @@ jobs:
         run: node scripts/build-sdks.mjs
         env:
           COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+      - name: Package Mac client with its exact signed native engine
+        if: startsWith(matrix.target, 'darwin-')
+        run: npm run desktop:package -- --arch=${{ matrix.target == 'darwin-arm64' && 'arm64' || 'x64' }}
+        env:
+          COMPANION_ENGINE_BUNDLE: ${{ github.workspace }}/engine-dist
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Sign Mac artifact manifest separately from Apple signing
+        if: startsWith(matrix.target, 'darwin-')
+        run: node scripts/sign-client-artifacts.mjs ${{ matrix.target }}
+        env:
+          COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: signed-engine-${{ matrix.target }}
           path: |
             release/engine/*
             release/companion-sdks-*.tar.gz*
+            release/desktop/*.zip
+            release/desktop/*.dmg
+            release/desktop/*.manifest.json
+            release/desktop/*.manifest.sig
           if-no-files-found: error
   draft:
     needs: engine
@@ -63,4 +82,10 @@ jobs:
       - name: Create reviewable draft; never publish or promote automatically
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/create-engine-draft.py
+          COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+          COMPANION_ASSET_DIRECTORY: release-candidate
+        run: |
+          node scripts/release-artifacts.mjs collect release-assets release-candidate
+          node scripts/release-artifacts.mjs sign release-candidate
+          node scripts/release-artifacts.mjs verify release-candidate
+          python3 scripts/create-engine-draft.py

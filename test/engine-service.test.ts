@@ -88,6 +88,7 @@ test("release verification rejects tampering, undeclared files and unsigned prod
       sign(null, manifest, keys.privateKey),
     );
     await verifyBundle(directory, publicKey);
+    await assert.rejects(verifyBundle(directory, publicKey, false, "wrong-architecture"), /platform does not match/);
     await writeFile(path.join(directory, "unlisted.cjs"), "unexpected");
     await assert.rejects(verifyBundle(directory, publicKey), /undeclared/);
     await rm(path.join(directory, "unlisted.cjs"));

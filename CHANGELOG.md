@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.11
+
+- Shared-engine candidate: recoverable Mac service client, durable approvals and effect receipts, isolated model jobs and chunked domain migration. Full VS Code/Navi conversion and installed suite acceptance remain pending.
+- Mac packaging verifies an exact signed engine per architecture; release workflows leave reviewable drafts.
+
 ## 0.11.10
 
 - `/env` now opens the relevant connection setup surface automatically when the read-only preflight identifies a provider, model, or certificate remediation.
