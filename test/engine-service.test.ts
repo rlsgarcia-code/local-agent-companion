@@ -494,6 +494,45 @@ test("the official SQLite serializer removes leased credentials from graph check
   } finally { service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test("leased provider credentials cannot enter approval receipts or tool arguments, including object keys", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "engine-tool-secret-"));
+  const store = new Store(path.join(directory, "metadata.sqlite"));
+  const definition = { name: "write_fixture", description: "Fixture", schema: { type: "object" }, effect: "write" as const };
+  const reg: Registration = { ...registration, id: "secret-tool", product: "companion-vscode", providers: ["litellm"],
+    hostTools: [definition.name], toolCatalog: [definition] };
+  const secret = 'provider-fixture-with-"quotes"-and-\\slashes';
+  let input: Record<string, string> = {};
+  const service = new AgentService(store, directory, async (_spec, context) =>
+    context.invokeTool(definition, input, "must-not-dispatch"));
+  try {
+    const session = store.createSession(reg, "Credential echo");
+    const cases: Record<string, string>[] = [{ value: secret }, { [secret]: "value" }];
+    for (const [index, value] of cases.entries()) {
+      input = value;
+      await service.dispatch(reg, "credentials.lease", { reference: "provider", value: secret }, "host");
+      const run = await service.dispatch(reg, "runs.start", { sessionId: session.id, key: `secret-${index}`, spec: {
+        ...spec, mode: "review", tools: [definition], provider: { kind: "litellm", endpoint: "https://gateway.example/v1",
+          roles: { executor: "fixture" }, credentialRef: "provider" },
+      } }, "host") as Run;
+      for (let i = 0; i < 100 && store.run(reg, run.id).state === "running"; i++)
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      assert.equal(store.run(reg, run.id).state, "failed");
+      assert.match(store.run(reg, run.id).error!, /cannot be passed as tool arguments/);
+      assert.deepEqual(await service.dispatch(reg, "host.poll", {}, "host"), []);
+    }
+    assert.equal(store.events(reg, session.id).filter((event) => event.type === "approval.requested").length, 0);
+    assert.equal((store.db.prepare("SELECT count(*) AS count FROM receipts WHERE status IN ('waiting','started')").get() as { count: number }).count, 0);
+    const { readdir } = await import("node:fs/promises");
+    for (const entry of await readdir(directory, { recursive: true, withFileTypes: true })) {
+      if (entry.isFile()) {
+        const bytes = await readFile(path.join(entry.parentPath, entry.name));
+        assert.equal(bytes.includes(Buffer.from(secret)), false);
+        assert.equal(bytes.includes(Buffer.from(JSON.stringify(secret).slice(1, -1))), false);
+      }
+    }
+  } finally { await service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test("a host callback failure after an effect is not automatically invoked again by the SDK", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "engine-host-failure-"));
   const definition = { name: "write_fixture", description: "Isolated fixture", schema: { type: "object", properties: {}, additionalProperties: false }, effect: "write" as const };

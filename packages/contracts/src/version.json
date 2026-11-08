@@ -1,6 +1,6 @@
 {
-  "engine": "1.0.0-rc.5",
+  "engine": "1.0.0-rc.6",
   "protocol": "1.0",
   "node": "22.23.4",
-  "python": "1.0.0rc5"
+  "python": "1.0.0rc6"
 }

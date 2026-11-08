@@ -1,6 +1,6 @@
 # Local Agent Companion
 
-> Shared-engine candidate **1.0.0-rc.5** is in progress on
+> Shared-engine candidate **1.0.0-rc.6** is in progress on
 > `codex/companion-suite-engine` (PR #15). The generic and Mac profiles now use
 > one prepared LangChain/Deep Agent executor with the official SQLite saver.
 > Bound effect receipts, durable approvals, credential leases, chunked domain
@@ -43,6 +43,15 @@ An atomic `sessions.snapshot` transfers complete public conversation state, all 
 The engine now type-checks independently of the legacy `src/` and `desktop/` trees; its bundle rejects imports from either interface tree.
 
 The Mac Ollama profile constrains classifier/verifier responses with [LangChain structured output](https://docs.langchain.com/oss/javascript/langchain/models#structured-output), using the existing Chat Completions route and [Ollama response_format support](https://docs.ollama.com/capabilities/structured-outputs). Evidence and tool authorization remain enforced by the engine.
+
+The explicit `scripts/smoke-desktop-service.cjs --ollama-model=<configured-model>`
+check uses an empty temporary workspace and a read-only arithmetic request. It
+tests both client reconnection and service restart/resume in both agent modes,
+including public snapshot deduplication. `--bundle-dir` selects an exact signed
+engine and `--sdk-dir` selects its verified extracted SDK. This checks the service
+profile; it does not launch or install the GUI. Leased provider credentials are
+rejected in tool arguments before approval or effect admission; persisted approval
+payloads are also redacted.
 
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
 

@@ -171,6 +171,11 @@ export class AgentService {
     ) as T;
   }
   private secrets(reg: Registration): string[] { return this.credentials.secrets(reg); }
+  private assertToolArguments(reg: Registration, input: unknown): void {
+    const encoded = JSON.stringify(input ?? null);
+    if (this.secrets(reg).some((secret) => encoded.includes(JSON.stringify(secret).slice(1, -1))))
+      throw new AgentError(errors.forbidden, "Provider credentials cannot be passed as tool arguments. Use an approved host credential reference.");
+  }
   private validateRun(reg: Registration, spec: DurableSpec): void {
     if ("profile" in spec) {
       if (reg.product !== "companion-mac" || spec.spec.workspacePath !== reg.workspace)
@@ -825,6 +830,7 @@ export class AgentService {
   ): Promise<unknown> {
     if (reg.product === "kidos")
       throw new AgentError(errors.forbidden, "KidOS system tools require the signed service-side Core adapter. UI tool callbacks cannot execute them.");
+    this.assertToolArguments(reg, input);
     if (spec.mode === "plan" && definition.effect !== "read")
       throw new AgentError(errors.forbidden, "Mutation denied in plan mode.");
     if (
@@ -848,6 +854,7 @@ export class AgentService {
     perform: () => Promise<unknown>,
     evidenceKind: NonNullable<ToolSpec["evidenceKind"]> = "note",
   ): Promise<unknown> {
+    this.assertToolArguments(reg, input);
     const id = `${run.id}:${callId}`;
     const binding = contentHash({ tool, input, workspace: reg.workspace });
     const prior = this.store.receipt(reg, id);
@@ -890,7 +897,7 @@ export class AgentService {
       throw new AgentError(errors.conflict, "Approval request content changed.");
     if (receipt?.status === "answered") return Promise.resolve(receipt.value);
     if (kind === "approval") {
-      this.store.saveReceipt(reg, run.id, `wait:${id}`, "waiting", normalized, binding);
+      this.store.saveReceipt(reg, run.id, `wait:${id}`, "waiting", this.protect(reg, normalized), binding);
       // This tool has not yet passed its own approval gate. Restart may safely
       // re-enter that gate, but must not repeat a tool with an unknown effect.
       if (operation) {
@@ -916,7 +923,7 @@ export class AgentService {
         run: run.id,
         session: run.sessionId,
         kind,
-        payload,
+        payload: this.protect(reg, payload),
         resolve: (value) => {
           if (operation && kind === "approval") {
             const effect = this.store.receipt(reg, operation);
