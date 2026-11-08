@@ -32,6 +32,11 @@ const [mainBuild] = await Promise.all([
     logLevel: "info"
   })
 ]);
+const inputs = Object.keys(mainBuild.metafile.inputs);
+if (inputs.some((name) => /node_modules\/(?:langchain|deepagents|@langchain)\//.test(name))) {
+  throw new Error("The Mac client contains an agent runtime. Keep execution inside the shared engine.");
+}
+await writeFile(path.join(output, "dependencies.json"), JSON.stringify({ inputs }, null, 2) + "\n");
 await generateThirdPartyNotices({ metafile: mainBuild.metafile, outputDirectory: path.join(output, "licenses") });
 
 await cp("desktop/renderer", path.join(output, "renderer"), { recursive: true });
@@ -44,6 +49,7 @@ const desktopPackage = {
   description: "Local Ollama coding companion for macOS",
   author: "Local Agent Companion contributors",
   license: "MIT",
+  dependencies: {},
   main: "main.cjs"
 };
 await writeFile(path.join(output, "package.json"), `${JSON.stringify(desktopPackage, null, 2)}\n`, "utf8");

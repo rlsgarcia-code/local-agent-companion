@@ -2,6 +2,7 @@ import { build, Platform, Arch } from "electron-builder";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import * as path from "node:path";
 
 if (process.platform !== "darwin") throw new Error("Build the Mac application on macOS.");
@@ -15,8 +16,9 @@ execFileSync(process.execPath, ["scripts/build-sdks.mjs"], { stdio: "inherit" })
 const require = createRequire(import.meta.url);
 const { verifyBundle } = require(path.resolve("release/sdk/typescript/client-ts/src/bootstrap.cjs"));
 const publicKey = await readFile("release-keys/companion-ed25519.pub", "utf8");
-await mkdir("build", { recursive: true });
-const staging = await mkdtemp(path.resolve("build", `desktop-${architecture}-`));
+// Keep the dependency-free client outside the repository workspace so the
+// builder cannot discover and embed the parent's agent/native dependencies.
+const staging = await mkdtemp(path.join(tmpdir(), `companion-desktop-${architecture}-`));
 try {
   const bundle = path.join(staging, "companion-engine");
   // Verify the source before copying and the exact copy before the builder reads it.
@@ -24,15 +26,24 @@ try {
   await cp(path.resolve(source), bundle, { recursive: true, dereference: false });
   await verifyBundle(bundle, publicKey, false, `darwin-${architecture}`);
   execFileSync(process.execPath, ["scripts/build-desktop.mjs"], { stdio: "inherit" });
+  const client = path.join(staging, "client");
+  await cp(path.resolve("desktop-dist"), client, { recursive: true });
   const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
   let verifiedApplication = false;
   await build({
-    projectDir: path.resolve("desktop-dist"),
+    projectDir: client,
     targets: Platform.MAC.createTarget(process.argv.includes("--dir") ? ["dir"] : ["dmg", "zip"], architecture === "arm64" ? Arch.arm64 : Arch.x64),
     config: {
       extends: path.resolve("desktop/electron-builder.yml"),
       electronVersion: lock.packages["node_modules/electron"].version,
-      extraResources: [{ from: bundle, to: "companion-engine" }],
+      directories: { output: path.resolve("release/desktop") },
+      afterPack: async (context) => {
+        const target = path.join(context.appOutDir, "Local Companion.app/Contents/Resources/companion-engine");
+        // extraResources applies npm file exclusions. Copy the immutable bundle
+        // verbatim after packing, before Apple sealing, including its licenses.
+        await cp(bundle, target, { recursive: true, dereference: false });
+        await verifyBundle(target, publicKey, false, `darwin-${architecture}`);
+      },
       afterSign: async (context) => {
         const application = path.join(context.appOutDir, "Local Companion.app");
         // Apple sealing must never rewrite the separately signed engine bytes.
