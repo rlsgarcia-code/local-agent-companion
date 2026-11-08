@@ -18,11 +18,14 @@ test("only the pinned signed adapter under protected ownership can load code", {
   await writeFile(key,keys.publicKey.export({type:"spki",format:"pem"}),{mode:0o600});
   const source="module.exports.createAdapter=()=>({product:'kidos',validate(){},async execute(){return {text:'fixture'}},prepareTool(r,d,a){return a},async invokeTool(){return {ok:true}}})";
   await writeFile(path.join(directory,"adapter.cjs"),source,{mode:0o600});
-  const bytes=Buffer.from(JSON.stringify({schema:1,product:"kidos",protocol:"1.0",entry:"adapter.cjs",files:{"adapter.cjs":createHash("sha256").update(source).digest("hex")}}));
+  const pin={version:"fixture-version",commit:"a".repeat(40),manifestSha256:"b".repeat(64)};
+  const catalog=JSON.stringify({engine:pin});await writeFile(path.join(directory,"catalog.json"),catalog,{mode:0o600});
+  const bytes=Buffer.from(JSON.stringify({schema:1,product:"kidos",protocol:"1.0",entry:"adapter.cjs",files:{"adapter.cjs":createHash("sha256").update(source).digest("hex"),"catalog.json":createHash("sha256").update(catalog).digest("hex")}}));
   await writeFile(path.join(directory,"manifest.json"),bytes,{mode:0o600});await writeFile(path.join(directory,"manifest.sig"),sign(null,bytes,keys.privateKey),{mode:0o600});
   const descriptor=path.join(root,"descriptor.json");await writeFile(descriptor,JSON.stringify({schema:1,directory,manifestSha256:createHash("sha256").update(bytes).digest("hex")}),{mode:0o600});
   const trust={owner:process.getuid?.() ?? 0,boundary:root};
-  assert.equal((await loadSignedAdapter(descriptor,key,trust)).product,"kidos");
+  assert.equal((await loadSignedAdapter(descriptor,key,{...trust,engine:pin})).product,"kidos");
+  await assert.rejects(loadSignedAdapter(descriptor,key,{...trust,engine:{...pin,manifestSha256:"c".repeat(64)}}),/different engine artifact/);
   await writeFile(path.join(directory,"adapter.cjs"),source+";throw Error('must not execute')");
   await assert.rejects(loadSignedAdapter(descriptor,key,trust),/integrity/);
   await writeFile(path.join(directory,"adapter.cjs"),source);

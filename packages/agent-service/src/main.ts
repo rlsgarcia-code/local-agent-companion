@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import * as path from "node:path";
-import { NODE_VERSION } from "../../contracts/src/index";
+import { ENGINE_VERSION, NODE_VERSION } from "../../contracts/src/index";
 import {
   defaultStateDirectory,
   ensureIdentity,
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     target: manifest.target,
     manifestSha256: createHash("sha256").update(rawManifest).digest("hex"),
   };
-  const service = new AgentService(store, directory, undefined, build, { deferRecovery: true, adapter: await systemAdapter(), resourceDirectory: path.dirname(process.argv[1]!) }),
+  const service = new AgentService(store, directory, undefined, build, { deferRecovery: true, adapter: await systemAdapter({version:ENGINE_VERSION,...build}), resourceDirectory: path.dirname(process.argv[1]!) }),
     server = new LocalServer(service, directory);
   await server.listen();
   // Refresh bootstrap registrations without exposing a provisioning RPC.

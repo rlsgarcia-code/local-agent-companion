@@ -28,7 +28,7 @@ async function owned(file: string, owner: number, boundary: string): Promise<voi
 
 /** Optional arguments exist for isolated signed fixtures; production uses fixed system paths. */
 export async function loadSignedAdapter(descriptorFile: string, publicKeyFile: string,
-  trust: { owner?: number; boundary?: string } = {}): Promise<InstalledAdapter> {
+  trust: { owner?: number; boundary?: string; engine?: {version:string;commit?:string;manifestSha256?:string} } = {}): Promise<InstalledAdapter> {
   const owner = trust.owner ?? 0, boundary = path.resolve(trust.boundary ?? path.parse(descriptorFile).root);
   await owned(descriptorFile, owner, boundary); await owned(publicKeyFile, owner, boundary);
   if ((await lstat(descriptorFile)).size > 8192 || (await lstat(publicKeyFile)).size > 4096) throw new Error("Invalid adapter trust metadata.");
@@ -60,6 +60,14 @@ export async function loadSignedAdapter(descriptorFile: string, publicKeyFile: s
     }
   }
   await check(descriptor.directory);
+  if(trust.engine){
+    if(!Object.hasOwn(manifest.files,"catalog.json"))throw new Error("Signed adapter has no engine integration pin.");
+    const catalogFile=path.join(descriptor.directory,"catalog.json");
+    if((await lstat(catalogFile)).size>8*1024*1024)throw new Error("Adapter catalog exceeds the integration limit.");
+    const pin=JSON.parse(await readFile(catalogFile,"utf8")).engine;
+    if(!pin||pin.version!==trust.engine.version||pin.commit!==trust.engine.commit||pin.manifestSha256!==trust.engine.manifestSha256)
+      throw new Error("The signed adapter belongs to a different engine artifact.");
+  }
   const entry = path.join(descriptor.directory, manifest.entry);
   const factory = createRequire(entry)(entry).createAdapter;
   if (typeof factory !== "function") throw new Error("Installed adapter has no factory.");
@@ -68,9 +76,9 @@ export async function loadSignedAdapter(descriptorFile: string, publicKeyFile: s
     throw new Error("Installed adapter contract is invalid.");
   return adapter as InstalledAdapter;
 }
-export async function systemAdapter(): Promise<InstalledAdapter | undefined> {
+export async function systemAdapter(engine: {version:string;commit?:string;manifestSha256?:string}): Promise<InstalledAdapter | undefined> {
   const descriptor = "/etc/kidos/agent-adapter.json";
   if (process.platform !== "linux" || !existsSync(descriptor)) return undefined;
-  try { return await loadSignedAdapter(descriptor, "/usr/share/kidos/release-keys/kidos-ed25519.pub"); }
+  try { return await loadSignedAdapter(descriptor, "/usr/share/kidos/release-keys/kidos-ed25519.pub", {engine}); }
   catch { throw new AgentError(errors.forbidden, "The protected KidOS adapter failed verification. Repair the system installation."); }
 }

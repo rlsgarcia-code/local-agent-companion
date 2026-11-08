@@ -3,7 +3,7 @@ import type { InstalledAdapter } from "../../agent-core/src/installed-adapter";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { contentHash, canonical } from "../../contracts/src/identity";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
-import { mkdirSync, chmodSync } from "node:fs";
+import { mkdirSync, chmodSync, existsSync } from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
 import {
@@ -220,6 +220,9 @@ export class AgentService {
   ): Promise<unknown> {
     if (this.quiescing && !["engine.info","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
       throw new AgentError(errors.unavailable, "Engine is activating a prepared update. Reconnect with the updated client.");
+    if(process.platform === "linux" && existsSync("/usr/share/kidos/engine-activation.json") &&
+      ["runs.start","desktop.start","runs.resume","engine.resumeAfterUpdate"].includes(method))
+      throw new AgentError(errors.unavailable,"A verified machine update is activating. Existing work was preserved; reconnect after it completes.");
     // Scope comes exclusively from the authenticated immutable registration.
     const p = params ?? {};
     switch (method) {
@@ -359,6 +362,7 @@ export class AgentService {
           node: process.versions.node,
           requiredNode: NODE_VERSION,
           product: reg.product,
+          quiescing:this.quiescing,
           build: this.buildInfo,
           capabilities: [
             "sessions",
