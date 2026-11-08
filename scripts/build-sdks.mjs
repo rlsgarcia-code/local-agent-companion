@@ -4,6 +4,7 @@ import { createHash, sign } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
+import { generateThirdPartyNotices } from "./generate-third-party-notices.mjs";
 import * as path from "node:path";
 const output = "release/sdk";
 await rm(output, { recursive: true, force: true });
@@ -36,7 +37,9 @@ await esbuild
       path.join(output, "typescript", "dependencies.json"),
       JSON.stringify({ inputs }, null, 2),
     );
+    await generateThirdPartyNotices({metafile:result.metafile,outputDirectory:path.join(output,"licenses")});
   });
+await cp("LICENSE",path.join(output,"LICENSE"));
 await cp("packages/client-python", path.join(output, "python"), {
   recursive: true,
   filter: (name) => !name.includes("__pycache__"),
