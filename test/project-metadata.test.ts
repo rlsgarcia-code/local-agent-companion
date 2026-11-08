@@ -88,7 +88,7 @@ test("CI verifies and packages every supported native target", () => {
   assert.match(workflow, /actions\/upload-artifact@[a-f0-9]{40} # v7/);
   assertWorkflowActionsPinned(workflow);
   assert.match(workflow, /if: matrix\.target == 'linux-x64'[\s\S]*xvfb-run -a npm run test:extension-host/);
-  assert.match(workflow, /Verify the local packaging entrypoint on Windows\s+if: matrix\.target == 'win32-x64'\s+run: npm run package/);
+  assert.match(workflow, /Verify the local packaging entrypoint on Windows\s+if: matrix\.target == 'win32-x64'\s+run: node --test test\/native-package\.test\.mjs/);
   assert.match(workflow, /if: matrix\.target == 'win32-x64'\s+run: npm run test:extension-host/);
   assert.match(workflow, /if: matrix\.target == 'win32-x64'\s+run: npm run test:vsix-install -- local-agent-companion-win32-x64\.vsix/);
 });

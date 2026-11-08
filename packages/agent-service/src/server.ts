@@ -192,6 +192,12 @@ export async function loadProvisionedClients(
     const credential = JSON.parse(
       await readFile(file, "utf8"),
     ) as ClientCredential;
-    store.register(credential);
+    try { store.register(credential); }
+    catch(error) {
+      // Immutable adapter upgrades and rollback leave previous enrollment files
+      // as history. The current system policy decides which identities load.
+      if(error instanceof AgentError && error.code === errors.forbidden)continue;
+      throw error;
+    }
   }
 }

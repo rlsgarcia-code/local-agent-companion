@@ -56,3 +56,16 @@ test("KidOS effects run in the installed adapter under the coordinator ledger, n
   assert.equal(store.run(reg,run.id).state,"completed");assert.equal(effects,1);assert.deepEqual(await service.dispatch(reg,"host.poll",{},"ui"),[]);
  }finally{await service.close();await rm(directory,{recursive:true,force:true});}
 });
+
+test("retired enrollment files do not prevent loading the currently provisioned adapter after an update",async()=>{
+ const {loadProvisionedClients}=await import("../packages/agent-service/src/server");
+ const {AgentError,errors}=await import("../packages/contracts/src/index");
+ const root=await mkdtemp(path.join(tmpdir(),"retired-enrollment-"));
+ try{
+  await mkdir(path.join(root,"clients"),{mode:0o700});
+  const credentials=[{registration:{id:"retired"},token:"retired"},{registration:{id:"current"},token:"current"}];
+  for(let index=0;index<credentials.length;index++)await writeFile(path.join(root,"clients",String(index).repeat(64)+".json"),JSON.stringify(credentials[index]),{mode:0o600});
+  const registered:string[]=[];const store={register(value:any){if(value.registration.id==="retired")throw new AgentError(errors.forbidden,"Not in the current system policy");registered.push(value.registration.id);}} as unknown as Store;
+  await loadProvisionedClients(store,root);assert.deepEqual(registered,["current"]);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
