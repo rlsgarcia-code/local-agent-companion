@@ -1,4 +1,5 @@
 import { serviceProcessTool } from "../packages/contracts/src/workspace-backend";
+import { assertPublicMetadata } from "../packages/client-ts/src/public-metadata";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
 import { EditorServiceRuntime, WORKSPACE_BACKEND_TOOLS, type EditorRunResult } from "./service-runtime";
 import { AgentClient } from "../packages/client-ts/src/index";
@@ -1002,6 +1003,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         throw new Error("This workspace already has an active agent run in another VS Code window. Wait for it to finish, then refresh the thread.");
       }
       changeTracker = this.changeReview.startRun(workspaceRoot);
+      request=redactSensitiveText(request,sensitiveValues);
       let priorMessages: ThreadMessage[] = [];
       let stagedUserMessage: ThreadMessage | undefined;
       const requestTime = Date.now();
@@ -1124,6 +1126,7 @@ export class DevelopmentAgent implements vscode.Disposable {
           catalog.push(definition);
         }
       }
+      assertPublicMetadata(catalog,sensitiveValues);
       let registeredCatalog = catalog;
       if(reconnect?.engineRunId){
         const base=await this.serviceRuntime.connect(workspaceRoot);
@@ -1133,7 +1136,8 @@ export class DevelopmentAgent implements vscode.Disposable {
         registeredCatalog=description.tools;
       }
       engineClient = await this.serviceRuntime.connect(workspaceRoot, registeredCatalog);
-      const session = await this.serviceRuntime.session(engineClient, {...conversation,messages:priorMessages});
+      const imported=JSON.parse(JSON.stringify({...conversation,messages:priorMessages},(_key,value)=>typeof value === "string"?redactSensitiveText(value,sensitiveValues):value));
+      const session = await this.serviceRuntime.session(engineClient, imported);
       if (apiKey) await engineClient.call("credentials.lease",{reference:connection.provider,value:apiKey});
       if (goal) {
         const existing = await engineClient.call<GoalRecord[]>("goals.list");

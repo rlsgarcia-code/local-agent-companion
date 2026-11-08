@@ -100,3 +100,10 @@ test("service-managed processes survive editor disconnection, require approval a
   assert.deepEqual(await service.dispatch(registration,"host.poll",{},"other"),[]);
  }finally{await service.close();await rm(directory,{recursive:true,force:true});}
 });
+
+test("credentials in host metadata are rejected before durable enrollment",async()=>{
+ const {assertPublicMetadata}=await import("../packages/client-ts/src/public-metadata");
+ const secret='fixture-credential-"with-escapes';
+ assert.throws(()=>assertPublicMetadata({schema:{description:'Server echoed '+secret}},[secret]),/credential material/);
+ assert.doesNotThrow(()=>assertPublicMetadata({schema:{type:'object',description:'public tool'}},[secret]));
+});
