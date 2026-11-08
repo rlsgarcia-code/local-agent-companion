@@ -33,7 +33,7 @@ const compiledVerifier=await esbuild.build({entryPoints:['packages/client-ts/src
 const verifier={exports:{}};new Function('module','exports','require',compiledVerifier.outputFiles[0].text)(verifier,verifier.exports,createRequire(import.meta.url));
 const signed=JSON.parse(await readFile(path.join(bundle,'manifest.json'),'utf8')).development!==true;
 await verifier.exports.verifyBundle(bundle,signed?await readFile('release-keys/companion-ed25519.pub','utf8'):undefined,!signed);
-const engine=spawn(path.join(bundle,'node'),[path.join(bundle,'service.cjs'),state],{stdio:['ignore','pipe','pipe']});let errors='';engine.stderr.on('data',chunk=>errors+=chunk);engine.stdout.resume();
+const engine=spawn(path.join(bundle,process.platform==='win32'?'node.exe':'node'),[path.join(bundle,'service.cjs'),state],{stdio:['ignore','pipe','pipe']});let errors='';engine.stderr.on('data',chunk=>errors+=chunk);engine.stdout.resume();
 try{
  for(let i=0;i<100;i++){try{await readFile(path.join(state,'runtime.json'));break;}catch{await new Promise(resolve=>setTimeout(resolve,50));}}
  await runTests({vscodeExecutablePath:process.env.VSCODE_EXECUTABLE_PATH,version:'1.106.0',extensionDevelopmentPath:project,extensionTestsPath:path.join(root,'test.cjs'),extensionTestsEnv:{COMPANION_FIXTURE_ROOT:root,COMPANION_FIXTURE_SIGNED:signed?"1":"0",COMPANION_FIXTURE_STATE:state,COMPANION_FIXTURE_BUNDLE:bundle,COMPANION_FIXTURE_PROVIDER:`http://127.0.0.1:${server.address().port}/v1`},launchArgs:[workspace,'--disable-extensions',`--user-data-dir=${path.join(root,'user')}`,`--extensions-dir=${path.join(root,'extensions')}`]});
