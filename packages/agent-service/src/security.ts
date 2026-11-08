@@ -13,6 +13,7 @@ import * as path from "node:path";
 import {
   AgentError,
   errors,
+  toolSpec,
   type ClientCredential,
   type Registration,
 } from "../../contracts/src/index";
@@ -142,12 +143,19 @@ export function validateProductRegistration(registration: Registration): void {
       ["ollama", "litellm", "openai", "kidos-gateway"].includes(provider),
     ) ||
     !Array.isArray(registration.hostTools) ||
+    registration.hostTools.length > 200 ||
     !registration.hostTools.every(
       (name) =>
         typeof name === "string" && /^[a-zA-Z0-9_.:-]{1,128}$/.test(name),
     )
   )
     throw new AgentError(errors.forbidden, "Invalid product registration.");
+  if (registration.toolCatalog) {
+    const catalog = registration.toolCatalog.map((entry) => toolSpec.parse(entry));
+    if (catalog.length > 200 || new Set(catalog.map((entry) => entry.name)).size !== catalog.length ||
+      catalog.some((entry) => !registration.hostTools.includes(entry.name)))
+      throw new AgentError(errors.forbidden, "Invalid installed adapter catalog.");
+  }
   if (
     registration.product === "companion-mac" &&
     registration.providers.some((p) => p !== "ollama")

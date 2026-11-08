@@ -56,7 +56,15 @@ export class LocalServer {
       this.server!.once("error", reject);
       this.server!.listen(address, () => {
         this.server!.off("error", reject);
-        resolve();
+        try {
+          // Only the process that acquired the one IPC endpoint may recover
+          // runs. A second cold-start must never interrupt the live owner.
+          this.service.recover();
+          resolve();
+        } catch (error) {
+          this.server!.close();
+          reject(error);
+        }
       });
     });
     if (process.platform !== "win32") await chmod(address, 0o600);
@@ -68,16 +76,18 @@ export class LocalServer {
       reg: Registration | undefined,
       credential: { id: string; token: string } | undefined;
     const send = (response: RpcResponse) => {
-      if (!socket.destroyed) socket.write(JSON.stringify(response) + "\n");
+      if (socket.destroyed) return;
+      const frame = JSON.stringify(response) + "\n";
+      socket.write(Buffer.byteLength(frame) <= MAX_FRAME_BYTES ? frame : JSON.stringify({
+        jsonrpc: "2.0", id: response.id,
+        error: { code: errors.invalid, message: "Response exceeds the local frame limit. Use the chunked transfer API." },
+      }) + "\n");
     };
     socket.on("data", (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
-      if (buffer.length > MAX_FRAME_BYTES) {
-        socket.destroy();
-        return;
-      }
       let newline: number;
       while ((newline = buffer.indexOf(10)) !== -1) {
+        if (newline + 1 > MAX_FRAME_BYTES) { socket.destroy(); return; }
         const frame = buffer.subarray(0, newline).toString("utf8");
         buffer = buffer.subarray(newline + 1);
         void (async () => {
@@ -116,16 +126,14 @@ export class LocalServer {
               );
             // Check revocation on every operation, including long-lived connections.
             this.service.store.authenticate(credential.id, credential.token);
+            const result = await this.service.dispatch(reg, request.method, request.params, connection);
             send({
               jsonrpc: "2.0",
               id,
-              result: await this.service.dispatch(
-                reg,
-                request.method,
-                request.params,
-                connection,
-              ),
+              result,
             });
+            if (request.method === "engine.shutdownIfIdle" && (result as { accepted: boolean }).accepted)
+              setImmediate(() => { void this.close(); });
           } catch (error) {
             const known = error instanceof AgentError;
             send({
@@ -149,6 +157,7 @@ export class LocalServer {
           socket.destroy();
         });
       }
+      if (buffer.length > MAX_FRAME_BYTES) socket.destroy();
     });
     socket.on("error", () => {});
     socket.on("close", () => {
@@ -160,7 +169,7 @@ export class LocalServer {
     for (const socket of this.sockets) socket.destroy();
     if (this.server)
       await new Promise<void>((resolve) => this.server!.close(() => resolve()));
-    this.service.close();
+    await this.service.close();
   }
 }
 export async function loadProvisionedClients(
@@ -176,7 +185,7 @@ export async function loadProvisionedClients(
     if (
       !info.isFile() ||
       info.isSymbolicLink() ||
-      info.size > 65536 ||
+      info.size > MAX_FRAME_BYTES ||
       (process.getuid && info.uid !== process.getuid())
     )
       throw new Error("Unsafe client registration file.");

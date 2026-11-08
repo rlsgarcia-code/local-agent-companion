@@ -260,14 +260,15 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.match(renderer, /setModelPickerOpen/);
   assert.match(preload, /companion:recommend-models/);
   assert.match(preload, /companion:cancel-recommendation/);
-  assert.match(main, /detectMachineProfile/);
+  assert.match(main, /runtime\.recommendModels\(/);
   assert.match(main, /state\.ollamaPublicCatalogEnabled && !publicOllamaCatalog/);
-  assert.match(main, /supportedRoles: \["executor", "planner", "evaluator", "vision", "embedding"\]/);
+  assert.doesNotMatch(main, /new OllamaRecommendationEngine/);
   assert.match(runtime, /createModel\(options\.modelRoles\.executor, true\)/);
   assert.match(runtime, /options\.modelRoles\.evaluator \|\| options\.modelRoles\.executor/);
   assert.match(runtime, /options\.agentRuntime === "deep" && options\.modelRoles\.planner/);
   assert.doesNotMatch(runtime, /AbortSignal\.timeout\(90_000\)/);
-  assert.match(runtime, /invokeAdvisor\(\s*modelName: string,\s*prompt: string,\s*signal: AbortSignal,?\s*\)/);
+  const models = await readFile(path.join(process.cwd(), "packages", "agent-core", "src", "ollama-models.ts"), "utf8");
+  assert.match(models, /invokeAdvisor\(\s*modelName: string,\s*prompt: string,\s*signal: AbortSignal,?\s*\)/);
   assert.match(main, /recommendationController\?\.abort\(\)/);
   assert.match(main, /resolveInstalledModelRoles/);
   assert.match(main, /A configuração ativa não foi alterada\. Baixe primeiro/);
@@ -497,7 +498,7 @@ test("desktop keeps streaming stable and projects LangChain tool progress", asyn
   assert.match(renderer, /updateMessageElement\(article, message\)/);
   assert.match(renderer, /1 nova atualização ↓/);
   assert.match(renderer, /existing >= 0.*splice\(existing, 1/s);
-  assert.match(runtime, /consumeToolCallActivities\(run\.toolCalls/);
+  assert.match(runtime, /tools: \(calls\) => consumeToolCallActivities\(calls, publishActivity\)/);
   assert.match(runtime, /const outputSettled = call\.output\.then/);
   assert.match(runtime, /isToolMessage\(settled\.value\)/);
   assert.match(runtime, /status: "active"/);

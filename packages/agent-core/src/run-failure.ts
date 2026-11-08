@@ -1,4 +1,4 @@
-import { redactSensitiveText } from "../../../src/redaction";
+import { redactSensitiveText } from "./redaction";
 
 const MAX_FAILURE_REASON_LENGTH = 1_200;
 

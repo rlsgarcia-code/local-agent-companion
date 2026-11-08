@@ -1,6 +1,6 @@
 import { X509Certificate } from "node:crypto";
 import { connect, type TLSSocket } from "node:tls";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
   AgentError,
@@ -11,7 +11,13 @@ import {
   type EngineEvent,
   type RpcResponse,
   type Run,
+  type Session,
+  type RunState,
 } from "../../contracts/src/index";
+import { MAX_TRANSFER_BYTES, TRANSFER_CHUNK_BYTES, type Transfer } from "../../contracts/src/transfers";
+import { contentHash } from "../../contracts/src/identity";
+
+export type HostResponses = Map<string, { signature: string; response: Promise<unknown> }>;
 
 export type ConnectionOptions = {
   address: string;
@@ -117,12 +123,9 @@ export class AgentClient {
   }
   private receive(chunk: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, chunk]);
-    if (this.buffer.length > MAX_FRAME_BYTES) {
-      this.socket?.destroy();
-      return;
-    }
     let index: number;
     while ((index = this.buffer.indexOf(10)) !== -1) {
+      if (index + 1 > MAX_FRAME_BYTES) { this.socket?.destroy(); return; }
       const frame = this.buffer.subarray(0, index);
       this.buffer = this.buffer.subarray(index + 1);
       try {
@@ -144,6 +147,7 @@ export class AgentClient {
         this.socket?.destroy();
       }
     }
+    if (this.buffer.length > MAX_FRAME_BYTES) this.socket?.destroy();
   }
   private rejectAll(error: Error): void {
     for (const wait of this.pending.values()) {
@@ -151,6 +155,60 @@ export class AgentClient {
       wait.reject(error);
     }
     this.pending.clear();
+  }
+  async upload(key: string, content: Uint8Array, mime: Transfer["mime"]): Promise<Transfer> {
+    const data = Buffer.from(content);
+    if (data.length > MAX_TRANSFER_BYTES) throw new Error("Attachment exceeds the negotiated transfer limit. The source was preserved.");
+    const transfer = await this.call<Transfer>("transfers.begin", {
+      key, size: data.length, sha256: createHash("sha256").update(data).digest("hex"), mime,
+    });
+    let cursor = transfer.received;
+    while (cursor < data.length) {
+      const end = Math.min(cursor + TRANSFER_CHUNK_BYTES, data.length);
+      const next = await this.call<Transfer>("transfers.append", {
+        id: transfer.id, offset: cursor, data: data.subarray(cursor, end).toString("base64"),
+      });
+      if (next.received < end || next.received > data.length) throw new Error("Invalid upload acknowledgement.");
+      cursor = next.received;
+    }
+    return this.call("transfers.commit", { id: transfer.id });
+  }
+  async download(id: string): Promise<Buffer> {
+    const transfer = await this.call<Transfer>("transfers.get", { id });
+    if (!transfer.committed || transfer.size > MAX_TRANSFER_BYTES || transfer.size < 0)
+      throw new Error("Invalid attachment metadata.");
+    const parts: Buffer[] = [];
+    let cursor = 0;
+    while (cursor < transfer.size) {
+      const part = await this.call<{ data: string; nextOffset: number }>("transfers.read", { id, offset: cursor });
+      const data = Buffer.from(part.data, "base64");
+      if (!data.length || data.length > TRANSFER_CHUNK_BYTES || part.nextOffset !== cursor + data.length || part.nextOffset > transfer.size)
+        throw new Error("Invalid attachment chunk.");
+      parts.push(data);
+      cursor = part.nextOffset;
+    }
+    const data = Buffer.concat(parts);
+    if (createHash("sha256").update(data).digest("hex") !== transfer.sha256)
+      throw new Error("Downloaded attachment SHA-256 mismatch.");
+    return data;
+  }
+  async importSession(key: string, domain: unknown): Promise<Session> {
+    const data = Buffer.from(JSON.stringify(domain));
+    const digest = createHash("sha256").update(data).digest("hex");
+    const transfer = await this.upload(`import:${digest}`, data, "application/json");
+    return this.call("sessions.import", { key, transferId: transfer.id });
+  }
+  async startRun(sessionId: string, key: string, spec: unknown, profile: "generic" | "desktop" = "generic"): Promise<Run> {
+    const data = Buffer.from(JSON.stringify(spec));
+    const method = profile === "desktop" ? "desktop.start" : "runs.start";
+    if (data.length < 512 * 1024) return this.call(method, { sessionId, key, spec });
+    const digest = createHash("sha256").update(data).digest("hex");
+    const transfer = await this.upload(`run:${digest}`, data, "application/json");
+    return this.call(method, { sessionId, key, specTransferId: transfer.id });
+  }
+  async exportSession(id: string): Promise<unknown> {
+    const transfer = await this.call<Transfer>("sessions.export", { id });
+    return JSON.parse((await this.download(transfer.id)).toString("utf8"));
   }
   async waitForRun(
     id: string,
@@ -162,9 +220,11 @@ export class AgentClient {
       payload: unknown;
     }) => Promise<unknown>,
     signal?: AbortSignal,
+    replay: { cursor?: number; onCursor?: (cursor: number) => void; hostResponses?: HostResponses; onState?: (state: RunState) => void } = {},
   ): Promise<Run> {
-    let cursor = 0;
+    let cursor = replay.cursor ?? 0;
     const handled = new Set<string>();
+    const responses: HostResponses = replay.hostResponses ?? new Map();
     while (true) {
       signal?.throwIfAborted();
       const events = await this.call<EngineEvent[]>("events.read", {
@@ -175,6 +235,7 @@ export class AgentClient {
         if (event.sequence > cursor) {
           cursor = event.sequence;
           if (event.runId === id) onEvent(event);
+          replay.onCursor?.(cursor);
         }
       }
       if (host) {
@@ -185,9 +246,23 @@ export class AgentClient {
         for (const request of requests) {
           if (request.runId !== id || handled.has(request.id)) continue;
           handled.add(request.id);
-          void host(request)
+          const normalized = { ...(request.payload as Record<string, unknown>) };
+          delete normalized.id;
+          const signature = contentHash({ kind: request.kind, payload: normalized });
+          const previous = responses.get(request.id);
+          if (previous && previous.signature !== signature)
+            throw new AgentError(-32009, "Host request identity changed its content.");
+          const response = previous?.response ?? Promise.resolve().then(() => host(request));
+          responses.set(request.id, { signature, response });
+          const effect = request.kind === "tool" && typeof normalized.callId === "string";
+          void response
             .then((value) =>
               this.call("host.respond", { id: request.id, value }),
+              () => {
+                if (effect) return this.call("host.failed", { id: request.id });
+                responses.delete(request.id);
+                handled.delete(request.id);
+              },
             )
             .catch(() => {
               handled.delete(request.id);
@@ -195,7 +270,13 @@ export class AgentClient {
         }
       }
       const run = await this.call<Run>("runs.get", { id });
-      if (terminalStates.has(run.state)) return run;
+      replay.onState?.(run.state);
+      if (terminalStates.has(run.state) && events.length === 0) {
+        const result = run.result as { kind?: string; id?: string } | undefined;
+        if (result?.kind === "agent-result-transfer" && result.id)
+          run.result = JSON.parse((await this.download(result.id)).toString("utf8"));
+        return run;
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
   }

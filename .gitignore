@@ -15,3 +15,5 @@ release/
 build/
 engine-dist/
 *.key
+__pycache__/
+*.py[cod]

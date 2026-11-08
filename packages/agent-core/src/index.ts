@@ -5,13 +5,12 @@ import {
   SystemMessage,
 } from "@langchain/core/messages";
 import {
-  Command,
   interrupt,
   type BaseCheckpointSaver,
 } from "@langchain/langgraph";
 import { ChatOpenAICompletions } from "@langchain/openai";
-import { createDeepAgent, StateBackend } from "deepagents";
-import { createAgent, tool } from "langchain";
+import { StateBackend } from "deepagents";
+import { tool } from "langchain";
 import { z } from "zod";
 import {
   AgentError,
@@ -20,9 +19,14 @@ import {
   type RunSpec,
   type ToolSpec,
 } from "../../contracts/src/index";
-import { gatewayFetch } from "../../../src/gateway";
-import { extractFinalAssistantText } from "../../../src/assistant-final";
-import { consumeAssistantMessageStreams } from "../../../src/assistant-stream";
+import { gatewayFetch } from "./gateway";
+import { extractFinalAssistantText } from "./assistant-final";
+import { executePreparedGraph } from "./graph-executor";
+import type { ToolRuntime } from "@langchain/core/tools";
+import { graphOperationId } from "./operations";
+import { evaluateGoalEvidence, type GoalEvidence } from "./goal-evaluation";
+import type { GoalRecord, GoalEvaluation } from "../../contracts/src/goal-state";
+import { contentHash } from "../../contracts/src/identity";
 
 export type ExecutionContext = {
   registration: Registration;
@@ -38,7 +42,13 @@ export type ExecutionContext = {
   ) => Promise<unknown>;
   /** Test/model adapters are injected by the process owner, never by RPC. */
   model?: BaseChatModel;
+  models?: Partial<Record<"executor" | "planner" | "evaluator", BaseChatModel>>;
+  goal?: GoalRecord;
+  evidence?: () => GoalEvidence[];
+  memo?: { get: (key: string) => unknown; put: (key: string, value: unknown) => void };
+  requireCheckpoint?: boolean;
   reconciliations?: Record<string, unknown>;
+  resolveAttachment?: (id: string) => Promise<{ mime: string; data: string }>;
 };
 
 export function validateProvider(
@@ -89,7 +99,7 @@ export function validateProvider(
 export async function executeGraph(
   spec: RunSpec,
   context: ExecutionContext,
-): Promise<{ text: string; files?: unknown }> {
+): Promise<{ text: string; files?: unknown; goalEvaluation?: GoalEvaluation }> {
   validateProvider(context.registration, spec.provider);
   for (const definition of spec.tools) {
     if (!context.registration.hostTools.includes(definition.name))
@@ -106,17 +116,21 @@ export async function executeGraph(
         "KidOS tools must be mediated by Core.",
       );
   }
-  if (!context.model && spec.provider.kind === "kidos-gateway")
+  if (!context.model && !context.models?.executor && spec.provider.kind === "kidos-gateway")
     throw new AgentError(
       errors.unavailable,
       "Install the signed KidOS model adapter before starting a KidOS run.",
     );
-  const model =
-    context.model ??
-    new ChatOpenAICompletions({
-      model: spec.provider.roles.executor,
+  const hasImages = spec.messages.some((message) => Array.isArray(message.content) && message.content.some((block) => block.type === "image"));
+  const modelForRole = (role: "executor" | "planner" | "evaluator"): BaseChatModel => {
+    const supplied = context.models?.[role] ?? (role === "executor" ? context.model : undefined);
+    if (supplied) return supplied;
+    if (spec.provider.kind === "kidos-gateway")
+      throw new AgentError(errors.unavailable, "The protected model adapter did not provide this configured role.");
+    return new ChatOpenAICompletions({
+      model: role === "executor" && hasImages && spec.provider.roles.vision ? spec.provider.roles.vision : spec.provider.roles[role] || spec.provider.roles.executor,
       apiKey: context.credential || "ollama-local",
-      streaming: true,
+      streaming: role === "executor",
       maxRetries: 0,
       configuration: {
         baseURL: spec.provider.endpoint,
@@ -132,6 +146,21 @@ export async function executeGraph(
         ),
       },
     });
+  };
+  const model = modelForRole("executor");
+  let systemPrompt = spec.systemPrompt;
+  if (spec.runtime === "deep" && spec.provider.roles.planner) {
+    let guidance = context.memo?.get("planner") as string | undefined;
+    if (guidance === undefined) {
+    const planned = await modelForRole("planner").invoke([
+      new SystemMessage("Produce concise planning guidance for the executor: at most eight concrete actions. Do not claim to execute tools or finish the task. Do not provide private reasoning."),
+      new HumanMessage(JSON.stringify({ request: spec.messages.filter((message) => message.role === "user").at(-1)?.content, mode: spec.mode })),
+    ], { signal: context.signal });
+    guidance = planned.text.slice(0, 8000);
+    context.memo?.put("planner", guidance);
+    }
+    systemPrompt += `\n\nAdvisory planner guidance; verify through the authorized tools:\n${guidance}`;
+  }
   const tools = spec.tools.map((definition) =>
     tool(
       async (input, runtime) => {
@@ -141,11 +170,13 @@ export async function executeGraph(
             errors.forbidden,
             "Plan mode cannot perform mutations.",
           );
-        const callId = runtime?.toolCall?.id;
-        if (!callId)
-          throw new Error(
-            "A stable LangGraph tool call identifier is required.",
-          );
+        const toolRuntime = runtime as unknown as ToolRuntime;
+        const providerCallId = toolRuntime.toolCall?.id;
+        const state = toolRuntime.state as { messages?: { id?: string; tool_calls?: unknown[] }[] } | undefined;
+        const messageId = [...(state?.messages ?? [])].reverse().find((message) => message.tool_calls?.length)?.id;
+        // Provider IDs can repeat in later model turns. The persisted AI message
+        // distinguishes graph invocations while remaining stable on replay.
+        const callId = graphOperationId(toolRuntime.config.configurable, messageId, providerCallId);
         let result: unknown;
         try {
           result = await context.invokeTool(definition, input, callId);
@@ -171,76 +202,29 @@ export async function executeGraph(
       },
     ),
   );
-  const messages = spec.messages.map((m) =>
-    m.role === "user"
-      ? new HumanMessage(m.content)
-      : m.role === "assistant"
-        ? new AIMessage(m.content)
-        : new SystemMessage(m.content),
-  );
+  const messages = await Promise.all(spec.messages.map(async (message) => {
+    const content = typeof message.content === "string" ? message.content : await Promise.all(message.content.map(async (block) => {
+      if (block.type === "text") return block;
+      if (!context.resolveAttachment) throw new AgentError(errors.unavailable, "The authenticated attachment adapter is unavailable.");
+      const image = await context.resolveAttachment(block.attachmentId);
+      return { type: "image_url" as const, image_url: { url: `data:${image.mime};base64,${image.data}`, detail: block.detail } };
+    }));
+    const fields = { content, ...(message.id ? { id: message.id } : {}) };
+    return message.role === "user" ? new HumanMessage(fields) : message.role === "assistant" ? new AIMessage(fields) : new SystemMessage(fields);
+  }));
   // Both products use the official graph/tool execution and checkpoint machinery.
   // StateBackend contains virtual files only; it never grants OS filesystem or shell access.
-  const graph =
-    spec.runtime === "deep"
-      ? createDeepAgent({
-          model,
-          tools,
-          systemPrompt: spec.systemPrompt,
-          backend: new StateBackend(),
-          checkpointer: context.checkpointer,
-        })
-      : createAgent({
-          model,
-          tools,
-          systemPrompt: spec.systemPrompt,
-          checkpointer: context.checkpointer,
-        });
-  const previous = await context.checkpointer.getTuple({
-    configurable: { thread_id: context.threadId },
+  const state = await executePreparedGraph({
+    runtime: spec.runtime,
+    graph: { model, tools, systemPrompt, checkpointer: context.checkpointer,
+      ...(spec.runtime === "deep" ? { backend: new StateBackend() } : {}) },
+    threadId: context.threadId, signal: context.signal, recursionLimit: spec.recursionLimit,
+    initial: { messages, ...(spec.files ? { files: spec.files } : {}) },
+    reconciliations: context.reconciliations,
+    requireCheckpoint: context.requireCheckpoint,
+    delta: async (text) => context.emit("text.delta", { text }),
+    turn: async (toolTurn) => { if (toolTurn) context.emit("text.reset", {}); },
   });
-  const snapshot = (
-    previous
-      ? await graph.getState({ configurable: { thread_id: context.threadId } })
-      : undefined
-  ) as
-    | { tasks?: { interrupts?: { id?: string; value: unknown }[] }[] }
-    | undefined;
-  const resumes: Record<string, unknown> = {};
-  for (const task of snapshot?.tasks ?? [])
-    for (const pause of task.interrupts ?? []) {
-      const value = pause.value as { callId?: string } | undefined;
-      if (
-        pause.id &&
-        value?.callId &&
-        Object.hasOwn(context.reconciliations ?? {}, value.callId)
-      )
-        resumes[pause.id] = context.reconciliations![value.callId];
-    }
-  const run = await graph.streamEvents(
-    Object.keys(resumes).length
-      ? new Command({ resume: resumes })
-      : previous
-        ? null
-        : { messages, ...(spec.files ? { files: spec.files } : {}) },
-    {
-      version: "v3",
-      configurable: { thread_id: context.threadId },
-      signal: context.signal,
-      recursionLimit: spec.recursionLimit,
-    },
-  );
-  const [state] = await Promise.all([
-    run.values,
-    consumeAssistantMessageStreams(
-      run.messages,
-      async (delta) => {
-        context.emit("text.delta", { text: delta });
-      },
-      async (toolTurn) => {
-        if (toolTurn) context.emit("text.reset", {});
-      },
-    ),
-  ]);
   const text = extractFinalAssistantText(state);
   if (!text)
     throw new Error("The graph stopped without a final assistant response.");
@@ -249,5 +233,24 @@ export async function executeGraph(
       ? state.files
       : undefined;
   context.emit("text.final", { text });
-  return { text, ...(files ? { files } : {}) };
+  let goalEvaluation: GoalEvaluation | undefined;
+  if (context.goal) {
+    const virtualEvidence: GoalEvidence[] = [];
+    if (files && typeof files === "object") for (const [name, value] of Object.entries(files)) {
+      const previous = spec.files?.[name];
+      if (contentHash(value) !== contentHash(previous ?? null)) virtualEvidence.push({
+        operationId: `virtual:${contentHash(name)}`, kind: "diff", status: "completed",
+        result: { kind: "virtual_file", path: name, beforeSha256: previous ? contentHash(previous) : null, afterSha256: contentHash(value) },
+      });
+    }
+    try {
+      goalEvaluation = await evaluateGoalEvidence(modelForRole("evaluator"), context.goal, text,
+        [...(context.evidence?.() ?? []), ...virtualEvidence], context.signal);
+    } catch (error) {
+      if (context.signal.aborted || [401, 403].includes(Number((error as { status?: number })?.status))) throw error;
+      goalEvaluation = { decision: "blocked", criteria: [], completedMilestones: [],
+        reason: "The evidence evaluation failed. The response and work remain saved for explicit continuation." };
+    }
+  }
+  return { text, ...(files ? { files } : {}), ...(goalEvaluation ? { goalEvaluation } : {}) };
 }

@@ -21,12 +21,8 @@ import { OllamaDesktopRuntime } from "./runtime-client";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
 import { DesktopStateStore } from "./state-store";
-import { OLLAMA_CATALOG } from "../src/ollama-catalog";
 import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "../src/ollama-public-catalog";
 import {
-  detectMachineProfile,
-  mergeOllamaCandidates,
-  OllamaRecommendationEngine,
   type OllamaRecommendationPlan
 } from "../src/ollama-recommendation";
 
@@ -34,10 +30,11 @@ let window: BrowserWindow | undefined;
 let store: DesktopStateStore;
 const runtime = new OllamaDesktopRuntime({
   bundleDirectory: app.isPackaged ? path.join(process.resourcesPath, "companion-engine") : path.join(__dirname, "..", "engine-dist"),
-  development: !app.isPackaged
+  development: !app.isPackaged,
+  onRunState: (state) => publish({ type: "run-state", state })
 });
 let contextBrowser: DesktopContextBrowser;
-const approvals = new Map<string, (approved: boolean) => void>();
+const approvals = new Map<string, { request: ApprovalRequest; resolve: (approved: boolean) => void }>();
 let cachedOllama: { connected: boolean; version?: string; models: OllamaModel[]; error?: string } = {
   connected: false,
   models: []
@@ -60,6 +57,59 @@ app.whenReady().then(async () => {
     (context) => publish({ type: "context-snapshot", snapshot: context })
   );
   registerIpc();
+  void runtime.modelRoles(store.snapshot().modelRoles).then(async (roles) => {
+    if (roles) await store.update({ modelRoles: roles });
+  }).catch((error) => dialog.showErrorBox("Motor local", String(error)));
+  void runtime.recoverModelJobs(
+    (progress) => window?.webContents.send("companion:pull-progress", progress),
+    async (recommendation) => {
+      activeRecommendation = recommendation;
+      await store.update({ lastRecommendation: recommendation });
+      await publishSnapshot();
+    }
+  ).catch((error) => publish({ type: "run-error", threadId: store.snapshot().activeThreadId, message: String(error) }));
+  void runtime.recover(store.snapshot().workspacePath, (description) => {
+    const thread = store.snapshot().threads.find((item) => item.id === description.threadId);
+    if (!thread || thread.messages.some((message) => message.id === description.assistantMessageId && message.status === "complete")) return;
+    let text = "";
+    const steps: DesktopExecutionStep[] = [];
+    const savePartial = () => store.replaceMessage(thread.id, {
+      id: description.assistantMessageId, role: "assistant", text,
+      createdAt: description.run.createdAt, status: "streaming", executionSteps: [...steps],
+    });
+    return {
+      callbacks: {
+        approval: requestApproval,
+        activity: (activity) => publish({ type: "activity", activity }),
+        delta: (messageId, delta) => {
+          text += delta;
+          publish({ type: "assistant-delta", threadId: thread.id, messageId, delta });
+          void savePartial();
+        },
+        step: (messageId, step) => {
+          if (!steps.some((item) => item.id === step.id)) steps.push(step);
+          publish({ type: "assistant-step", threadId: thread.id, messageId, step });
+        },
+        reset: (messageId) => {
+          text = "";
+          publish({ type: "assistant-reset", threadId: thread.id, messageId });
+        },
+      },
+      openPreview: async (url) => {
+        if (!window || window.isDestroyed()) throw new Error("Abra a janela para visualizar o preview.");
+        await contextBrowser.open(url);
+        publish({ type: "context-focus", url });
+      },
+      complete: async ({ message, changes }) => {
+        await store.replaceMessage(thread.id, message);
+        publish({ type: "assistant-complete", threadId: thread.id, message, changes });
+        await publishSnapshot();
+      },
+    };
+  }).catch((error) => {
+    publish({ type: "run-error", threadId: store.snapshot().activeThreadId,
+      message: error instanceof Error ? error.message : "Não foi possível recuperar a execução. Abra o aplicativo novamente para tentar reconectar." });
+  });
 }).catch((error) => {
   dialog.showErrorBox("Local Companion", error instanceof Error ? error.message : "Unable to start the application.");
   app.quit();
@@ -74,7 +124,6 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  recommendationController?.abort();
   runtime.dispose();
   contextBrowser?.close();
   // Pending approvals remain with the service when this interface closes.
@@ -98,6 +147,10 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true
     }
+  });
+  window.webContents.on("did-finish-load", () => {
+    for (const pending of approvals.values())
+      window?.webContents.send("companion:approval-request", pending.request);
   });
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -124,7 +177,9 @@ function registerIpc(): void {
   });
   ipcMain.handle("companion:set-model", async (_event, model: unknown) => {
     if (typeof model !== "string" || !model.trim()) throw new Error("Choose an Ollama model.");
-    await store.update({ modelRoles: { ...store.snapshot().modelRoles, executor: model.trim() } });
+    const roles = { ...store.snapshot().modelRoles, executor: model.trim() };
+    await runtime.configureModelRoles(roles);
+    await store.update({ modelRoles: roles });
     return publishSnapshot();
   });
   ipcMain.handle("companion:set-mode", async (_event, mode: unknown) => {
@@ -156,6 +211,7 @@ function registerIpc(): void {
   ipcMain.handle("companion:recommend-models", async () => recommendModels());
   ipcMain.handle("companion:cancel-recommendation", () => {
     recommendationController?.abort();
+    void runtime.cancelRecommendation();
   });
   ipcMain.handle("companion:set-public-ollama-catalog", async (_event, enabled: unknown) => {
     if (typeof enabled !== "boolean") throw new Error("Invalid public catalog preference.");
@@ -189,6 +245,7 @@ function registerIpc(): void {
       throw new Error(`A configuração ativa não foi alterada. Baixe primeiro: ${missing.join(", ")}.`);
     }
     modelRoleNotices = [];
+    await runtime.configureModelRoles(roles);
     await store.update({ modelRoles: roles, lastRecommendation: recommendation });
     return publishSnapshot();
   });
@@ -205,7 +262,9 @@ function registerIpc(): void {
   ipcMain.handle("companion:pull-model", async (_event, model: unknown) => {
     if (typeof model !== "string") throw new Error("Invalid Ollama model.");
     await runtime.pullModel(model, (progress) => window?.webContents.send("companion:pull-progress", progress));
-    await store.update({ modelRoles: { ...store.snapshot().modelRoles, executor: model } });
+    const roles = { ...store.snapshot().modelRoles, executor: model };
+    await runtime.configureModelRoles(roles);
+    await store.update({ modelRoles: roles });
     return publishSnapshot(true);
   });
   ipcMain.handle("companion:send", async (_event, request: SendRequest) => {
@@ -245,7 +304,7 @@ function registerIpc(): void {
   });
   ipcMain.handle("companion:approval", async (_event, id: unknown, approved: unknown) => {
     if (typeof id !== "string" || typeof approved !== "boolean") return;
-    approvals.get(id)?.(approved);
+    approvals.get(id)?.resolve(approved);
     approvals.delete(id);
   });
 }
@@ -330,6 +389,7 @@ async function send(request: SendRequest): Promise<void> {
       mode: state.mode,
       agentRuntime: state.agentRuntime,
       assistantMessageId,
+      userMessageId: userMessage.id,
       openPreview: async (url) => {
         const context = await contextBrowser.open(url);
         const preview = context.tabs.find((tab) => tab.id === context.activeTabId && tab.url === url)
@@ -350,7 +410,7 @@ async function send(request: SendRequest): Promise<void> {
           publish({ type: "assistant-delta", threadId: request.threadId, messageId, delta });
         },
         step: (messageId, step) => {
-          executionSteps.push(step);
+          if (!executionSteps.some((item) => item.id === step.id)) executionSteps.push(step);
           publish({ type: "assistant-step", threadId: request.threadId, messageId, step });
         },
         reset: (messageId) => {
@@ -423,31 +483,17 @@ async function recommendModels(): Promise<DesktopSnapshot> {
       publicCatalogWarning = `O catálogo público não pôde ser carregado; a análise usou o catálogo incorporado (${error instanceof Error ? error.message : String(error)}).`;
     }
   }
-  const candidates = mergeOllamaCandidates({
-    bundled: OLLAMA_CATALOG,
-    ...(state.ollamaPublicCatalogEnabled && publicOllamaCatalog ? { publicCatalog: publicOllamaCatalog } : {}),
-    installed: cachedOllama.models.map((model) => ({
-      name: model.name,
-      size: model.size,
-      capabilities: model.capabilities,
-      contextLength: model.contextLength
-    }))
-  });
-  const machine = await detectMachineProfile(app.getPath("userData"), cachedOllama.version);
   const docker = state.dockerSandboxEnabled
     ? await runtime.dockerStatus()
     : { available: false as const, images: [], error: "Docker sandbox disabled by installation/setup preference." };
   const advisor = cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())
     ? state.modelRoles.executor
     : undefined;
-  activeRecommendation = await new OllamaRecommendationEngine().recommend({
-    machine,
-    candidates,
-    supportedRoles: ["executor", "planner", "evaluator", "vision", "embedding"],
-    installedDockerImages: docker.images.map((image) => image.alias),
+  activeRecommendation = await runtime.recommendModels({
     advisorModel: advisor,
-    ...(advisor ? { invokeAdvisor: (prompt: string) => runtime.invokeAdvisor(advisor, prompt, controller.signal) } : {})
-  });
+    installedDockerImages: docker.images.map((image) => image.alias),
+    ...(state.ollamaPublicCatalogEnabled && publicOllamaCatalog ? { publicCatalog: publicOllamaCatalog } : {})
+  }, controller.signal);
   if (publicCatalogWarning) {
     activeRecommendation = {
       ...activeRecommendation,
@@ -468,10 +514,9 @@ async function recommendModels(): Promise<DesktopSnapshot> {
 }
 
 async function requestApproval(request: ApprovalRequest): Promise<boolean> {
-  if (!window || window.isDestroyed()) return false;
   return new Promise<boolean>((resolve) => {
-    approvals.set(request.id, resolve);
-    window!.webContents.send("companion:approval-request", request);
+    approvals.set(request.id, { request, resolve });
+    if (window && !window.isDestroyed()) window.webContents.send("companion:approval-request", request);
   });
 }
 
@@ -499,6 +544,7 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
     const resolution = resolveInstalledModelRoles(state.modelRoles, cachedOllama.models, state.lastRecommendation);
     modelRoleNotices = resolution.notices;
     if (resolution.ready && !sameModelRoles(state.modelRoles, resolution.roles)) {
+      await runtime.configureModelRoles(resolution.roles);
       await store.update({ modelRoles: resolution.roles });
     }
   } else {
@@ -510,7 +556,8 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
     context: contextBrowser.snapshot(),
     ollamaPublicCatalogLoaded: Boolean(publicOllamaCatalog),
     modelRoleNotices,
-    running: runtime.running
+    running: runtime.running,
+    runState: runtime.state
   };
 }
 

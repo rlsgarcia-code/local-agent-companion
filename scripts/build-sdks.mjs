@@ -6,6 +6,8 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { generateThirdPartyNotices } from "./generate-third-party-notices.mjs";
 import * as path from "node:path";
+const versions = JSON.parse(await readFile("packages/contracts/src/version.json", "utf8"));
+
 const output = "release/sdk";
 const lockedDependencies=JSON.parse(await readFile("package-lock.json","utf8"));
 await rm(output, { recursive: true, force: true });
@@ -70,9 +72,9 @@ await writeFile(
   JSON.stringify(
     {
       name: "@companion/client-sdk",
-      version: "1.0.0-rc.1",
-      node: "22.23.4",
-      protocol: "1.0",
+      version: versions.engine,
+      node: versions.node,
+      protocol: versions.protocol,
       dependencies:{zod:lockedDependencies.packages["node_modules/zod"].version},
       main: "./typescript/client-ts/src/index.cjs",
       types: "./typescript/client-ts/src/index.d.ts",
@@ -113,8 +115,8 @@ if (process.env.COMPANION_RELEASE_SIGNING_KEY) {
     JSON.stringify(
       {
         kind: "companion-sdks",
-        version: "1.0.0-rc.1",
-        protocol: "1.0",
+        version: versions.engine,
+        protocol: versions.protocol,
         commit: process.env.GITHUB_SHA,
         files,
       },
@@ -127,7 +129,7 @@ if (process.env.COMPANION_RELEASE_SIGNING_KEY) {
     path.join(output, "manifest.sig"),
     sign(null, manifest, process.env.COMPANION_RELEASE_SIGNING_KEY),
   );
-  const archive = path.resolve("release/companion-sdks-1.0.0-rc.1.tar.gz");
+  const archive = path.resolve(`release/companion-sdks-${versions.engine}.tar.gz`);
   execFileSync("tar", ["-czf", archive, "-C", "release", "sdk"]);
   await writeFile(
     `${archive}.sha256`,

@@ -51,6 +51,9 @@ export class DockerSandboxManager {
   ): void {
     this.processes.setEventSink(sink);
   }
+  public get hasActiveResources(): boolean {
+    return this.processes.inspect().some((process) => process.state === "running");
+  }
 
   public async status(): Promise<{
     available: boolean;
@@ -276,16 +279,16 @@ export class DockerSandboxManager {
   }
 
   public dispose(): void {
-    for (const entry of this.entries.values()) {
-      const cleanup = spawn(
-        resolveDockerExecutable(),
-        ["rm", "--force", entry.proxyContainerName, entry.containerName],
-        { shell: false, stdio: "ignore", env: dockerEnvironment() },
-      );
-      cleanup.unref();
-    }
-    this.processes.dispose();
+    void this.shutdown();
+  }
+
+  public async shutdown(): Promise<void> {
+    const entries = [...this.entries.values()];
     this.entries.clear();
+    await Promise.allSettled([
+      this.processes.shutdown(),
+      ...entries.map((entry) => runDocker(["rm", "--force", entry.proxyContainerName, entry.containerName], undefined, 10_000)),
+    ]);
   }
 
   private async requireInstalledImage(image: string): Promise<void> {

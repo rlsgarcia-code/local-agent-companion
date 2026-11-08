@@ -8,7 +8,7 @@ const sourceFiles = readdirSync("src")
 const sources = new Map(sourceFiles.map((file) => [file, readFileSync(file, "utf8")]));
 const agent = sources.get("src/agent.ts") ?? "";
 const semanticMemory = sources.get("src/semantic-memory.ts") ?? "";
-const gateway = sources.get("src/gateway.ts") ?? "";
+const gateway = readFileSync("packages/agent-core/src/gateway.ts", "utf8");
 const chroma = sources.get("src/chroma.ts") ?? "";
 const mcpCatalog = sources.get("src/mcp-catalog.ts") ?? "";
 const ollamaPublicCatalog = sources.get("src/ollama-public-catalog.ts") ?? "";

@@ -18,6 +18,7 @@ import { AgentService } from "../packages/agent-service/src/service";
 import { LocalServer } from "../packages/agent-service/src/server";
 import { Store } from "../packages/agent-service/src/store";
 import {
+  ENGINE_VERSION,
   AgentError,
   errors,
   runSpec,
@@ -70,7 +71,7 @@ test("release verification rejects tampering, undeclared files and unsigned prod
     const manifest = Buffer.from(
       JSON.stringify({
         node: "22.23.4",
-        version: "1.0.0-rc.1",
+        version: ENGINE_VERSION,
         protocol: "1.0",
         target: `${process.platform}-${process.arch}`,
         files,
@@ -100,7 +101,12 @@ test("release verification rejects tampering, undeclared files and unsigned prod
 test("a lost tool acknowledgement is interrupted and reconciled without repeating the effect", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "companion-reconcile-"));
   const store = new Store(path.join(directory, "metadata.sqlite"));
-  const reg: Registration = { ...registration, hostTools: ["write_fixture"] };
+  const writeTool = {
+    name: "write_fixture", description: "Write an isolated test fixture",
+    schema: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+    effect: "write" as const,
+  };
+  const reg: Registration = { ...registration, hostTools: ["write_fixture"], toolCatalog: [writeTool] };
   const credential = await createClientCredential(directory, reg);
   store.register(credential);
   const identity = await ensureIdentity(directory);
@@ -133,18 +139,7 @@ test("a lost tool acknowledgement is interrupted and reconciled without repeatin
       spec: {
         ...spec,
         mode: "execute",
-        tools: [
-          {
-            name: "write_fixture",
-            description: "Write an isolated test fixture",
-            schema: {
-              type: "object",
-              properties: { value: { type: "string" } },
-              required: ["value"],
-            },
-            effect: "write",
-          },
-        ],
+        tools: [writeTool],
       },
     });
     let offered: { id: string; payload: unknown }[] = [];
@@ -170,7 +165,7 @@ test("a lost tool acknowledgement is interrupted and reconciled without repeatin
     );
     await client.call("tools.reconcile", {
       runId: run.id,
-      callId: "effect-1",
+      callId: (offered[0]!.payload as { callId: string }).callId,
       result: { written: true },
     });
     await client.call("runs.resume", { id: run.id });
@@ -261,6 +256,8 @@ test("revocation survives registration refresh; recovery never repeats an unknow
       "companion-mac",
     );
     f.store.revoke(registration.id);
+    f.store.register({ ...credential, token: "rotated-after-revocation" });
+    assert.throws(() => f.store.authenticate(registration.id, "rotated-after-revocation"), /revoked/);
     f.store.register(credential);
     assert.throws(
       () => f.store.authenticate(registration.id, credential.token),
@@ -456,4 +453,79 @@ test("missing host credential explicitly blocks a run and never writes a credent
     service.close();
     await rm(f.dir, { recursive: true, force: true });
   }
+});
+
+test("the official SQLite serializer removes leased credentials from graph checkpoints as well as public events", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "engine-checkpoint-secret-"));
+  const store = new Store(path.join(directory, "metadata.sqlite"));
+  const reg: Registration = { ...registration, id: "vscode-checkpoint", product: "companion-vscode", providers: ["litellm"] };
+  const secret = "checkpoint-secret-fixture-only";
+  const { emptyCheckpoint } = await import("@langchain/langgraph-checkpoint");
+  const service = new AgentService(store, directory, async (_spec, context) => {
+    const config = { configurable: { thread_id: context.threadId } };
+    const checkpoint = { ...emptyCheckpoint(), channel_values: { public: "kept", privateEcho: context.credential } };
+    await context.checkpointer.put(config, checkpoint, { source: "input", step: 0, parents: {} }, {});
+    const restored = await context.checkpointer.getTuple(config);
+    assert.equal(restored?.checkpoint.channel_values.privateEcho, "[credential redacted]");
+    assert.equal(restored?.checkpoint.channel_values.public, "kept");
+    return { text: context.credential };
+  });
+  try {
+    const session = store.createSession(reg, "Secret checkpoint");
+    await service.dispatch(reg, "credentials.lease", { reference: "provider", value: secret }, "host");
+    const run = await service.dispatch(reg, "runs.start", { sessionId: session.id, key: "checkpoint-secret", spec: {
+      ...spec, provider: { kind: "litellm", endpoint: "https://gateway.example/v1", roles: { executor: "fixture" }, credentialRef: "provider" },
+    } }, "host") as Run;
+    for (let i = 0; i < 100 && store.run(reg, run.id).state === "running"; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(store.run(reg, run.id).state, "completed");
+    assert.ok(!JSON.stringify(store.run(reg, run.id)).includes(secret));
+    const { readdir } = await import("node:fs/promises");
+    for (const entry of await readdir(directory, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const file = path.join(entry.parentPath, entry.name);
+      assert.ok(!(await readFile(file)).includes(Buffer.from(secret)), "Secret reached a persisted engine file");
+    }
+  } finally { service.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("a host callback failure after an effect is not automatically invoked again by the SDK", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "engine-host-failure-"));
+  const definition = { name: "write_fixture", description: "Isolated fixture", schema: { type: "object", properties: {}, additionalProperties: false }, effect: "write" as const };
+  const reg: Registration = { ...registration, hostTools: [definition.name], toolCatalog: [definition] };
+  const store = new Store(path.join(directory, "metadata.sqlite"));
+  const credential = await createClientCredential(directory, reg);
+  store.register(credential);
+  const identity = await ensureIdentity(directory);
+  const model = new FakeToolCallingModel({ toolCalls: [[{ name: definition.name, args: {}, id: "write-once" }], []] });
+  const service = new AgentService(store, directory, (run, context) => executeGraph(run, { ...context, model }));
+  const server = new LocalServer(service, directory);
+  const client = new AgentClient({ address: ipcPath(directory), certificate: identity.cert, credential });
+  await server.listen();
+  let effects = 0;
+  const controller = new AbortController();
+  try {
+    await client.connect();
+    const session = await client.call<{ id: string }>("sessions.create", { title: "Failed acknowledgement" });
+    const run = await client.startRun(session.id, "failure", { ...spec, mode: "execute", tools: [definition] });
+    const observation = client.waitForRun(run.id, session.id, () => {}, async () => {
+      effects++;
+      await writeFile(path.join(directory, "effect.txt"), "one");
+      throw new Error("Simulated failure after writing");
+    }, controller.signal);
+    const stopped = observation.catch(() => {});
+    for (let i = 0; i < 100 && store.run(reg, run.id).state !== "awaiting_reconciliation"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(store.run(reg, run.id).state, "awaiting_reconciliation");
+    controller.abort();
+    await stopped;
+    assert.equal(effects, 1);
+    assert.deepEqual(await client.call("host.poll"), []);
+    const receipt = store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started'").get(run.id) as { id: string };
+    await client.call("tools.reconcile", { runId: run.id, callId: receipt.id.slice(run.id.length + 1), result: "Written" });
+    await client.call("runs.resume", { id: run.id });
+    const completed = await client.waitForRun(run.id, session.id, () => {}, async () => { effects++; return "Must not execute"; });
+    assert.equal(completed.state, "completed");
+    assert.equal(effects, 1);
+    assert.equal(await readFile(path.join(directory, "effect.txt"), "utf8"), "one");
+  } finally { controller.abort(); client.close(); await server.close(); await rm(directory, { recursive: true, force: true }); }
 });

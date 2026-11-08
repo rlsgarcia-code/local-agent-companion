@@ -1,12 +1,19 @@
 import { z } from "zod";
+import versions from "./version.json";
+import { identifier } from "./schema";
+export { identifier } from "./schema";
+export * from "./goals";
+export * from "./memory";
+export * from "./models";
 
-export const PROTOCOL_VERSION = "1.0" as const;
-export const ENGINE_VERSION = "1.0.0-rc.1";
-export const NODE_VERSION = "22.23.4";
+export const PROTOCOL_VERSION = versions.protocol;
+export const ENGINE_VERSION = versions.engine;
+export const NODE_VERSION = versions.node;
 export const products = ["companion-mac", "companion-vscode", "kidos"] as const;
 export type Product = (typeof products)[number];
 export const runStates = [
   "running",
+  "cancelling",
   "awaiting_approval",
   "awaiting_host",
   "awaiting_credentials",
@@ -21,11 +28,6 @@ export const terminalStates: ReadonlySet<RunState> = new Set([
   "failed",
   "completed",
 ]);
-export const identifier = z
-  .string()
-  .min(1)
-  .max(128)
-  .regex(/^[a-zA-Z0-9_.:-]+$/);
 export const modelRoles = z
   .object({
     executor: z.string().min(1).max(200),
@@ -48,18 +50,26 @@ export const providerSpec = z
   })
   .strict();
 export type ProviderSpec = z.infer<typeof providerSpec>;
+export const contentBlock = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: z.string().max(1_000_000) }).strict(),
+  z.object({ type: z.literal("image"), attachmentId: identifier, detail: z.enum(["auto", "low", "high"]).default("auto") }).strict(),
+]);
 export const message = z
   .object({
+    id: identifier.optional(),
     role: z.enum(["user", "assistant", "system"]),
-    content: z.string().max(1_000_000),
+    content: z.union([z.string().max(1_000_000), z.array(contentBlock).max(100)]),
   })
-  .strict();
+  .strict()
+  .refine((message) => message.role === "user" || typeof message.content === "string" || message.content.every((block) => block.type === "text"),
+    "Images are accepted only in user messages.");
 export const toolSpec = z
   .object({
     name: identifier,
     description: z.string().max(8000),
     schema: z.record(z.string(), z.unknown()),
     effect: z.enum(["read", "write", "external"]),
+    evidenceKind: z.enum(["test", "diagnostic", "diff", "visual", "command", "mcp", "note"]).optional(),
     host: z.string().max(128).optional(),
   })
   .strict();
@@ -71,6 +81,7 @@ export const runSpec = z
     messages: z.array(message).max(2000),
     systemPrompt: z.string().max(200_000),
     tools: z.array(toolSpec).max(200),
+    goalId: identifier.optional(),
     recursionLimit: z.number().int().min(10).max(2000).default(240),
     files: z
       .record(
@@ -95,6 +106,8 @@ export type Registration = {
   workspace: string;
   providers: ProviderSpec["kind"][];
   hostTools: string[];
+  /** Installed adapter catalog. RPC tool descriptions cannot change its authority. */
+  toolCatalog?: ToolSpec[];
 };
 export type ClientCredential = { registration: Registration; token: string };
 export type Session = {
@@ -112,6 +125,7 @@ export type Run = {
   createdAt: number;
   updatedAt: number;
   result?: unknown;
+  resultAvailable?: boolean;
   error?: string;
 };
 export type EngineEvent = {

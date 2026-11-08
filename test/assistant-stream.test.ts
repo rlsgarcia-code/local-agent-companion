@@ -125,3 +125,16 @@ test("closes the current message lifecycle before propagating a stream failure",
 
   assert.deepEqual(events, ["delta:partial", "end:false"]);
 });
+
+test("private compaction and verifier streams are drained without becoming public text", async () => {
+  const visible: string[] = [];
+  const drained: string[] = [];
+  async function* streams(): AsyncIterable<StreamedAssistantMessage> {
+    for (const node of ["SummarizationMiddleware.before_model", "TaskCompletionGate.after_agent", "model_request"]) {
+      yield { node, text: (async function* () { yield node; drained.push(node); })(), output: Promise.resolve({}) };
+    }
+  }
+  await consumeAssistantMessageStreams(streams(), async (delta) => { visible.push(delta); }, async () => {});
+  assert.deepEqual(visible, ["model_request"]);
+  assert.equal(drained.length, 3);
+});

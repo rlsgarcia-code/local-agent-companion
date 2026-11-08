@@ -3,7 +3,7 @@ import type {
   OllamaRoleConfiguration,
 } from "../../../src/ollama-recommendation";
 import { z } from "zod";
-import { modelRoles } from "./index";
+import { modelRoles, type RunState } from "./index";
 
 export const desktopRunSpec = z
   .object({
@@ -34,6 +34,7 @@ export const desktopRunSpec = z
     mode: z.enum(["review", "execute", "plan"]),
     agentRuntime: z.enum(["standard", "deep"]),
     assistantMessageId: z.string().max(128),
+    userMessageId: z.string().min(1).max(128).optional(),
     contextPages: z
       .array(
         z
@@ -170,6 +171,7 @@ export type DesktopSnapshot = DesktopState & {
   ollamaPublicCatalogLoaded: boolean;
   modelRoleNotices: string[];
   running: boolean;
+  runState?: RunState;
 };
 
 export type DesktopActivity = {
@@ -220,6 +222,7 @@ export type DesktopEvent =
       message: DesktopMessage;
       changes: DesktopChange[];
     }
+  | { type: "run-state"; state?: RunState }
   | { type: "activity"; activity: DesktopActivity }
   | { type: "context-snapshot"; snapshot: DesktopContextSnapshot }
   | { type: "context-focus"; url: string }

@@ -15,13 +15,17 @@ import {
 import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
 import { AgentClient } from "./index";
+import { prepareInstallation } from "./installation";
+import { canonical } from "../../contracts/src/identity";
 import {
   NODE_VERSION,
   ENGINE_VERSION,
   PROTOCOL_VERSION,
+  MAX_FRAME_BYTES,
   type ClientCredential,
   type Product,
   type ProviderSpec,
+  type ToolSpec,
 } from "../../contracts/src/index";
 
 export function engineStateDirectory(): string {
@@ -53,6 +57,7 @@ type BootstrapOptions = {
   workspace: string;
   providers: ProviderSpec["kind"][];
   hostTools: string[];
+  toolCatalog?: ToolSpec[];
   stateDirectory?: string;
   development?: boolean;
   publicKey?: string;
@@ -157,30 +162,44 @@ export async function ensureEngine(
   )
     throw new Error("Unsafe engine state directory.");
   if (process.platform !== "win32") await chmod(directory, 0o700);
+  const prepared = await prepareInstallation(options.bundleDirectory, directory, (folder) =>
+    verifyBundle(folder, options.publicKey, options.development));
   const workspace = options.workspace ? await realpath(options.workspace) : "";
+  const catalog = options.toolCatalog?.length ? options.toolCatalog : undefined;
+  if (options.hostTools.length && !catalog)
+    throw new Error("The installed host adapter must provide its exact authorized tool catalog.");
   const key = createHash("sha256")
-    .update(JSON.stringify([options.product, options.profile, workspace]))
+    .update(JSON.stringify([options.product, options.profile, workspace, options.providers, catalog ?? options.hostTools]))
     .digest("hex");
   const clients = path.join(directory, "clients");
   await mkdir(clients, { recursive: true, mode: 0o700 });
+  const clientsInfo = await lstat(clients);
+  if (!clientsInfo.isDirectory() || clientsInfo.isSymbolicLink() || (process.getuid && clientsInfo.uid !== process.getuid()))
+    throw new Error("Unsafe engine credential directory.");
+  if (process.platform !== "win32") await chmod(clients, 0o700);
   const file = path.join(clients, `${key}.json`);
+  const expected: ClientCredential["registration"] = {
+    id: key, product: options.product, profile: options.profile, workspace, providers: options.providers,
+    hostTools: options.hostTools, ...(catalog ? { toolCatalog: catalog } : {}),
+  };
   let credential: ClientCredential;
   try {
+    const info = await lstat(file);
+    if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_FRAME_BYTES ||
+        (process.getuid && info.uid !== process.getuid()) || (process.platform !== "win32" && (info.mode & 0o077) !== 0))
+      throw new Error("Unsafe product credential file. Repair the trusted enrollment.");
     credential = JSON.parse(await readFile(file, "utf8")) as ClientCredential;
+    if (canonical(credential.registration) !== canonical(expected) || typeof credential.token !== "string" || !/^[A-Za-z0-9_-]{40,256}$/.test(credential.token))
+      throw new Error("Saved credentials do not match this product, profile, workspace and adapter.");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     credential = {
-      registration: {
-        id: key,
-        product: options.product,
-        profile: options.profile,
-        workspace,
-        providers: options.providers,
-        hostTools: options.hostTools,
-      },
+      registration: expected,
       token: randomBytes(32).toString("base64url"),
     };
-    await writeFile(file, JSON.stringify(credential), {
+    const encoded = JSON.stringify(credential);
+    if (Buffer.byteLength(encoded) > MAX_FRAME_BYTES) throw new Error("Installed adapter catalog exceeds its enrollment limit.");
+    await writeFile(file, encoded, {
       mode: 0o600,
       flag: "wx",
     });
@@ -218,10 +237,10 @@ export async function ensureEngine(
       }
     }
     const node = path.join(
-        options.bundleDirectory,
+        prepared.directory,
         process.platform === "win32" ? "node.exe" : "node",
       ),
-      entry = path.join(options.bundleDirectory, "service.cjs");
+      entry = path.join(prepared.directory, "service.cjs");
     const args = [entry, directory];
     if (process.platform === "darwin") {
       const agents = path.join(homedir(), "Library", "LaunchAgents");
@@ -229,6 +248,7 @@ export async function ensureEngine(
       const plist = path.join(agents, "dev.localagent.engine.plist"),
         label = "dev.localagent.engine";
       const definition = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>${label}</string><key>ProgramArguments</key><array>${[node, ...args].map((a) => `<string>${xml(a)}</string>`).join("")}</array><key>RunAtLoad</key><true/><key>LimitLoadToSessionType</key><string>Aqua</string><key>ProcessType</key><string>Interactive</string></dict></plist>`;
+      await new Promise<void>((resolve) => execFile("/bin/launchctl", ["bootout", `gui/${process.getuid!()}/${label}`], () => resolve()));
       await writeFile(plist, definition, { mode: 0o600 });
       await new Promise<void>((resolve, reject) =>
         execFile(
@@ -287,11 +307,21 @@ export async function ensureEngine(
         credential,
       });
       await client.connect();
-      const info = await client.call<{ version: string }>("engine.info");
-      if (info.version !== ENGINE_VERSION)
-        throw new Error(
-          "Installed engine version differs from this product's pinned version. Prepare an update and activate it when all work is finished.",
-        );
+      const info = await client.call<{ version: string; build?: { manifestSha256?: string } }>("engine.info");
+      if (info.version !== ENGINE_VERSION || info.build?.manifestSha256 !== prepared.manifestSha256)
+      {
+        await writeFile(path.join(directory, "prepared-update.json"), JSON.stringify({
+          directory: prepared.directory, manifestSha256: prepared.manifestSha256,
+          version: ENGINE_VERSION, previous: info.build, preparedAt: Date.now(),
+        }), { mode: 0o600 });
+        const activation = await client.call<{ accepted: boolean }>("engine.shutdownIfIdle");
+        if (activation.accepted) {
+          for (let wait = 0; wait < 100 && client.connected; wait++)
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          if (!client.connected) return ensureEngine(options);
+        }
+        throw new Error("The exact engine update is prepared. Finish active work and activate it before using this client; no run was cancelled.");
+      }
       return client;
     } catch (error) {
       client?.close();

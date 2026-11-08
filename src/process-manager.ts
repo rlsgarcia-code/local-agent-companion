@@ -203,11 +203,14 @@ export class LocalProcessManager implements vscode.Disposable {
   }
 
   public dispose(): void {
+    void this.shutdown();
+  }
+
+  public async shutdown(): Promise<void> {
     this.disposed = true;
-    for (const entry of this.processes.values()) {
-      if (entry.state === "running") void terminateProcessTree(entry.child);
-    }
+    const running = [...this.processes.values()].filter((entry) => entry.state === "running");
     this.processes.clear();
+    await Promise.allSettled(running.map((entry) => terminateProcessTree(entry.child)));
   }
 
   private appendOutput(entry: ManagedProcess, stream: "stdout" | "stderr", chunk: Buffer | string): void {

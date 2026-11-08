@@ -1,12 +1,38 @@
 # Local Agent Companion
 
-> Shared-engine extraction is in progress on `codex/companion-suite-engine`.
-> `packages/` contains Agent API v1 contracts, a headless LangChain/Deep Agent
-> service with the official SQLite saver, local TLS IPC and thin TypeScript/Python
-> SDKs. The Mac runtime has been moved into the engine and its RPC client builds.
-> The VS Code and Navi runtime conversions, complete client recovery/imports,
-> installed acceptance and signed release activation are still pending. Existing
-> installations have not been switched to this candidate.
+> Shared-engine candidate **1.0.0-rc.2** is in progress on
+> `codex/companion-suite-engine` (PR #15). The generic and Mac profiles now use
+> one prepared LangChain/Deep Agent executor with the official SQLite saver.
+> Bound effect receipts, durable approvals, credential leases, chunked domain
+> transfers, goals, product memory, immutable engine staging and model jobs are
+> implemented. The Mac source uses the service for execution and Ollama model
+> management, reattaches runs on startup and preserves pending approvals when
+> its window closes. The TypeScript/Python SDKs contain no agent runtime.
+>
+> **Not suite acceptance:** the installed VS Code and Navi executors still use
+> their legacy loops. Their full migration, protected KidOS service-side tool
+> adapter/provisioner, remaining API parity, exact signed dependency integration,
+> per-version state rollback and installed three-client acceptance are pending.
+> Existing Mac and Alien installations have not been switched to this candidate.
+> Legacy readers/loops remain until the required acceptance succeeds.
+
+Candidate recovery behavior: cancellation remains `cancelling` until execution
+settles; disconnected UI tools wait, while unknown dispatched effects require
+explicit reconciliation. Provider call IDs are bound to persisted graph
+invocations and exact arguments. Missing checkpoints with recorded effects never
+restart from the original prompt. Public streams filter internal completion and
+compaction nodes. Session exports retain public history, virtual files, goals,
+product memory, model settings and historical operation receipts; importing an
+export does not replay effects or grant approval authority.
+
+Ollama model jobs are independent of conversation cancellation and survive client
+closure. Engine restart preserves an interrupted job with a diagnostic and
+requires a new explicit request. The Mac's model UI uses `models.*`; the older
+`desktop.*` model routes remain temporary compatibility adapters. Other providers'
+model-management migration and the VS Code semantic-memory adapter remain pending.
+The bundled Node version is read from `packages/contracts/src/version.json`;
+installations stage verified, content-addressed version directories and activate
+only after the old service confirms it is idle.
 
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
 

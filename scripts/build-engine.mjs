@@ -13,6 +13,8 @@ import {
 } from "node:fs/promises";
 import * as path from "node:path";
 
+const versions = JSON.parse(await readFile("packages/contracts/src/version.json", "utf8"));
+
 const root = path.resolve("engine-dist");
 await rm(root, { recursive: true, force: true });
 await mkdir(root, { recursive: true });
@@ -60,10 +62,10 @@ for (const name of ["better-sqlite3", "bindings", "file-uri-to-path"])
   );
 const node =
   process.env.COMPANION_BUNDLED_NODE ||
-  (process.versions.node === "22.23.4"
+  (process.versions.node === versions.node
     ? process.execPath
     : path.resolve(
-        `.cache/node-v22.23.4-${process.platform}-${process.arch}`,
+        `.cache/node-v${versions.node}-${process.platform}-${process.arch}`,
         process.platform === "win32" ? "node.exe" : "bin/node",
       ));
 await copyFile(
@@ -109,9 +111,9 @@ if (!copiedNodeLicense)
 await visit(root);
 const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
 const manifest = {
-  version: "1.0.0-rc.1",
-  protocol: "1.0",
-  node: "22.23.4",
+  version: versions.engine,
+  protocol: versions.protocol,
+  node: versions.node,
   target: `${process.platform}-${process.arch}`,
   development: true,
   dependencies: Object.fromEntries(

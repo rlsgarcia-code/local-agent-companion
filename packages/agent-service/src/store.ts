@@ -19,17 +19,8 @@ import {
   validateProductRegistration,
 } from "./security";
 
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, item) =>
-    item && typeof item === "object" && !Array.isArray(item)
-      ? Object.fromEntries(
-          Object.keys(item)
-            .sort()
-            .map((key) => [key, item[key]]),
-        )
-      : item,
-  );
-}
+import { canonical } from "../../contracts/src/identity";
+import { enforceSystemProvisioning } from "./provisioning";
 
 export class Store {
   readonly db: Database.Database;
@@ -47,19 +38,25 @@ export class Store {
       CREATE UNIQUE INDEX IF NOT EXISTS one_run_per_session ON runs(session) WHERE state NOT IN ('completed','failed','cancelled');
       CREATE TABLE IF NOT EXISTS events(sequence INTEGER PRIMARY KEY AUTOINCREMENT, namespace TEXT NOT NULL, session TEXT NOT NULL, run TEXT, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS receipts(id TEXT PRIMARY KEY, namespace TEXT NOT NULL, run TEXT NOT NULL, status TEXT NOT NULL, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS operation_identities(id TEXT PRIMARY KEY REFERENCES receipts(id), kind TEXT NOT NULL, tool TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS imports(namespace TEXT NOT NULL, key TEXT NOT NULL, hash TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(namespace,key));
+      CREATE TABLE IF NOT EXISTS session_domains(namespace TEXT NOT NULL, session TEXT PRIMARY KEY REFERENCES sessions(id), value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS goals(namespace TEXT NOT NULL, id TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(namespace,id));
       CREATE TABLE IF NOT EXISTS leases(workspace TEXT PRIMARY KEY, run TEXT NOT NULL UNIQUE REFERENCES runs(id));
     `);
+    const columns = this.db.pragma("table_info(receipts)") as { name: string }[];
+    if (!columns.some((column) => column.name === "binding"))
+      this.db.exec("ALTER TABLE receipts ADD COLUMN binding TEXT");
   }
   register(credential: ClientCredential): void {
     validateProductRegistration(credential.registration);
+    enforceSystemProvisioning(credential.registration);
     const previous = this.db
       .prepare("SELECT registration FROM clients WHERE id=?")
       .get(credential.registration.id) as { registration: string } | undefined;
     if (
       previous &&
-      previous.registration !== JSON.stringify(credential.registration)
+      canonical(JSON.parse(previous.registration)) !== canonical(credential.registration)
     )
       throw new AgentError(
         errors.conflict,
@@ -67,7 +64,7 @@ export class Store {
       );
     this.db
       .prepare(
-        "INSERT INTO clients VALUES(?,?,?,0) ON CONFLICT(id) DO UPDATE SET token=excluded.token,revoked=CASE WHEN clients.token=excluded.token THEN clients.revoked ELSE 0 END",
+        "INSERT INTO clients VALUES(?,?,?,0) ON CONFLICT(id) DO UPDATE SET token=excluded.token",
       )
       .run(
         credential.registration.id,
@@ -86,6 +83,7 @@ export class Store {
       );
     const registration = JSON.parse(row.registration) as Registration;
     validateProductRegistration(registration);
+    enforceSystemProvisioning(registration);
     return registration;
   }
   revoke(id: string): void {
@@ -192,6 +190,9 @@ export class Store {
       this.db
         .prepare("INSERT INTO runs VALUES(?,?,?,?,?,?,?)")
         .run(run.id, ns, session, key, hash, run.state, JSON.stringify(run));
+      // Persist the credential-free replay configuration in the same transaction
+      // as admission and the workspace lease, before execution can start.
+      this.saveReceipt(reg, run.id, `spec:${run.id}`, "configuration", spec);
       if (reg.workspace)
         this.db
           .prepare("INSERT INTO leases VALUES(?,?)")
@@ -222,18 +223,16 @@ export class Store {
     sessionId: string,
   ): { session: Session; runs: Run[]; events: EngineEvent[]; cursor: number } {
     const session = this.session(reg, sessionId);
-    const events = (
-      this.db
-        .prepare(
-          "SELECT sequence,value FROM events WHERE namespace=? AND session=? ORDER BY sequence DESC LIMIT 500",
-        )
-        .all(namespace(reg), sessionId) as { sequence: number; value: string }[]
-    )
-      .reverse()
-      .map(
-        (row) =>
-          ({ ...JSON.parse(row.value), sequence: row.sequence }) as EngineEvent,
-      );
+    const rows = this.db.prepare("SELECT sequence,value FROM events WHERE namespace=? AND session=? ORDER BY sequence DESC LIMIT 500")
+      .all(namespace(reg), sessionId) as { sequence: number; value: string }[];
+    const events: EngineEvent[] = [];
+    let bytes = 0;
+    for (const row of rows) {
+      bytes += Buffer.byteLength(row.value);
+      if (events.length && bytes > 4 * 1024 * 1024) break;
+      events.push({ ...JSON.parse(row.value), sequence: row.sequence } as EngineEvent);
+    }
+    events.reverse();
     return {
       session,
       runs: this.runs(reg, sessionId),
@@ -254,6 +253,7 @@ export class Store {
         state,
         updatedAt: Date.now(),
       };
+      if (["running", "completed", "cancelled"].includes(state) && !("error" in extra)) delete run.error;
       this.db
         .prepare("UPDATE runs SET state=?,value=? WHERE id=?")
         .run(state, JSON.stringify(run), id);
@@ -299,19 +299,19 @@ export class Store {
     limit = 500,
   ): EngineEvent[] {
     this.session(reg, session);
-    return (
-      this.db
-        .prepare(
-          "SELECT sequence,value FROM events WHERE namespace=? AND session=? AND sequence>? ORDER BY sequence LIMIT ?",
-        )
-        .all(namespace(reg), session, cursor, limit) as {
-        sequence: number;
-        value: string;
-      }[]
-    ).map(
-      (r) => ({ ...JSON.parse(r.value), sequence: r.sequence }) as EngineEvent,
-    );
+    const rows = this.db.prepare(
+      "SELECT sequence,value FROM events WHERE namespace=? AND session=? AND sequence>? ORDER BY sequence LIMIT ?",
+    ).all(namespace(reg), session, cursor, limit) as { sequence: number; value: string }[];
+    const result: EngineEvent[] = [];
+    let bytes = 0;
+    for (const row of rows) {
+      bytes += Buffer.byteLength(row.value);
+      if (result.length && bytes > 4 * 1024 * 1024) break;
+      result.push({ ...JSON.parse(row.value), sequence: row.sequence } as EngineEvent);
+    }
+    return result;
   }
+
   importDomain(reg: Registration, key: string, value: unknown): Session {
     const ns = namespace(reg),
       hash = createHash("sha256").update(canonical(value)).digest("hex");
@@ -328,8 +328,10 @@ export class Store {
         return JSON.parse(row.value) as Session;
       }
       const session = this.createSession(reg, "Imported conversation", key);
+      const encoded = JSON.stringify(value);
+      this.db.prepare("INSERT INTO session_domains VALUES(?,?,?)").run(ns, session.id, encoded);
       this.append(reg, session.id, "session.imported", {
-        domain: value,
+        domainStored: true,
         checkpoint: "legacy_incompatible",
         requiresContinuation: true,
       });
@@ -339,15 +341,77 @@ export class Store {
       return session;
     })();
   }
+  domain(reg: Registration, sessionId: string): unknown {
+    this.session(reg, sessionId);
+    const row = this.db.prepare("SELECT value FROM session_domains WHERE namespace=? AND session=?")
+      .get(namespace(reg), sessionId) as { value: string } | undefined;
+    if (row) return JSON.parse(row.value);
+    // Readers for foundation imports remain available during migration.
+    for (const event of this.events(reg, sessionId)) {
+      if (event.type === "session.imported") return (event.data as { domain?: unknown }).domain ?? {};
+    }
+    return {};
+  }
+  exportDomain(reg: Registration, sessionId: string, readResult?: (id: string) => unknown, throughRunId?: string): unknown {
+    const imported = this.domain(reg, sessionId);
+    const base = imported && typeof imported === "object" && !Array.isArray(imported)
+      ? imported as Record<string, unknown> : { legacyDomain: imported };
+    const thread = base.thread as { messages?: Record<string, unknown>[] } | undefined;
+    const originalMessages = Array.isArray(base.messages) ? base.messages : thread?.messages ?? [];
+    const messages: Record<string, unknown>[] = originalMessages.filter((value): value is Record<string, unknown> =>
+      Boolean(value && typeof value === "object" && ["user", "assistant"].includes((value as { role: string }).role)),
+    ).map((value, index) => ({ ...value, id: value.id ?? `legacy-${index}`, content: value.content ?? value.text ?? "" }));
+    const runs = (this.db.prepare("SELECT value FROM runs WHERE namespace=? AND session=? ORDER BY rowid")
+      .all(namespace(reg), sessionId) as { value: string }[]).map((row) => JSON.parse(row.value) as Run);
+    if (throughRunId && !runs.some((run) => run.id === throughRunId))
+      throw new AgentError(errors.missing, "Branch point is not in this session.");
+    let files = base.files;
+    const exportedRuns: unknown[] = [];
+    for (const run of runs) {
+      const configuration = this.receipt(reg, `spec:${run.id}`)?.value as Record<string, unknown> | undefined;
+      const desktop = configuration?.profile === "desktop" ? configuration.spec as Record<string, unknown> : undefined;
+      const user = (configuration?.messages as { id?: string; role: string; content: unknown }[] | undefined)?.filter((message) => message.role === "user").at(-1);
+      const prompt = desktop?.request ?? user?.content;
+      if (prompt !== undefined) messages.push({ id: desktop?.userMessageId ?? user?.id ?? `${run.id}:user`, role: "user", content: prompt, createdAt: run.createdAt });
+      let result = run.result as Record<string, unknown> | undefined;
+      if (result?.kind === "agent-result-transfer" && typeof result.id === "string") {
+        if (!readResult) throw new AgentError(errors.unavailable, "Export requires the stored result transfer reader.");
+        result = readResult(result.id) as Record<string, unknown>;
+      }
+      if (result?.files) files = result.files;
+      if (run.state === "completed" && result) {
+        const message = result.message as Record<string, unknown> | undefined;
+        messages.push(message ? { ...message, content: message.text ?? message.content ?? "" } : {
+          id: `${run.id}:assistant`, role: "assistant", content: result.text ?? "", createdAt: run.updatedAt,
+        });
+      } else {
+        let text = "";
+        const events = this.db.prepare("SELECT value FROM events WHERE namespace=? AND run=? ORDER BY sequence").iterate(namespace(reg), run.id) as Iterable<{ value: string }>;
+        for (const row of events) {
+          const event = JSON.parse(row.value) as EngineEvent;
+          const data = event.data as { text?: string; delta?: string };
+          if (event.type === "text.reset" || event.type === "desktop.reset") text = "";
+          if (event.type === "text.delta") text += data.text ?? "";
+          if (event.type === "desktop.delta") text += data.delta ?? "";
+          if (event.type === "text.final") text = data.text ?? text;
+        }
+        if (text) messages.push({ id: `${run.id}:assistant`, role: "assistant", content: text, status: "interrupted", createdAt: run.updatedAt });
+      }
+      exportedRuns.push({ id: run.id, state: run.state, createdAt: run.createdAt, updatedAt: run.updatedAt, error: run.error });
+      if (run.id === throughRunId) break;
+    }
+    return { ...base, messages, ...(files ? { files } : {}), runs: exportedRuns,
+      checkpoint: "domain-only", requires_explicit_continuation: true };
+  }
   receipt(
     reg: Registration,
     id: string,
-  ): { status: string; value: unknown } | undefined {
+  ): { status: string; value: unknown; binding?: string } | undefined {
     const row = this.db
-      .prepare("SELECT status,value FROM receipts WHERE namespace=? AND id=?")
-      .get(namespace(reg), id) as { status: string; value: string } | undefined;
+      .prepare("SELECT status,value,binding FROM receipts WHERE namespace=? AND id=?")
+      .get(namespace(reg), id) as { status: string; value: string; binding?: string } | undefined;
     return row
-      ? { status: row.status, value: JSON.parse(row.value) }
+      ? { status: row.status, value: JSON.parse(row.value), binding: row.binding }
       : undefined;
   }
   saveReceipt(
@@ -356,12 +420,17 @@ export class Store {
     id: string,
     status: string,
     value: unknown,
+    binding?: string,
   ): void {
+    this.run(reg, run);
+    const prior = this.receipt(reg, id);
+    if (prior && binding !== undefined && prior.binding !== binding)
+      throw new AgentError(errors.conflict, "Operation identifier was used for different tool arguments or resource.");
     this.db
       .prepare(
-        "INSERT INTO receipts VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,value=excluded.value",
+        "INSERT INTO receipts(id,namespace,run,status,value,binding) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,value=excluded.value",
       )
-      .run(id, namespace(reg), run, status, JSON.stringify(value));
+      .run(id, namespace(reg), run, status, JSON.stringify(value), binding ?? null);
   }
   recover(): void {
     this.db.transaction(() => {

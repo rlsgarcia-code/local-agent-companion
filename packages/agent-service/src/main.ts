@@ -43,7 +43,7 @@ async function main(): Promise<void> {
     target: manifest.target,
     manifestSha256: createHash("sha256").update(rawManifest).digest("hex"),
   };
-  const service = new AgentService(store, directory, undefined, build),
+  const service = new AgentService(store, directory, undefined, build, { deferRecovery: true }),
     server = new LocalServer(service, directory);
   await server.listen();
   // Refresh bootstrap registrations without exposing a provisioning RPC.
