@@ -1,20 +1,17 @@
 # Local Agent Companion
 
-> Shared-engine candidate **1.0.0-rc.6** is in progress on
-> `codex/companion-suite-engine` (PR #15). The generic and Mac profiles now use
-> one prepared LangChain/Deep Agent executor with the official SQLite saver.
-> Bound effect receipts, durable approvals, credential leases, chunked domain
-> transfers, goals, product memory, immutable engine staging and model jobs are
-> implemented. The Mac source uses the service for execution and Ollama model
-> management, reattaches runs on startup and preserves pending approvals when
-> its window closes. The TypeScript/Python SDKs contain no agent runtime.
+> Shared-engine candidate **1.0.0-rc.7** is in progress on
+> `codex/companion-suite-engine` (PR #15). Mac and VS Code execution use the
+> prepared LangChain/Deep Agent executor and official SQLite saver. The editor
+> supplies its approved workspace/language tools; its models, completion gate,
+> semantic memory, goal evaluation and retained processes run in the service.
+> SDKs have no agent runtime. KidOS supplies a separately signed service-side
+> gateway/Core adapter under its system-provisioned UID/product/profile policy.
 >
-> **Not suite acceptance:** the installed VS Code and Navi executors still use
-> their legacy loops. Their full migration, protected KidOS service-side tool
-> adapter/provisioner, remaining API parity, exact signed dependency integration,
-> per-version state rollback and installed three-client acceptance are pending.
-> Existing Mac and Alien installations have not been switched to this candidate.
-> Legacy readers/loops remain until the required acceptance succeeds.
+> Candidate acceptance remains pending the exact signed installed packages,
+> recovery and rollback report. Development tests are not proof of installed
+> compatibility. Legacy import readers are retained; unavailable services fail
+> with a recoverable diagnostic instead of selecting the legacy executor.
 
 Candidate recovery behavior: cancellation remains `cancelling` until execution
 settles; disconnected UI tools wait, while unknown dispatched effects require

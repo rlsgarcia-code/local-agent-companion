@@ -1,0 +1,780 @@
+  public async run(
+    request: string,
+    mode: RunMode,
+    onEvent: (event: AgentUiEvent) => void,
+    options: { replacePendingUser?: boolean; goalId?: string; images?: ImageAttachment[] } = {}
+  ): Promise<void> {
+    if (this.isRunning) {
+      throw new Error("The agent is already working. Cancel the current run first.");
+    }
+    const workspace = vscode.workspace.workspaceFolders?.[0];
+    if (!workspace) {
+      throw new Error("Open a workspace folder so the agent has a safe working directory.");
+    }
+    if (!vscode.workspace.isTrusted) {
+      throw new Error("Trust this workspace in VS Code before running the local coding agent.");
+    }
+
+    this.isRunning = true;
+    const controller = new AbortController();
+    this.abortController = controller;
+    let dispatcher: UndiciAgent | undefined;
+    let activeThreadId: string | undefined;
+    let changeTracker: ChangeTracker | undefined;
+    let activeCollection: ThreadCollection | undefined;
+    let activeConversation: LocalThread | undefined;
+    let runId: string | undefined;
+    let workspaceLease: WorkspaceRunLease | undefined;
+    let mcpSession: McpRunSession | undefined;
+    let sensitiveValues: string[] = [];
+    let activeConnection: ModelConnection | undefined;
+    let activeModelProfile: LiteLlmModelProfile = {};
+    let outcome: RunOutcome = "failed";
+    let runStartedAt = Date.now();
+    let evidenceRecorder: RunEvidenceRecorder | undefined;
+    let journalEvidence: RunEvidenceSnapshot | undefined;
+    let journalChangedFiles: ThreadJournalRecord["changedFiles"] = [];
+    onEvent({ type: "status", label: "Collecting workspace context" });
+
+    try {
+      workspaceLease = await acquireWorkspaceRunLease({
+        storageRoot: this.extensionContext.globalStorageUri.fsPath,
+        workspaceRoot: workspace.uri.fsPath,
+        sessionId: this.sessionId
+      });
+      const configuration = vscode.workspace.getConfiguration("localAgentCompanion");
+      const runtime = parseAgentRuntime(configuration.get("agentRuntime"));
+      const responseLanguage = parseResponseLanguage(configuration.get("responseLanguage"));
+      const images = (options.images || []).slice(0, 4);
+      const maxContextCharacters = configuration.get<number>("maxContextCharacters", 24_000);
+      const maxConversationCharacters = configuration.get<number>("maxConversationCharacters", 48_000);
+      const autoContext = configuration.get<boolean>("autoContext", true);
+      const provider = configuredModelProvider(configuration);
+      const providerWasExplicitlySelected = modelProviderSettingIsExplicit(configuration);
+      const secretName = modelProviderSecret(provider);
+      const apiKey = secretName ? await this.extensionContext.secrets.get(secretName) : undefined;
+      sensitiveValues = apiKey ? [apiKey] : [];
+      const connection = validateModelConnection({
+        provider,
+        endpoint: providerWasExplicitlySelected
+          ? configuration.get<string>("liteLlmEndpoint", "")
+          : modelProviderDefaultEndpoint(provider),
+        model: providerWasExplicitlySelected
+          ? (images.length ? configuration.get<string>("visionModel", "").trim() || configuration.get<string>("liteLlmModel", "") : configuration.get<string>("liteLlmModel", ""))
+          : "",
+        apiKey: apiKey ?? "",
+        authHeader: modelProviderAuthHeader(provider, configuration.get("liteLlmAuthHeader"))
+      });
+      activeConnection = connection;
+      const storedModelProfile = liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
+      const modelProfile = connection.provider === "ollama"
+        ? { ...storedModelProfile, api: "chat_completions" as const, preset: "custom" as const, reasoningEffort: undefined }
+        : storedModelProfile;
+      activeModelProfile = modelProfile;
+      if (connection.provider !== "ollama") {
+        validateLiteLlmModelProfile(connection.model, modelProfile, true);
+      }
+      const resolvedModelApi = connection.provider === "ollama"
+        ? "chat_completions" as const
+        : resolveLiteLlmModelApi(connection.model, modelProfile);
+      const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
+        ? await this.certificateAuthorities(workspace.uri.fsPath)
+        : undefined;
+      controller.signal.throwIfAborted();
+      if (certificateAuthorities) {
+        dispatcher = new UndiciAgent({ connect: { ca: certificateAuthorities } });
+      }
+      const { collection, thread: conversation } = await this.activeConversation();
+      activeCollection = collection;
+      activeConversation = conversation;
+      const threadId = conversation.id;
+      activeThreadId = threadId;
+      let goal = options.goalId ? await this.goals.get(options.goalId) : undefined;
+      if (options.goalId && (!goal || goal.threadId !== threadId)) throw new Error("The selected goal is not linked to the active thread.");
+      if (collection.threads.some((thread) => thread.recovery?.status === "running")) {
+        throw new Error("This workspace already has an active agent run in another VS Code window. Wait for it to finish, then refresh the thread.");
+      }
+      if (goal) {
+        const started = startGoalIteration(goal, crypto.randomUUID());
+        await this.goals.save(started);
+        goal = started;
+        onEvent({ type: "goal", goal: started });
+      }
+      changeTracker = this.changeReview.startRun(workspace.uri.fsPath);
+      let priorMessages: ThreadMessage[] = [];
+      let stagedUserMessage: ThreadMessage | undefined;
+      const requestTime = Date.now();
+      priorMessages = stageThreadRequest(conversation, request, {
+        now: requestTime,
+        replacePendingUser: options.replacePendingUser
+      });
+      stagedUserMessage = conversation.messages.at(-1);
+      if (!stagedUserMessage || stagedUserMessage.role !== "user") {
+        throw new Error("The request could not be staged in the active conversation.");
+      }
+      if (!priorMessages.some((message) => message.role === "user")) {
+        conversation.title = titleFromRequest(request);
+      }
+      conversation.messages = this.compactPersistedConversation(
+        conversation.messages,
+        maxConversationCharacters
+      );
+      runId = goal?.lastRunId ?? crypto.randomUUID();
+      const assistantMessageId = crypto.randomUUID();
+      runStartedAt = Date.now();
+      conversation.recovery = {
+        id: runId,
+        status: "running",
+        mode,
+        runtime,
+        startedAt: runStartedAt,
+        updatedAt: runStartedAt,
+        ownerSessionId: this.sessionId,
+        ownerPid: process.pid
+      };
+      this.activeRunId = runId;
+      this.activeRunCollection = collection;
+      this.activeRunThreadId = threadId;
+      await this.saveThreadCollection(collection);
+      this.startRunHeartbeat(threadId, runId);
+      if (stagedUserMessage) {
+        onEvent({
+          type: "thread",
+          threadId,
+          userMessage: {
+            id: stagedUserMessage.id,
+            text: stagedUserMessage.content,
+            createdAt: stagedUserMessage.createdAt
+          }
+        });
+      }
+
+      const authentication = modelClientAuthentication(connection);
+      const [memoryText, snapshot] = await Promise.all([
+        this.memory.read(200_000),
+        this.contextCollector.collect(maxContextCharacters, autoContext)
+      ]);
+      controller.signal.throwIfAborted();
+      const renderedContext = renderContextWithBudget(snapshot, maxContextCharacters);
+      const context = redactSensitiveText(renderedContext.text, sensitiveValues);
+      const safeMemoryText = redactSensitiveText(memoryText, sensitiveValues);
+
+      const model = resolvedModelApi === "responses"
+        ? new ChatOpenAIResponses({
+            model: connection.model,
+            apiKey: authentication.apiKey,
+            streaming: true,
+            maxRetries: 2,
+            configuration: {
+              baseURL: responsesBaseUrl(connection, connection.model),
+              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+              fetch: gatewayFetch(responsesUrl(connection, connection.model), authentication.stripAuthorization, dispatcher, controller.signal)
+            }
+          })
+        : new ChatOpenAICompletions({
+            model: connection.model,
+            apiKey: authentication.apiKey,
+            streaming: true,
+            streamUsage: true,
+            maxRetries: 2,
+            ...chatCompletionsModelOptions(modelProfile),
+            configuration: {
+              baseURL: chatCompletionsBaseUrl(connection),
+              ...(authentication.defaultHeaders ? { defaultHeaders: authentication.defaultHeaders } : {}),
+              fetch: gatewayFetch(chatCompletionsUrl(connection), authentication.stripAuthorization, dispatcher, controller.signal)
+            }
+          });
+      const usage = new TokenUsageHandler();
+      const visualAnalysisModel = connection.provider === "ollama"
+        ? this.ollamaRoleModel(configuration.get<string>("visionModel", ""), connection, authentication, dispatcher, controller.signal) ?? model
+        : model;
+      const plannerModel = connection.provider === "ollama"
+        ? this.ollamaRoleModel(configuration.get<string>("ollamaPlannerModel", ""), connection, authentication, dispatcher, controller.signal)
+        : undefined;
+      const evaluatorModel = connection.provider === "ollama"
+        ? this.ollamaRoleModel(configuration.get<string>("ollamaEvaluatorModel", ""), connection, authentication, dispatcher, controller.signal)
+        : undefined;
+      const browserSession = this.localBrowserSession(workspace.uri.fsPath, configuration, onEvent, sensitiveValues);
+      const processManager = this.localProcessManager(workspace.uri.fsPath, onEvent, sensitiveValues);
+      const projectIndex = this.localProjectIndex(workspace.uri.fsPath);
+      const evidence = new RunEvidenceRecorder();
+      evidenceRecorder = evidence;
+      const toolHost = new LocalToolHost(
+        workspace.uri.fsPath,
+        this.memory,
+        onEvent,
+        changeTracker,
+        sensitiveValues,
+        browserSession,
+        browserSession
+          ? async ({ images, question, signal }) => {
+              onEvent({ type: "status", label: "Reviewing local app screenshot" });
+              try {
+                const result = await visualAnalysisModel.invoke([
+                  new HumanMessage({
+                    content: [
+                      { type: "text", text: question },
+                      ...images.flatMap((image) => [
+                        { type: "text" as const, text: image.label },
+                        {
+                          type: "image_url" as const,
+                          image_url: { url: `data:${image.mimeType};base64,${image.bytes.toString("base64")}` }
+                        }
+                      ])
+                    ]
+                  })
+                ], { signal, callbacks: [usage] });
+                const analysis = result.text.trim();
+                if (!analysis) throw new Error("The selected model returned no visual analysis.");
+                return redactSensitiveText(analysis, sensitiveValues);
+              } finally {
+                onEvent({ type: "status", label: `${agentRuntimeLabel(runtime)} is thinking` });
+              }
+            }
+          : undefined,
+        processManager,
+        projectIndex,
+        evidence
+      );
+      mcpSession = await this.corporateMcp.createRunSession({
+        mode,
+        dispatcher,
+        signal: controller.signal,
+        onEvent,
+        onToolUsed: (name) => evidence.mcpTool({ tool: name, approved: true }),
+        sensitiveValues,
+        stdioCaPath: certificateAuthorities ? importedGatewayCaPath(this.extensionContext) : undefined
+      });
+      sensitiveValues.push(...mcpSession.sensitiveValues);
+      let projectMemory = safeMemoryText.slice(-12_000);
+      let memoryReferences = memoryReferencePreviews(projectMemory);
+      let memoryReceipt: AgentContextReceipt["memory"] = {
+        mode: "recent",
+        recalledChunks: 0,
+        estimatedTokens: Math.ceil(projectMemory.length / 4),
+        fallback: false,
+        references: memoryReferences
+      };
+      const semanticMemoryEnabled = configuration.get<boolean>("semanticMemoryEnabled", true);
+      const embeddingModel = configuration.get<string>("embeddingModel", "").trim();
+      const embeddingEndpoint = configuration.get<string>("embeddingEndpoint", "").trim();
+      if (semanticMemoryEnabled && embeddingModel) {
+        const embeddingConnection = embeddingEndpoint ? { ...connection, endpoint: embeddingEndpoint } : connection;
+        try {
+          const recalled = await this.semanticMemory.recall({
+            query: request,
+            memoryText: safeMemoryText,
+            embeddingModel,
+            embeddingsBaseUrl: embeddingsBaseUrl(embeddingConnection, embeddingModel, Boolean(embeddingEndpoint)),
+            apiKey: authentication.apiKey,
+            defaultHeaders: authentication.defaultHeaders,
+            fetch: gatewayFetch(
+              embeddingsUrl(embeddingConnection, embeddingModel, Boolean(embeddingEndpoint)),
+              authentication.stripAuthorization,
+              dispatcher,
+              controller.signal
+            ),
+            results: configuration.get<number>("semanticMemoryResults", 5),
+            signal: controller.signal
+          });
+          if (recalled.length) {
+            projectMemory = redactSensitiveText(recalled.join("\n\n---\n\n"), sensitiveValues);
+            memoryReferences = memoryReferencePreviews(projectMemory);
+          }
+          memoryReceipt = {
+            mode: "semantic",
+            recalledChunks: recalled.length,
+            estimatedTokens: Math.ceil(projectMemory.length / 4),
+            fallback: false,
+            references: memoryReferences
+          };
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          onEvent({ type: "status", label: "Semantic memory unavailable; using memory.md" });
+          onEvent({
+            type: "activity",
+            kind: "memory",
+            title: "Semantic memory fallback",
+            detail: safeErrorMessage(error, sensitiveValues)
+          });
+          memoryReceipt = {
+            mode: "recent",
+            recalledChunks: 0,
+            estimatedTokens: Math.ceil(projectMemory.length / 4),
+            fallback: true,
+            references: memoryReferences
+          };
+        }
+      }
+
+      let plannerGuidance = "";
+      if (goal && plannerModel) {
+        onEvent({ type: "status", label: "Planning the current goal iteration" });
+        const planned = await plannerModel.invoke([
+          new SystemMessage("You are the planning specialist for a local coding agent. Return a concise, concrete operational plan for the executor. Do not edit files, call tools, invent evidence, or include meta commentary."),
+          new HumanMessage(JSON.stringify({
+            objective: goal.objective,
+            milestone: goal.milestones.find((milestone) => milestone.id === goal.currentMilestoneId),
+            criteria: goal.criteria,
+            nextAction: goal.nextAction,
+            request
+          }))
+        ], { signal: controller.signal, callbacks: [usage] });
+        plannerGuidance = redactSensitiveText(planned.text.trim().slice(0, 8_000), sensitiveValues);
+        if (plannerGuidance) {
+          onEvent({ type: "activity", kind: "goal", title: "Planning specialist", detail: "A bounded plan was prepared for the executor." });
+        }
+      }
+
+      onEvent({
+        type: "contextReceipt",
+        receipt: {
+          automaticContextEnabled: snapshot.automaticContextEnabled,
+          ...(snapshot.activeFile ? { activeFile: snapshot.activeFile } : {}),
+          guidanceFiles: [...renderedContext.budget.guidancePaths],
+          pinnedSources: snapshot.pinnedSources.map(({ filename, range, kind }) => ({ filename, range, kind })),
+          diagnostics: snapshot.diagnostics.length,
+          openFiles: snapshot.openFiles.length,
+          projectFiles: snapshot.projectFiles.length,
+          estimatedTokens: renderedContext.budget.estimatedTokens,
+          utilizationPercent: renderedContext.budget.utilizationPercent,
+          truncated: renderedContext.budget.truncated,
+          memory: memoryReceipt
+        }
+      });
+
+      const userMessage = images.length
+        ? new HumanMessage({ content: [{ type: "text" as const, text: request }, ...images.map((image) => ({ type: "image_url" as const, image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))] })
+        : new HumanMessage(request);
+      // The local thread is the durable conversation source. MemorySaver is deliberately
+      // reset at the boundary of each user request and is used only for the current
+      // LangGraph/tool loop, so a browser-heavy run cannot hide history from the next turn.
+      await this.checkpointer.deleteThread(threadId).catch(() => undefined);
+      this.hydratedThreads.delete(threadId);
+      const messages = priorMessages.length
+        ? [
+            ...this.compactPersistedConversation(priorMessages, maxConversationCharacters),
+            userMessage
+          ]
+        : [userMessage];
+      const journalHistory = await this.threadJournal.recent(workspace.uri.fsPath, threadId);
+      const systemPrompt = this.systemPrompt(
+        mode,
+        projectMemory,
+        runtime,
+        responseLanguage,
+        context,
+        Boolean(browserSession),
+        Boolean(browserSession?.externalAccess),
+        mcpSession.tools.map((availableTool) => availableTool.name),
+        goal,
+        journalHistory,
+        plannerGuidance
+      );
+      controller.signal.throwIfAborted();
+
+      onEvent({ type: "status", label: `${agentRuntimeLabel(runtime)} is thinking` });
+      const assistantCreatedAt = Date.now();
+      let streamedAssistantText = "";
+      let lastCompletedAssistantTurn = "";
+      let pendingAssistantDelta = "";
+      let streamSequence = 0;
+      let assistantStreamVisible = false;
+      let lastDeltaPublishedAt = 0;
+      let partialPersistedAt = 0;
+      let partialPersistedCharacters = 0;
+      const persistPartialAssistant = async (force = false): Promise<void> => {
+        const recovery = conversation.recovery;
+        if (!recovery || recovery.id !== runId) return;
+        const now = Date.now();
+        if (!force
+          && partialPersistedAt
+          && now - partialPersistedAt < 750
+          && Math.abs(streamedAssistantText.length - partialPersistedCharacters) < 1_024) {
+          return;
+        }
+        recovery.updatedAt = now;
+        partialPersistedAt = now;
+        partialPersistedCharacters = streamedAssistantText.length;
+        await this.saveThreadCollection(collection);
+      };
+      const flushAssistantDelta = async (): Promise<void> => {
+        if (!pendingAssistantDelta) return;
+        if (!assistantStreamVisible) {
+          assistantStreamVisible = true;
+          onEvent({
+            type: "assistantStart",
+            id: assistantMessageId,
+            runId: runId!,
+            createdAt: assistantCreatedAt
+          });
+        }
+        const delta = pendingAssistantDelta;
+        pendingAssistantDelta = "";
+        lastDeltaPublishedAt = Date.now();
+        streamSequence += 1;
+        conversation.recovery!.partialAssistant = {
+          id: assistantMessageId,
+          content: streamedAssistantText.slice(0, 200_000),
+          createdAt: assistantCreatedAt,
+          updatedAt: Date.now(),
+          sequence: streamSequence
+        };
+        onEvent({
+          type: "assistantDelta",
+          id: assistantMessageId,
+          runId: runId!,
+          sequence: streamSequence,
+          delta
+        });
+        await persistPartialAssistant();
+      };
+      const publishAssistantDelta = async (delta: string): Promise<void> => {
+        if (!delta) return;
+        streamedAssistantText += delta;
+        pendingAssistantDelta += delta;
+        if (!lastDeltaPublishedAt
+          || Date.now() - lastDeltaPublishedAt >= 40
+          || pendingAssistantDelta.length >= 512) {
+          await flushAssistantDelta();
+        }
+      };
+      const resetTransientAssistant = async (): Promise<void> => {
+        await flushAssistantDelta();
+        if (!assistantStreamVisible && !streamedAssistantText) return;
+        assistantStreamVisible = false;
+        streamedAssistantText = "";
+        streamSequence += 1;
+        delete conversation.recovery?.partialAssistant;
+        onEvent({
+          type: "assistantReset",
+          id: assistantMessageId,
+          runId: runId!,
+          sequence: streamSequence
+        });
+        await persistPartialAssistant(true);
+      };
+      const finishAssistantModelTurn = async (toolTurn: boolean): Promise<void> => {
+        await flushAssistantDelta();
+        if (!toolTurn && streamedAssistantText.trim()) {
+          lastCompletedAssistantTurn = streamedAssistantText.trim();
+        }
+        if (toolTurn) await resetTransientAssistant();
+      };
+      const invocationConfig = {
+        configurable: { thread_id: threadId },
+        ...(runtime === "standard"
+          ? { recursionLimit: configuration.get<number>("standardRecursionLimit", 200) }
+          : {}),
+        signal: controller.signal,
+        callbacks: [usage]
+      };
+      let observedWorkspaceRead = false;
+      let mutationDenied = false;
+      const completionGate = createTaskCompletionMiddleware({
+        model: images.length ? model : evaluatorModel ?? model,
+        mode,
+        responseLanguage,
+        conversation: conversation.messages.map((message) => ({
+          role: message.role,
+          content: redactSensitiveText(message.content, sensitiveValues)
+        })),
+        currentImages: images,
+        tracker: changeTracker,
+        signal: controller.signal,
+        callbacks: [usage],
+        sensitiveValues,
+        hasObservedRead: () => observedWorkspaceRead || evidence.snapshot().filesRead.length > 0,
+        approvalWasDenied: () => mutationDenied,
+        executionEvidence: () => {
+          const snapshot = evidence.snapshot();
+          const command = [...snapshot.commands].reverse().find((item) => item.exitCode === 0);
+          const preview = [...snapshot.browser].reverse().find((item) =>
+            item.action === "open"
+            && typeof item.detail === "string"
+            && /^https?:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d+)?(?:\/|$)/i.test(item.detail)
+          );
+          return [
+            ...(command ? [{ kind: "command_success" as const, detail: `${command.command} exited with code 0.` }] : []),
+            ...(preview ? [{ kind: "live_preview" as const, detail: `Opened verified local page ${preview.detail}.` }] : [])
+          ];
+        },
+        onContract: (contract) => onEvent({
+          type: "activity",
+          kind: "goal",
+          title: responseLanguage === "en"
+            ? `Interpreted task · ${{ answer: "answer", plan: "plan", workspace_change: "workspace change", execution: "execution", uncertain: "clarification needed" }[contract.outcome]}`
+            : `Tarefa interpretada · ${{ answer: "resposta", plan: "plano", workspace_change: "alteração de arquivos", execution: "execução", uncertain: "precisa esclarecer" }[contract.outcome]}`,
+          detail: redactSensitiveText(contract.objective, sensitiveValues)
+        }),
+        onRetry: async (attempt) => {
+          await resetTransientAssistant();
+          lastCompletedAssistantTurn = "";
+          onEvent({
+            type: "status",
+            label: responseLanguage === "en"
+              ? `Continuing implementation after evidence check (${attempt}/2)`
+              : `Continuando a implementação após verificar as evidências (${attempt}/2)`
+          });
+        }
+      });
+      // Keep the complete terminal state, rather than narrowing it to
+      // `state.messages` immediately. LangGraph v3 exposes both `values` and
+      // `output`; provider/Deep Agent adapters can serialize messages inside
+      // either shape. The final-answer extractor handles both forms.
+      let resultState: unknown;
+      if (runtime === "deep") {
+        const workspaceBackend = new ReviewableFilesystemBackend(
+          {
+            rootDir: workspace.uri.fsPath,
+            virtualMode: true,
+            maxFileSizeMb: 1.5
+          },
+          changeTracker,
+          async (request) => {
+            const approved = await this.confirmDeepAgentMutation(mode, request, onEvent, sensitiveValues);
+            if (!approved) mutationDenied = true;
+            return approved;
+          },
+          sensitiveValues,
+          (filePath) => this.confirmSensitiveFileRead(filePath, onEvent, sensitiveValues),
+          (kind, title, detail) => onEvent({ type: "activity", kind, title, ...(detail ? { detail } : {}) }),
+          () => { observedWorkspaceRead = true; }
+        );
+        const permissions = mode === "plan"
+          ? [{ operations: ["write"] as const, paths: ["/workspace/**"], mode: "deny" as const }]
+          : [];
+        const backend = new CompositeBackend(new StateBackend(), {
+          "/workspace/": workspaceBackend
+        });
+        const agent = createDeepAgent({
+          model,
+          tools: [...toolHost.deepTools(mode, controller.signal), ...mcpSession.tools],
+          systemPrompt,
+          backend,
+          permissions,
+          middleware: [completionGate],
+          checkpointer: this.checkpointer
+        });
+        const run = await agent.streamEvents(
+          { messages },
+          { ...invocationConfig, version: "v3" as const }
+        );
+        const [result] = await Promise.all([
+          // v3 exposes the final graph state through `values`; unlike a
+          // provider-specific message payload, this is the agent's canonical
+          // terminal state.
+          run.values,
+          consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn,
+            (stream) => !stream.node?.startsWith("TaskCompletionGate."))
+        ]);
+        resultState = result;
+      } else {
+        const agent = createAgent({
+          model,
+          tools: [...toolHost.tools(mode, controller.signal), ...mcpSession.tools],
+          systemPrompt,
+          middleware: [conversationWindowMiddleware(maxConversationCharacters), completionGate],
+          checkpointer: this.checkpointer
+        });
+        const run = await agent.streamEvents(
+          { messages },
+          { ...invocationConfig, version: "v3" as const }
+        );
+        const [result] = await Promise.all([
+          run.values,
+          consumeAssistantMessageStreams(run.messages, publishAssistantDelta, finishAssistantModelTurn,
+            (stream) => !stream.node?.startsWith("TaskCompletionGate."))
+        ]);
+        resultState = result;
+      }
+      // A LiteLLM adapter may omit text from a terminal AI state. Recover
+      // streamed text only when that terminal state is still an assistant
+      // turn; an earlier analysis cannot mask a later tool-only termination.
+      let answer = extractFinalAssistantText(resultState)
+        || (hasTerminalAssistantMessage(resultState) ? lastCompletedAssistantTurn || streamedAssistantText.trim() : "");
+      controller.signal.throwIfAborted();
+      if (!answer) {
+        throw new Error(`${agentRuntimeLabel(runtime)} completed without a final assistant message.`);
+      }
+      const gate = completionGateResult(resultState);
+      if (!gate.completionOutcome) {
+        throw new Error("The agent completed without a task-completion verdict.");
+      }
+      if (gate.completionOutcome === "incomplete") {
+        answer += responseLanguage === "en"
+          ? `\n\nTask incomplete: ${gate.completionReason ?? "The intended result was not verified."}`
+          : `\n\nTarefa incompleta: ${gate.completionReason ?? "O resultado pretendido não foi verificado."}`;
+      }
+      const pendingChanges = changeTracker.finalize();
+      journalChangedFiles = pendingChanges.changes.map((change) => ({ path: change.path, kind: change.kind }));
+      for (const change of pendingChanges.changes) {
+        evidence.diff({ path: change.path, kind: change.kind });
+      }
+      const evidenceSnapshot = evidence.snapshot();
+      journalEvidence = evidenceSnapshot;
+      onEvent({ type: "evidence", evidence: evidenceSnapshot });
+      if (shouldRunCompletionReview(
+        configuration.get("finalReviewMode", "changes"),
+        mode,
+        pendingChanges.changes.length,
+        evidenceSnapshot
+      )) {
+        onEvent({ type: "status", label: "Independently reviewing completion evidence" });
+        try {
+          const reviewResponse = await (evaluatorModel ?? model).invoke([
+            new SystemMessage(
+              "You are the independent completion verifier for a local coding agent. Review evidence conservatively. Never invent successful checks. Return only the requested JSON."
+            ),
+            new HumanMessage(redactSensitiveText(completionReviewPrompt({
+              request,
+              draftAnswer: answer,
+              mode,
+              changes: completionReviewChanges(pendingChanges.changes, sensitiveValues),
+              omittedChanges: pendingChanges.omitted,
+              evidence: evidenceSnapshot,
+              responseLanguage
+            }), sensitiveValues))
+          ], { signal: controller.signal, callbacks: [usage] });
+          const review = parseCompletionReview(redactSensitiveText(reviewResponse.text, sensitiveValues), responseLanguage);
+          onEvent({ type: "verification", review });
+          answer += completionReviewAppendix(review, responseLanguage);
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          const detail = safeErrorMessage(error, sensitiveValues);
+          onEvent({
+            type: "activity",
+            kind: "verification",
+            title: "Independent completion review unavailable",
+            detail
+          });
+          answer += responseLanguage === "en"
+            ? "\n\nIndependent verification\nThe additional completion review could not be completed. The implementation evidence above remains available in Review run."
+            : "\n\nVerificação independente\nA revisão adicional da conclusão não pôde ser concluída. As evidências da implementação continuam disponíveis em Revisar execução.";
+        }
+      }
+      if (goal) {
+        try {
+          const evaluation = await this.evaluateGoal(evaluatorModel ?? model, goal, answer, evidenceSnapshot, usage, controller.signal, sensitiveValues);
+          if (mode === "plan" && evaluation.decision === "completed") {
+            evaluation.decision = "continue";
+            evaluation.reason = "Plan-only mode cannot complete a goal that depends on workspace changes.";
+          }
+          const latest = await this.goals.get(goal.id);
+          if (latest) {
+            const updated = applyGoalEvaluation(latest, evaluation);
+            await this.goals.save(updated);
+            onEvent({ type: "goal", goal: updated });
+            onEvent({ type: "activity", kind: "goal", title: `Goal ${updated.status}`, detail: evaluation.reason });
+          }
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+          onEvent({ type: "activity", kind: "goal", title: "Goal evaluation unavailable", detail: safeErrorMessage(error, sensitiveValues) });
+        }
+      }
+      this.hydratedThreads.add(threadId);
+      const assistantCompletedAt = Date.now();
+      conversation.messages.push({
+        id: assistantMessageId,
+        role: "assistant",
+        content: answer,
+        createdAt: assistantCreatedAt,
+        runId,
+        status: "complete",
+        completedAt: assistantCompletedAt
+      });
+      conversation.messages = this.compactPersistedConversation(
+        conversation.messages,
+        maxConversationCharacters
+      );
+      conversation.updatedAt = Date.now();
+      conversation.unread = true;
+      this.finishRunHeartbeat(runId);
+      delete conversation.recovery;
+      await this.saveThreadCollection(collection);
+      outcome = gate.completionOutcome === "complete" ? "completed" : "failed";
+      onEvent({
+        type: "assistant",
+        id: assistantMessageId,
+        runId,
+        text: answer,
+        createdAt: assistantCreatedAt,
+        completedAt: assistantCompletedAt
+      });
+      onEvent({ type: "usage", input: usage.input, output: usage.output });
+      onEvent({ type: "status", label: "Ready" });
+    } catch (error) {
+      outcome = controller.signal.aborted ? "cancelled" : "failed";
+      this.finishRunHeartbeat(runId);
+      if (runId && activeCollection && activeConversation?.recovery?.id === runId) {
+        const recovery = activeConversation.recovery;
+        activeConversation.unread = true;
+        activeConversation.recovery = {
+          id: recovery.id,
+          status: controller.signal.aborted ? "cancelled" : "failed",
+          mode: recovery.mode,
+          runtime: recovery.runtime,
+          startedAt: recovery.startedAt,
+          updatedAt: Date.now(),
+          ...(recovery.partialAssistant ? { partialAssistant: { ...recovery.partialAssistant } } : {})
+        };
+        activeConversation.updatedAt = Date.now();
+        await this.saveThreadCollection(activeCollection).catch(() => undefined);
+      }
+      if (activeThreadId) {
+        await this.checkpointer.deleteThread(activeThreadId).catch(() => undefined);
+        this.hydratedThreads.delete(activeThreadId);
+      }
+      if (controller.signal.aborted) {
+        onEvent({ type: "status", label: "Run cancelled" });
+      } else {
+        const message = safeErrorMessage(error, sensitiveValues);
+        await appendAgentLog(workspace.uri.fsPath, {
+          event: "agent-run",
+          status: outcome,
+          runId,
+          model: activeConnection?.model,
+          api: activeModelProfile.api === "responses" ? "Responses API" : "Chat Completions",
+          detail: this.explainError(message)
+        }, sensitiveValues).catch(() => undefined);
+        onEvent({ type: "error", message: this.explainError(message), recoverable: Boolean(runId) });
+      }
+    } finally {
+      this.finishRunHeartbeat(runId);
+      if (activeThreadId && changeTracker) {
+        const changes = this.changeReview.finishRun(activeThreadId, changeTracker);
+        onEvent({ type: "changes", ...changes });
+      }
+      if (activeThreadId && runId && evidenceRecorder) {
+        const record: ThreadJournalRecord = {
+          version: 1,
+          runId,
+          threadId: activeThreadId,
+          startedAt: runStartedAt,
+          completedAt: Date.now(),
+          status: outcome,
+          request: redactSensitiveText(request, sensitiveValues),
+          filesRead: (journalEvidence ?? evidenceRecorder.snapshot()).filesRead,
+          changedFiles: journalChangedFiles,
+          evidence: journalEvidence ?? evidenceRecorder.snapshot(),
+          ...(outcome !== "completed" ? { outcome: outcome === "cancelled" ? "Run cancelled before completion." : "Run failed before completion." } : {})
+        };
+        await this.threadJournal.append(workspace.uri.fsPath, record).then(() => {
+          onEvent({
+            type: "activity",
+            kind: "journal",
+            title: "Execution register saved",
+            detail: this.threadJournal.relativePath(activeThreadId!, runId!)
+          });
+        }).catch(() => undefined);
+      }
+      await mcpSession?.close();
+      await dispatcher?.close();
+      await workspaceLease?.release().catch(() => undefined);
+      this.isRunning = false;
+      this.abortController = undefined;
+      this.activeRunCollection = undefined;
+      this.activeRunThreadId = undefined;
+      onEvent({ type: "done", outcome });
+    }
+  }

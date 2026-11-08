@@ -1,7 +1,8 @@
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
-import { createDeepAgent, type AnyBackendProtocol, type FilesystemPermission } from "deepagents";
+import { createDeepAgent, type AnyBackendProtocol, type FilesystemPermission, type SubAgent } from "deepagents";
 import { createAgent, type AnyAgentMiddleware } from "langchain";
 import type { StreamedAssistantMessage } from "./assistant-stream";
 
@@ -13,6 +14,7 @@ export type ProductGraphOptions = {
   middleware?: AnyAgentMiddleware[];
   backend?: AnyBackendProtocol;
   permissions?: FilesystemPermission[];
+  subagents?: SubAgent[];
 };
 export type GraphToolStream = {
   name: string; callId: string; input: unknown;
@@ -28,6 +30,7 @@ export type ProductGraph = {
     configurable: { thread_id: string };
     signal: AbortSignal;
     recursionLimit: number;
+    callbacks?: BaseCallbackHandler[];
   }): Promise<{
     values: Promise<unknown>;
     messages: AsyncIterable<StreamedAssistantMessage>;

@@ -31,6 +31,11 @@ export class CredentialVault {
     this.active.set(run, lease);
     return lease.value;
   }
+  forRun(reg: Registration, run: string): string | undefined {
+    const lease=this.active.get(run);
+    if (lease && lease.scope !== namespace(reg)) throw new AgentError(errors.forbidden,"Credential belongs to another namespace.");
+    return lease?.value;
+  }
   release(run: string): void {
     const lease = this.active.get(run);
     if (!lease) return;

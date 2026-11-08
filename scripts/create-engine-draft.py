@@ -7,7 +7,7 @@ import subprocess
 versions = json.loads(Path("packages/contracts/src/version.json").read_text())
 version = versions["engine"]
 root = Path(os.environ.get("COMPANION_ASSET_DIRECTORY", "release-assets"))
-assets = sorted(root.rglob("*.tar.gz")) + sorted(root.rglob("*.sha256")) + sorted(root.rglob("*.zip")) + sorted(root.rglob("*.dmg")) + sorted(root.rglob("*.manifest.json")) + sorted(root.rglob("*.manifest.sig"))
+assets = sorted(root.rglob("*.vsix")) + sorted(root.rglob("*.tar.gz")) + sorted(root.rglob("*.sha256")) + sorted(root.rglob("*.zip")) + sorted(root.rglob("*.dmg")) + sorted(root.rglob("*.manifest.json")) + sorted(root.rglob("*.manifest.sig"))
 mac_arches = {"arm64", "x64"}
 for extension in ("zip", "dmg"):
     present = {path.name.removesuffix("." + extension).rsplit("-", 1)[-1] for path in assets if path.suffix == "." + extension}
@@ -17,6 +17,10 @@ targets = {"darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"
 archives = {path.name.removeprefix(f"companion-engine-{version}-").removesuffix(".tar.gz") for path in assets if path.name.startswith(f"companion-engine-{version}-") and path.name.endswith(".tar.gz")}
 if archives != targets:
     raise SystemExit("The five exact engine artifacts are required before creating a draft.")
+vsix={path.name for path in assets if path.suffix=='.vsix'}
+application=json.loads(Path('package.json').read_text())['version']
+expected={f'local-agent-companion-{application}{suffix}-{target}.vsix' for target in targets for suffix in ('','-ollama','-openai')}
+if vsix!=expected:raise SystemExit('The fifteen exact native VSIX variants are required.')
 for arch in mac_arches:
     for extension in ("json", "sig"):
         if len(list(root.rglob(f"*-darwin-{arch}.manifest.{extension}"))) != 1:

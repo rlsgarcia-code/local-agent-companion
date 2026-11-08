@@ -30,6 +30,11 @@ export type ThreadRunRecovery = {
   updatedAt: number;
   ownerSessionId?: string;
   ownerPid?: number;
+  engineState?: string;
+  engineRequestKey?: string;
+  engineRunId?: string;
+  engineSessionId?: string;
+  assistantMessageId?: string;
   partialAssistant?: ThreadPartialAssistant;
 };
 
@@ -315,6 +320,7 @@ function normalizeRecovery(
     updatedAt: finiteNumber(value.updatedAt) ?? fallbackTime,
     ...(ownerSessionId ? { ownerSessionId } : {}),
     ...(ownerPid && Number.isInteger(ownerPid) && ownerPid > 0 ? { ownerPid } : {}),
+    ...Object.fromEntries(["engineState","engineRequestKey","engineRunId","engineSessionId","assistantMessageId"].flatMap(key=>typeof value[key] === "string" && value[key].length <= 128 ? [[key,value[key]]] : [])),
     ...(partialAssistant ? { partialAssistant } : {})
   };
 }

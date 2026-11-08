@@ -1,3 +1,4 @@
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { consumeAssistantMessageStreams, type StreamedAssistantMessage } from "./assistant-stream";
 import { createProductGraph, type GraphToolStream, type ProductGraphOptions } from "./graph";
 import { checkpointInput } from "./recovery";
@@ -10,6 +11,7 @@ export type PreparedExecution = {
   threadId: string;
   signal: AbortSignal;
   recursionLimit: number;
+  callbacks?: BaseCallbackHandler[];
   initial: unknown;
   reconciliations?: Record<string, unknown>;
   resume?: boolean;
@@ -29,7 +31,7 @@ export async function executePreparedGraph(execution: PreparedExecution): Promis
   );
   const run = await graph.streamEvents(input, {
     version: "v3", durability: "sync", configurable: { thread_id: execution.threadId },
-    signal: execution.signal, recursionLimit: execution.recursionLimit,
+    signal: execution.signal, recursionLimit: execution.recursionLimit, callbacks: execution.callbacks,
   });
   const settled = await Promise.allSettled([
     run.values,

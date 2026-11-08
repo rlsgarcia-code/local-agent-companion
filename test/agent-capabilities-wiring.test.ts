@@ -63,8 +63,8 @@ test("invalidates source-derived memory and reports completion evidence", () => 
   assert.match(tools, /sources\.join\(", "\)/);
   assert.match(memory, /withoutStaleSourceEntries/);
   assert.match(memory, /sourceFingerprintMatches/);
-  assert.match(agent, /type: "evidence", evidence: evidenceSnapshot/);
-  assert.match(agent, /Independently reviewing completion evidence/);
+  assert.match(agent, /type:"evidence",evidence:journalEvidence/);
+  assert.match(readFileSync("packages/agent-core/src/workspace-completion.ts","utf8"), /Independent review unavailable/);
   assert.match(tools, /name: "browser_capture_baseline"/);
   assert.match(tools, /name: "browser_compare"/);
   assert.match(tools, /detail: redactSensitiveText\(analysis, this\.sensitiveValues\)/);

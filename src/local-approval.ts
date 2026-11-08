@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import * as vscode from "vscode";
 import {
   localApprovalPresentation,
@@ -5,10 +6,15 @@ import {
 } from "./approval-presentation";
 import type { AgentUiEvent } from "./types";
 
+const serviceApproval = new AsyncLocalStorage<(request:LocalApprovalRequest)=>Promise<boolean>>();
+export function withRemoteApproval<T>(approve:(request:LocalApprovalRequest)=>Promise<boolean>,perform:()=>Promise<T>):Promise<T>{return serviceApproval.run(approve,perform);}
+
 export async function requestLocalApproval(
   onEvent: (event: AgentUiEvent) => void,
   request: LocalApprovalRequest
 ): Promise<boolean> {
+  const remote=serviceApproval.getStore();
+  if(remote) return remote(request);
   const presentation = localApprovalPresentation(request);
   onEvent({ type: "status", label: "Waiting for your approval" });
   onEvent({

@@ -4,7 +4,7 @@ import test from "node:test";
 import { combinedAbortSignal } from "../src/gateway";
 
 const agent = readFileSync("src/agent.ts", "utf8");
-const semanticMemory = readFileSync("src/semantic-memory.ts", "utf8");
+const semanticMemory = readFileSync("packages/agent-core/src/semantic-memory.ts", "utf8");
 const browser = readFileSync("src/browser.ts", "utf8");
 const webview = readFileSync("src/webview.ts", "utf8");
 
@@ -30,7 +30,7 @@ test("propagates cancellation through context, embeddings, tools, and model exec
   assert.match(agent, /controller\.signal\.throwIfAborted\(\)/);
   assert.match(agent, /gatewayFetch\([\s\S]*authentication\.stripAuthorization,[\s\S]*dispatcher,[\s\S]*controller\.signal/);
   assert.match(agent, /signal: controller\.signal/);
-  assert.match(agent, /if \(controller\.signal\.aborted\) throw error/);
+  assert.match(agent, /this\.serviceRuntime\.cancel\(\)/);
   assert.match(semanticMemory, /options\.signal\?\.throwIfAborted\(\)/);
   assert.match(browser, /signal\.addEventListener\("abort", \(\) => void this\.close\(\), \{ once: true \}\)/);
 });

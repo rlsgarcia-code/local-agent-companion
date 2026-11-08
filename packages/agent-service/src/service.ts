@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { InstalledAdapter } from "../../agent-core/src/installed-adapter";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { contentHash, canonical } from "../../contracts/src/identity";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
@@ -30,9 +31,15 @@ import { namespace } from "./security";
 import { Store } from "./store";
 import { Transfers } from "./transfers";
 import { Goals } from "./goals";
+import { workspaceToolResult } from "../../contracts/src/workspace-receipts";
+import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import { ProviderModels } from "../../agent-core/src/provider-models";
+import { message } from "../../contracts/src/index";
+import { WorkspaceProcesses } from "./workspace-processes";
 import { CredentialVault } from "./credentials";
 import { ProductMemory } from "./memory";
 import { Models } from "./models";
+import { SemanticProjectMemory } from "../../agent-core/src/semantic-memory";
 import { memoryRead, memoryWrite } from "../../contracts/src/memory";
 import { goalCreate, goalEdit, goalRecord, goalEvaluation } from "../../contracts/src/goals";
 import { transferBegin, transferAppend, sessionImport, TRANSFER_CHUNK_BYTES } from "../../contracts/src/transfers";
@@ -60,6 +67,7 @@ export class AgentService {
   private readonly running = new Map<string, AbortController>();
   private readonly runningTasks = new Map<string, Promise<void>>();
   private readonly pending = new Map<string, Pending>();
+  private readonly workspaceProcesses=new WorkspaceProcesses();
   private readonly credentials = new CredentialVault();
   private readonly checkpointers = new Map<string, SqliteSaver>();
   private readonly operationScope = new AsyncLocalStorage<string>();
@@ -72,6 +80,7 @@ export class AgentService {
   private readonly memory: ProductMemory;
   private readonly models: Models;
   private readonly desktopRuntimes = new Map<string, OllamaDesktopRuntime>();
+  private readonly semanticMemory = new Map<string, SemanticProjectMemory>();
   private readonly advisors = new Map<string, AbortController>();
   constructor(
     readonly store: Store,
@@ -82,7 +91,7 @@ export class AgentService {
       target?: string;
       manifestSha256?: string;
     } = {},
-    options: { deferRecovery?: boolean } = {},
+    private readonly options: { deferRecovery?: boolean; adapter?: InstalledAdapter; resourceDirectory?: string } = {},
   ) {
     this.transfers = new Transfers(store);
     this.goals = new Goals(store);
@@ -183,6 +192,7 @@ export class AgentService {
       return;
     }
     validateProvider(reg, spec.provider);
+    if (reg.product === "kidos") this.options.adapter?.validate(reg, spec);
     for (const definition of spec.tools) {
       const installed = reg.toolCatalog?.find((tool) => tool.name === definition.name);
       if (!installed || canonical(installed) !== canonical(definition))
@@ -208,11 +218,34 @@ export class AgentService {
     params: unknown,
     connection: string,
   ): Promise<unknown> {
-    if (this.quiescing && method !== "engine.info")
+    if (this.quiescing && !["engine.info","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
       throw new AgentError(errors.unavailable, "Engine is activating a prepared update. Reconnect with the updated client.");
     // Scope comes exclusively from the authenticated immutable registration.
     const p = params ?? {};
     switch (method) {
+      case "models.invoke": {
+        const v=z.object({runId:identifier,role:z.literal("vision"),messages:z.array(message).min(1).max(10)}).strict().parse(p);
+        const run=this.store.run(reg,v.runId);
+        const spec=this.store.receipt(reg,`spec:${run.id}`)?.value as DurableSpec|undefined;
+        const signal=this.running.get(run.id)?.signal;
+        if(reg.product!=="companion-vscode"||!spec||"profile" in spec||!spec.workspace||!signal||terminalStates.has(run.state))
+          throw new AgentError(errors.forbidden,"Visual inspection requires an active editor run.");
+        const credential=this.credentials.forRun(reg,run.id);
+        if(spec.provider.credentialRef&&!credential)throw new AgentError(errors.unavailable,"Reconnect the credential host before visual inspection.");
+        const models=new ProviderModels(spec.provider,credential,signal);
+        try {
+          const messages=await Promise.all(v.messages.map(async row=>{
+            const content=typeof row.content === "string"?row.content:await Promise.all(row.content.map(async block=>{
+              if(block.type === "text")return block;
+              const image=this.transfers.image(reg,block.attachmentId);
+              return {type:"image_url" as const,image_url:{url:`data:${image.mime};base64,${image.data}`,detail:block.detail}};
+            }));
+            return row.role === "user"?new HumanMessage({content}):row.role === "assistant"?new AIMessage({content}):new SystemMessage({content});
+          }));
+          const answer=await models.model("vision",false).invoke(messages,{signal});
+          return this.protect(reg,answer.text);
+        } finally {await models.close();}
+      }
       case "models.list":
       case "models.testConnection":
         z.object({}).strict().parse(p);
@@ -341,10 +374,13 @@ export class AgentService {
             "public-session-snapshots",
           ],
         };
+      case "engine.resumeAfterUpdate":
+        z.object({}).strict().parse(p);this.quiescing=false;return {accepted:true};
+      case "engine.quiesceIfIdle":
       case "engine.shutdownIfIdle": {
         z.object({}).strict().parse(p);
         const active = this.store.db.prepare("SELECT id FROM runs WHERE state NOT IN ('completed','failed','cancelled') LIMIT 1").get();
-        if (active || this.running.size || this.advisors.size || this.models.busy || [...this.desktopRuntimes.values()].some((runtime) => runtime.hasActiveResources))
+        if (active || this.workspaceProcesses.busy || this.running.size || this.advisors.size || this.models.busy || [...this.desktopRuntimes.values()].some((runtime) => runtime.hasActiveResources))
           return { accepted: false, reason: "Work is active. The prepared update will wait without cancelling it." };
         this.quiescing = true;
         return { accepted: true };
@@ -506,7 +542,12 @@ export class AgentService {
           threadId: spec.spec.thread.id,
           assistantMessageId: spec.spec.assistantMessageId,
           request: spec.spec.request,
-        } : { profile: "generic" }) };
+        } : spec?.workspace ? { profile:"workspace",threadId:spec.workspace.threadId,assistantMessageId:spec.workspace.assistantMessageId,tools:spec.tools,runtime:spec.runtime,mode:spec.mode,goalId:spec.goalId } : { profile: "generic" }) };
+      }
+      case "runs.find": {
+        const v = z.object({ sessionId: identifier, key: identifier }).strict().parse(p);
+        const run = this.store.findRun(reg, v.sessionId, v.key);
+        return run ? this.runSummary(reg, run.id) : null;
       }
       case "runs.list":
         return this.store.runs(
@@ -564,6 +605,28 @@ export class AgentService {
         this.launch(reg, run, spec);
         return this.store.run(reg, id);
       }
+      case "host.approval.create": {
+        const v = z.object({ parentId: identifier, request: z.object({ prompt:z.string().max(2000),action:z.string().max(200),target:z.string().max(2000),explanation:z.string().max(10000),risk:z.enum(["standard","sensitive","destructive"]) }).strict() }).strict().parse(p);
+        const parent = this.pending.get(v.parentId);
+        const payload = parent?.payload as { callId?: string; tool?: string } | undefined;
+        if (reg.product !== "companion-vscode" || !parent || parent.reg.id !== reg.id || parent.kind !== "tool" || parent.delivered !== connection || !payload?.callId)
+          throw new AgentError(errors.forbidden, "Approval must belong to this dispatched editor operation.");
+        const definition = reg.toolCatalog?.find((tool) => tool.name === payload.tool);
+        if (!definition?.host || !["vscode-host","vscode-backend","vscode-mcp"].includes(definition.host))
+          throw new AgentError(errors.forbidden, "This adapter cannot delegate approval authority.");
+        const operation = `${parent.run}:${payload.callId}`;
+        const binding = contentHash({ kind: "approval", payload: v.request, operation });
+        const id = contentHash({ run: parent.run, binding });
+        if (!this.pending.has(id) && this.store.receipt(reg, `wait:${id}`)?.status !== "answered")
+          void this.operationScope.run(operation, () => this.wait(reg, this.store.run(reg, parent.run), "approval", v.request)).catch(() => {});
+        return { id };
+      }
+      case "host.approval.get": {
+        const { id } = z.object({ id: identifier }).strict().parse(p);
+        const receipt = this.store.receipt(reg, `wait:${id}`);
+        if (!receipt || !["answered","waiting"].includes(receipt.status)) throw new AgentError(errors.missing, "Approval not found.");
+        return { state: receipt.status, ...(receipt.status === "answered" ? { value: receipt.value } : {}) };
+      }
       case "host.poll": {
         z.object({}).strict().parse(p);
         return [...this.pending.entries()]
@@ -601,6 +664,10 @@ export class AgentService {
           throw new AgentError(errors.invalid, "Not an approval request.");
         if (wait.kind === "approval" && typeof v.value !== "boolean")
           throw new AgentError(errors.invalid, "Approval decisions must be boolean.");
+        if(wait.kind === "tool" && reg.product === "companion-vscode") {
+          const spec=this.store.receipt(reg,`spec:${wait.run}`)?.value as DurableSpec|undefined;
+          if(spec && !("profile" in spec) && spec.workspace)workspaceToolResult.parse(v.value);
+        }
         const prior = this.store.receipt(reg, `wait:${v.id}`);
         if (prior) this.store.saveReceipt(reg, wait.run, `wait:${v.id}`, "answered", this.protect(reg, v.value), prior.binding);
         this.pending.delete(v.id);
@@ -688,6 +755,8 @@ export class AgentService {
       case "goals.put": {
         const v = z.object({ id: identifier, value: goalRecord }).strict().parse(p);
         if (v.id !== v.value.id) throw new AgentError(errors.invalid, "Imported goal identity does not match its record.");
+        const existing=this.goals.list(reg).find(goal=>goal.id===v.id);
+        if(existing){if(canonical(existing)!==canonical(this.protect(reg,v.value)))throw new AgentError(errors.conflict,"Legacy goal was already imported. Use versioned goal operations to edit it.");return existing;}
         return this.goals.save(reg, this.protect(reg, v.value));
       }
       default:
@@ -743,7 +812,7 @@ export class AgentService {
             reset: (messageId) => this.emit(reg, run.sessionId, run.id, "desktop.reset", { messageId }),
           },
         })
-      : this.executor(spec, {
+      : (reg.product === "kidos" && this.options.adapter ? this.options.adapter.execute.bind(this.options.adapter) : this.executor)(spec, {
           registration: reg,
           threadId: run.id,
           checkpointer: this.checkpoint(reg),
@@ -759,9 +828,25 @@ export class AgentService {
             (this.store.db.prepare("SELECT r.id,r.status,r.value,coalesce(i.kind,'note') AS kind FROM receipts r LEFT JOIN operation_identities i ON i.id=r.id WHERE r.namespace=? AND r.run=? AND r.status IN ('completed','reconciled')")
               .all(namespace(reg), run.id) as { id: string; status: string; value: string; kind: NonNullable<ToolSpec['evidenceKind']> }[])
               .map((row) => ({ operationId: row.id, status: row.status, kind: row.kind, result: JSON.parse(row.value) })) } : {}),
+          recallMemory: async (options) => {
+            if (reg.product !== "companion-vscode" || !this.options.resourceDirectory)
+              throw new AgentError(errors.unavailable, "The installed semantic-memory adapter is unavailable.");
+            const scope = namespace(reg);
+            let memory = this.semanticMemory.get(scope);
+            if (!memory) {
+              memory = new SemanticProjectMemory({ workspaceId: reg.workspace,
+                storageRoot: path.join(this.directory, "namespaces", scope), launcher: path.join(this.options.resourceDirectory, "chroma", "server.cjs") });
+              this.semanticMemory.set(scope, memory);
+            }
+            return memory.recall(options);
+          },
+          operationResults: () => (this.store.db.prepare(`SELECT r.id,i.tool,r.value FROM receipts r
+            JOIN operation_identities i ON i.id=r.id WHERE r.namespace=? AND r.run=? AND r.status IN ('completed','reconciled') ORDER BY r.rowid`)
+            .all(namespace(reg), run.id) as { id: string; tool: string; value: string }[])
+            .map((row) => ({ ...row, value: JSON.parse(row.value) })),
           resolveAttachment: async (id) => this.transfers.image(reg, id),
           emit: (type, data) => this.emit(reg, run.sessionId, run.id, type, data),
-          invokeTool: (definition, input, callId) => this.invokeTool(reg, run, spec, definition, input, callId),
+          invokeTool: (definition, input, callId, state) => this.invokeTool(reg, run, spec, definition, input, callId, state),
         });
     } catch (error) { execute = Promise.reject(error); }
     const task = execute
@@ -783,18 +868,27 @@ export class AgentService {
           })();
         }
       })
-      .catch((error) => {
+      .catch(async (error) => {
         if (this.closed || controller.signal.aborted) return;
         let message = error instanceof Error ? error.message : "Run failed.";
         for (const secret of this.secrets(reg))
           message = message.split(secret).join("[credential redacted]");
+        const authenticationFailed =
+          Boolean(provider?.credentialRef) &&
+          [401, 403].includes(Number((error as { status?: number })?.status));
+        // Preserve virtual work after a known failure without exposing or
+        // importing executable checkpoint internals into the public domain.
+        let partial: { files: unknown; paused: true } | undefined;
+        try {
+          const checkpoint = await this.checkpoint(reg).getTuple({ configurable: { thread_id: run.id } });
+          const files = checkpoint?.checkpoint.channel_values.files;
+          if (files && typeof files === "object") partial = { files: this.protect(reg, files), paused: true };
+        } catch { /* The original checkpoint remains available for explicit repair. */ }
+        if (this.closed || controller.signal.aborted) return;
         const state = this.store.run(reg, run.id).state;
         if (state === "awaiting_host" && error instanceof AgentError && error.code === errors.reconciliation &&
           !this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(run.id))
           return; // A host reconciled the receipt while the interrupted graph was settling.
-        const authenticationFailed =
-          Boolean(provider?.credentialRef) &&
-          [401, 403].includes(Number((error as { status?: number })?.status));
         this.store.updateRun(
           reg,
           run.id,
@@ -803,7 +897,7 @@ export class AgentService {
             : authenticationFailed
               ? "awaiting_credentials"
               : "failed",
-          { error: message },
+          { error: message, ...(partial ? { result: { kind: "agent-result-transfer", ...this.persistTransfer(reg, `partial:${run.id}`, partial) } } : {}) },
         );
       })
       .finally(() => {
@@ -827,14 +921,33 @@ export class AgentService {
     definition: ToolSpec,
     input: unknown,
     callId: string,
+    graphState?: unknown,
   ): Promise<unknown> {
-    if (reg.product === "kidos")
-      throw new AgentError(errors.forbidden, "KidOS system tools require the signed service-side Core adapter. UI tool callbacks cannot execute them.");
+    if (reg.product === "kidos") {
+      const adapter = this.options.adapter;
+      if (!adapter) throw new AgentError(errors.forbidden, "KidOS system tools require the signed service-side Core adapter. UI tool callbacks cannot execute them.");
+      const prepared = adapter.prepareTool(reg, definition, input, graphState);
+      this.assertToolArguments(reg, prepared);
+      if (spec.mode === "plan" && definition.effect !== "read") throw new AgentError(errors.forbidden, "Mutation denied in plan mode.");
+      return this.operation(reg, run, callId, definition.name, prepared, () =>
+        adapter.invokeTool(reg, definition, prepared, this.running.get(run.id)!.signal), definition.evidenceKind);
+    }
+    if(definition.host === "service-process") {
+      const prepared=await this.workspaceProcesses.prepare(reg,definition,input);
+      this.assertToolArguments(reg,prepared);
+      if(spec.mode === "plan"&&definition.effect!=="read")throw new AgentError(errors.forbidden,"Mutation denied in plan mode.");
+      if(definition.effect!=="read"){
+        const approved=await this.operationScope.run(`${run.id}:${callId}`,()=>this.wait(reg,run,"approval",{tool:definition.name,input:prepared,callId}));
+        if(approved!==true)return {denied:true};
+      }
+      return this.operation(reg,run,callId,definition.name,prepared,()=>this.workspaceProcesses.invoke(reg,run.id,definition,prepared,this.running.get(run.id)!.signal,event=>this.emit(reg,run.sessionId,run.id,"workspace.activity",event)),definition.evidenceKind);
+    }
     this.assertToolArguments(reg, input);
     if (spec.mode === "plan" && definition.effect !== "read")
       throw new AgentError(errors.forbidden, "Mutation denied in plan mode.");
     if (
       definition.effect !== "read" &&
+      !(reg.product === "companion-vscode" && definition.host && ["vscode-host","vscode-backend","vscode-mcp"].includes(definition.host)) &&
       (spec.mode !== "execute" || definition.effect === "external")
     ) {
       const approved = await this.wait(reg, run, "approval", {
@@ -942,6 +1055,12 @@ export class AgentService {
       if (wait.delivered !== connection) continue;
       const payload = wait.payload as { callId?: string };
       if (wait.kind === "tool" && payload.callId) {
+        const effect = this.store.receipt(wait.reg, `${wait.run}:${payload.callId}`);
+        const tool = wait.reg.toolCatalog?.find((tool) => tool.name === (wait.payload as {tool?:string}).tool);
+        if (effect?.status === "awaiting_approval" || tool?.effect === "read") {
+          wait.delivered = undefined;
+          continue;
+        }
         this.store.updateRun(wait.reg, wait.run, "awaiting_reconciliation", {
           error:
             "The host disconnected before acknowledging a tool result. Reconcile the effect before continuing.",
@@ -960,12 +1079,14 @@ export class AgentService {
     if (this.closing) return this.closing;
     this.closed = true;
     this.credentials.clear();
+    for (const memory of this.semanticMemory.values()) memory.dispose();
+    this.semanticMemory.clear();
     for (const controller of this.running.values()) controller.abort();
     for (const wait of this.pending.values())
       wait.reject(new Error("Service stopping."));
     this.pending.clear();
     const resources = [...this.desktopRuntimes.values()].map((runtime) => runtime.shutdown());
-    resources.push(this.models.close());
+    resources.push(this.models.close(),this.workspaceProcesses.close());
     for (const controller of this.advisors.values()) controller.abort();
     for (const saver of this.checkpointers.values()) saver.db.close();
     this.store.close();

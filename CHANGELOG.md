@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.15
+
+- Move active VS Code standard/Deep executions to the shared per-user service; preserve the editor's tools and exact approvals.
+- Keep goal coordination, semantic recall, evidence evaluation and managed processes in the service; recover public results without repeating effects after editor reconnection.
+- Verify a separately signed immutable KidOS gateway/Core adapter against the administrator-provisioned product, UID and catalog.
+- Include the exact signed engine in every native VSIX and require all fifteen provider/platform artifacts in candidate drafts.
+- Add actual Extension Host read-only executor/detach recovery tests and protected adapter/approval/installation tests. Installed suite acceptance remains a separate gate.
+
 ## 0.11.12
 
 - Use LangChain schema-constrained Ollama output for task classification and evidence verification. Preserve scalar legacy criteria without relaxing task outcomes or tool authority.

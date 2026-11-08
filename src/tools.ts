@@ -375,7 +375,7 @@ export class LocalToolHost {
         (input) => this.safe(() => this.startLocalProcess(input, mode)),
         {
           name: "start_local_process",
-          description: "Start one approved workspace development server or watcher directly without a shell. It remains managed locally across agent turns and is stopped when the extension closes.",
+          description: "Start one approved workspace development server or watcher directly without a shell. It remains managed by the shared service across editor windows and stops at logout.",
           schema: z.object({
             command: z.string().describe("Executable name only, such as npm, pnpm, yarn, node, python, or cargo."),
             args: z.array(z.string()).max(40),
@@ -990,7 +990,7 @@ export class LocalToolHost {
       prompt: "Start this managed local development process?",
       action: "Start local process",
       target: `Working directory: ${path.relative(this.workspaceRoot, cwd) || "."}`,
-      explanation: `${printable}\n\nThe process runs without a shell, keeps bounded logs, and is stopped when the extension closes. Review project scripts before approval because an allowed executable can invoke behavior defined by the workspace.`,
+      explanation: `${printable}\n\nThe process runs without a shell, keeps bounded logs, and remains managed by the shared service until stopped or logout. Review project scripts before approval because an allowed executable can invoke behavior defined by the workspace.`,
       risk: "standard",
       sensitiveValues: this.sensitiveValues
     });

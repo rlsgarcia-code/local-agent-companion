@@ -1,6 +1,7 @@
 import { z } from "zod";
 import versions from "./version.json";
 import { identifier } from "./schema";
+import { workspaceOptions } from "./workspace";
 export { identifier } from "./schema";
 export * from "./goals";
 export * from "./memory";
@@ -46,6 +47,8 @@ export const providerSpec = z
     endpoint: z.string().url(),
     roles: modelRoles,
     credentialRef: identifier.optional(),
+    profile: z.object({api:z.enum(["auto","chat_completions","responses"]).optional(),preset:z.enum(["auto","gpt-6-chat-tools","gpt-6-responses-tools","gpt-5.6","gpt-5-reasoning","gpt-standard","claude-modern","claude-4.6","claude-legacy","custom"]).optional(),reasoningEffort:z.enum(["none","minimal","low","medium","high","xhigh","max"]).optional(),temperature:z.number().min(0).max(2).optional(),topP:z.number().min(0).max(1).optional()}).strict().optional(),
+    corporateCa: z.array(z.string().max(65536).regex(/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----\s*$/)).max(512).optional(),
     authHeader: z
       .enum(["authorization", "api-key", "ocp-apim-subscription-key"])
       .default("authorization"),
@@ -84,13 +87,16 @@ export const runSpec = z
     systemPrompt: z.string().max(200_000),
     tools: z.array(toolSpec).max(200),
     goalId: identifier.optional(),
+    productContext: z.record(z.string(), z.unknown()).optional(),
+    workspace: workspaceOptions.optional(),
     recursionLimit: z.number().int().min(10).max(2000).default(240),
     files: z
       .record(
         z.string(),
         z
           .object({
-            content: z.array(z.string()),
+            content: z.union([z.string(), z.array(z.string())]),
+            encoding: z.enum(["utf-8", "base64"]).optional(),
             created_at: z.string(),
             modified_at: z.string(),
           })

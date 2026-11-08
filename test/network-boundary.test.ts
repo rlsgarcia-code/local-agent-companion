@@ -5,12 +5,12 @@ import test from "node:test";
 const sourceFiles = readdirSync("src")
   .filter((name) => name.endsWith(".ts"))
   .map((name) => `src/${name}`)
-  .concat(["packages/adapter-workspace/src/process-manager.ts", "packages/adapter-workspace/src/browser-policy.ts"]);
+  .concat(["packages/adapter-workspace/src/process-manager.ts", "packages/adapter-workspace/src/browser-policy.ts", "packages/adapter-workspace/src/chroma.ts"]);
 const sources = new Map(sourceFiles.map((file) => [file, readFileSync(file, "utf8")]));
 const agent = sources.get("src/agent.ts") ?? "";
-const semanticMemory = sources.get("src/semantic-memory.ts") ?? "";
+const semanticMemory = readFileSync("packages/agent-core/src/semantic-memory.ts", "utf8") ?? "";
 const gateway = readFileSync("packages/agent-core/src/gateway.ts", "utf8");
-const chroma = sources.get("src/chroma.ts") ?? "";
+const chroma = sources.get("packages/adapter-workspace/src/chroma.ts") ?? "";
 const mcpCatalog = sources.get("src/mcp-catalog.ts") ?? "";
 const ollamaPublicCatalog = sources.get("src/ollama-public-catalog.ts") ?? "";
 const processManager = sources.get("packages/adapter-workspace/src/process-manager.ts") ?? "";
@@ -24,7 +24,7 @@ test("keeps direct source-level network calls inside the reviewed gateway and lo
     .filter(([, source]) => /\b(?:fetch|undiciFetch)\s*\(/.test(source))
     .map(([file]) => file)
     .sort();
-  assert.deepEqual(directNetworkCallFiles, ["src/agent.ts", "src/chroma.ts", "src/mcp-catalog.ts"]);
+  assert.deepEqual(directNetworkCallFiles, ["packages/adapter-workspace/src/chroma.ts", "src/agent.ts", "src/mcp-catalog.ts"]);
   assert.equal(count(agent, /\bundiciFetch\s*\(/g), 1, "only the explicit model catalog may call undici directly");
   assert.match(chroma, /http:\/\/127\.0\.0\.1:/, "the remaining direct fetch must target local Chroma");
   assert.match(mcpCatalog, /https:\/\/registry\.modelcontextprotocol\.io\/v0\.1\/servers/,
@@ -82,7 +82,7 @@ test("keeps browser automation local and approval-gated", () => {
 });
 
 test("routes every LangChain model client through the exact-route gateway transport", () => {
-  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 5);
+  assert.equal(count(agent, /new ChatOpenAICompletions\s*\(/g), 3);
   assert.equal(count(agent, /new OpenAIEmbeddings\s*\(/g), 1);
   assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g), 1);
 
@@ -91,7 +91,7 @@ test("routes every LangChain model client through the exact-route gateway transp
   assert.match(agent, /fetch: chatFetch/);
   assert.match(agent, /fetch: embeddingFetch/);
   assert.match(agent, /fetch: gatewayFetch\(\s*chatCompletionsUrl\(connection\)/);
-  assert.match(agent, /fetch: gatewayFetch\(\s*embeddingsUrl\(embeddingConnection(?:, embeddingModel)?(?:, Boolean\([^)]*\))?\)/);
+  assert.match(readFileSync("packages/agent-core/src/provider-models.ts","utf8"), /fetch: gatewayFetch\(embeddingsUrl/);
   assert.match(semanticMemory, /options\.fetch \? \{ fetch: options\.fetch \} : \{\}/);
   assert.match(gateway, /validateGatewayRequest\(input, init, allowedUrl\)/);
   assert.match(gateway, /redirect: "manual"/);

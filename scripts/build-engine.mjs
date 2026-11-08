@@ -1,4 +1,5 @@
 import * as esbuild from "esbuild";
+import { copyChroma } from "./copy-chroma.mjs";
 import { generateThirdPartyNotices } from "./generate-third-party-notices.mjs";
 import { createHash } from "node:crypto";
 import {
@@ -20,7 +21,7 @@ const legacyRoots = ["src", "desktop"].map((directory) => path.resolve(directory
 await rm(root, { recursive: true, force: true });
 await mkdir(root, { recursive: true });
 const built = await esbuild.build({
-  entryPoints: { service: "packages/agent-service/src/main.ts", "bootstrap-lock": "packages/agent-service/src/bootstrap-lock.ts" },
+  entryPoints: { service: "packages/agent-service/src/main.ts", "bootstrap-lock": "packages/agent-service/src/bootstrap-lock.ts", "adapter-kit": "packages/agent-core/src/adapter-kit.ts" },
   outdir: root,
   outExtension: { ".js": ".cjs" },
   bundle: true,
@@ -95,9 +96,10 @@ async function visit(directory) {
         .digest("hex");
   }
 }
+const chromaPackage = await copyChroma(path.join(root, "chroma"));
 await generateThirdPartyNotices({
   metafile: built.metafile,
-  additionalPackages: ["better-sqlite3", "bindings", "file-uri-to-path"],
+  additionalPackages: ["better-sqlite3", "bindings", "file-uri-to-path", chromaPackage],
   outputDirectory: path.join(root, "licenses"),
 });
 await copyFile("LICENSE", path.join(root, "LICENSE"));

@@ -8,6 +8,7 @@ import {
   privateDirectory,
 } from "./security";
 import { Store } from "./store";
+import { systemAdapter } from "./installed-adapter";
 import { AgentService } from "./service";
 import { LocalServer, loadProvisionedClients } from "./server";
 
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
     target: manifest.target,
     manifestSha256: createHash("sha256").update(rawManifest).digest("hex"),
   };
-  const service = new AgentService(store, directory, undefined, build, { deferRecovery: true }),
+  const service = new AgentService(store, directory, undefined, build, { deferRecovery: true, adapter: await systemAdapter(), resourceDirectory: path.dirname(process.argv[1]!) }),
     server = new LocalServer(service, directory);
   await server.listen();
   // Refresh bootstrap registrations without exposing a provisioning RPC.

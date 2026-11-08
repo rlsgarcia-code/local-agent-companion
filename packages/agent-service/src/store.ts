@@ -209,6 +209,14 @@ export class Store {
     if (!row) throw new AgentError(errors.missing, "Run not found.");
     return JSON.parse(row.value) as Run;
   }
+  findRun(reg: Registration, sessionId: string, key: string): Run | null {
+    this.session(reg, sessionId);
+    const row = this.db.prepare("SELECT value FROM runs WHERE namespace=? AND request_key=?").get(namespace(reg), key) as { value: string } | undefined;
+    if (!row) return null;
+    const run = JSON.parse(row.value) as Run;
+    if (run.sessionId !== sessionId) throw new AgentError(errors.conflict, "Idempotency key belongs to another session.");
+    return run;
+  }
   runs(reg: Registration, sessionId: string): Run[] {
     this.session(reg, sessionId);
     return (
