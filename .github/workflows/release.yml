@@ -39,7 +39,7 @@ jobs:
       - name: Use Node.js 22
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 22
+          node-version: 22.23.4
           cache: npm
 
       - name: Verify tag, package version, and changelog
@@ -138,4 +138,5 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" release/*.vsix release/SHA256SUMS.txt --draft --verify-tag --generate-notes --title "Local Agent Companion ${GITHUB_REF_NAME#v}"
           fi
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          # Publication and promotion require human review of the exact artifacts.
+          # The tag workflow leaves a draft; it never promotes automatically.

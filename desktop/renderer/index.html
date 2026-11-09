@@ -158,6 +158,11 @@
         <div><span class="section-label">APARÊNCIA</span><div class="theme-control" id="theme-control"><button data-theme="system">Sistema</button><button data-theme="dark">Escuro</button><button data-theme="light">Claro</button></div></div>
         <button class="refresh-environment" id="refresh-button"><span>↻</span> Atualizar Ollama</button>
       </section>
+      <section class="active-model-config" aria-label="Configuração ativa">
+        <div><span class="section-label">CONFIGURAÇÃO ATIVA</span><strong>Modelos usados nas próximas execuções</strong></div>
+        <div class="active-model-roles" id="active-model-roles"></div>
+        <p id="active-model-status"></p>
+      </section>
       <section class="model-advisor">
         <div class="advisor-heading"><span><small>CONFIGURAÇÃO ADAPTATIVA</small><strong>Recomendação para esta máquina</strong></span><button id="recommend-models">Analisar</button></div>
         <label class="catalog-opt-in"><input id="docker-sandbox-toggle" type="checkbox"><span>Disponibilizar ambiente Docker para comandos e aplicações</span></label>

@@ -1,0 +1,122 @@
+name: Draft Companion engine release
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      COMPANION_RELEASE_SIGNING_KEY:
+        required: true
+permissions:
+  contents: read
+jobs:
+  engine:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: macos-15-intel
+            target: darwin-x64
+          - runner: windows-2025
+            target: win32-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22.23.4
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm rebuild better-sqlite3 --ignore-scripts=false
+      - run: npm run check
+      - run: npm test
+      - run: npm run smoke:litellm
+      - run: npm run engine:build
+      - name: Sign the exact engine manifest
+        run: npm run engine:package
+        env:
+          COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+      - name: Exercise signed engine through real Linux editor executors and reconnection
+        if: startsWith(matrix.target, 'linux-')
+        run: xvfb-run -a node scripts/test-editor-service.mjs
+      - name: Exercise signed engine through real Mac and Windows editor executors
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        run: node scripts/test-editor-service.mjs
+      - name: Package three VS Code provider variants with the exact signed engine
+        shell: bash
+        run: |
+          for provider in litellm ollama openai; do
+            node esbuild.mjs --provider="$provider"
+            node scripts/package-native.mjs --provider="$provider"
+          done
+        env:
+          COMPANION_ENGINE_BUNDLE: ${{ github.workspace }}/engine-dist
+      - name: Resolve the exact application version
+        id: application
+        shell: bash
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Compile packaged-client acceptance tests
+        run: npm run compile:extension-host-tests
+      - name: Install and activate the signed OpenAI VSIX on Linux
+        timeout-minutes: 5
+        if: startsWith(matrix.target, 'linux-')
+        run: xvfb-run -a node scripts/run-vsix-install-tests.mjs local-agent-companion-${{ steps.application.outputs.version }}-openai-${{ matrix.target }}.vsix
+      - name: Install and activate the signed OpenAI VSIX on Mac and Windows
+        timeout-minutes: 5
+        if: ${{ !startsWith(matrix.target, 'linux-') }}
+        run: node scripts/run-vsix-install-tests.mjs local-agent-companion-${{ steps.application.outputs.version }}-openai-${{ matrix.target }}.vsix
+      - name: Build thin SDK bundles
+        if: matrix.target == 'linux-x64'
+        run: node scripts/build-sdks.mjs
+        env:
+          COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+      - name: Package Mac client with its exact signed native engine
+        if: startsWith(matrix.target, 'darwin-')
+        run: npm run desktop:package -- --arch=${{ matrix.target == 'darwin-arm64' && 'arm64' || 'x64' }}
+        env:
+          COMPANION_ENGINE_BUNDLE: ${{ github.workspace }}/engine-dist
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Sign Mac artifact manifest separately from Apple signing
+        if: startsWith(matrix.target, 'darwin-')
+        run: node scripts/sign-client-artifacts.mjs ${{ matrix.target }}
+        env:
+          COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: signed-engine-${{ matrix.target }}
+          path: |
+            *.vsix
+            release/engine/*
+            release/companion-sdks-*.tar.gz*
+            release/desktop/*.zip
+            release/desktop/*.dmg
+            release/desktop/*.manifest.json
+            release/desktop/*.manifest.sig
+          if-no-files-found: error
+  draft:
+    needs: engine
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: signed-engine-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create reviewable draft; never publish or promote automatically
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+          COMPANION_ASSET_DIRECTORY: release-candidate
+        run: |
+          node scripts/release-artifacts.mjs collect release-assets release-candidate
+          node scripts/release-artifacts.mjs sign release-candidate
+          node scripts/release-artifacts.mjs verify release-candidate
+          python3 scripts/create-engine-draft.py

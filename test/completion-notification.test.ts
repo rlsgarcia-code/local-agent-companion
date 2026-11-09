@@ -30,3 +30,5 @@ test("avoids noise for visible, cancelled, or disabled runs", () => {
   assert.equal(completionNotification("never", false, "failed"), undefined);
   assert.ok(completionNotification("always", true, "completed"));
 });
+
+ test("waiting for a durable requirement never announces completion",()=>{assert.equal(completionNotification("always",false,"waiting"),undefined);});

@@ -1,0 +1,661 @@
+{
+  "scope": "companion-engine-mac-vscode",
+  "status": "accepted-awaiting-publication-review",
+  "engine": "1.0.2",
+  "engineCommit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+  "application": "0.12.4",
+  "node": "22.23.4",
+  "protocol": "1.0",
+  "target": "darwin-arm64",
+  "checks": {
+    "applicationTests": 325,
+    "repositoryChecks": 27,
+    "failed": 0,
+    "streamingRegression": {
+      "state": "passed",
+      "scope": "deterministic-sdk-and-real-renderer-function",
+      "repeatedUpdates": 1000,
+      "statusIndicators": 1,
+      "allPublicDeltasRetained": true,
+      "toolEventsAndAssistantRetained": true,
+      "statesOnlyOnTransitions": true,
+      "actualInstalledEditor": {
+        "state": "passed",
+        "runtime": "deep",
+        "observedSeconds": 40,
+        "thinkingIndicatorsDuringRun": 1,
+        "thinkingIndicatorsAfterCompletion": 0,
+        "responseVisibleAfterEditorReopen": true
+      }
+    },
+    "signedPlatformMatrix": {
+      "state": "passed",
+      "url": "https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42606762627",
+      "jobs": [
+        {
+          "name": "linux-arm64",
+          "conclusion": "success"
+        },
+        {
+          "name": "linux-x64",
+          "conclusion": "success"
+        },
+        {
+          "name": "darwin-arm64",
+          "conclusion": "success"
+        },
+        {
+          "name": "darwin-x64",
+          "conclusion": "success"
+        },
+        {
+          "name": "win32-x64",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (ubuntu-24.04, linux-x64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (ubuntu-24.04-arm, linux-arm64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (windows-2025, win32-x64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (macos-15, darwin-arm64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (macos-15-intel, darwin-x64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / draft",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "downloadedArtifacts": {
+      "state": "passed",
+      "engine": "1.0.2",
+      "application": "0.12.4",
+      "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+      "indexSha256": "76f3d86c5423366311c8e81e0cac0f7b02e25cee37a1260fffa611b12fa4794f",
+      "providerVariant": "ollama",
+      "appleSigning": "ad-hoc-not-notarized",
+      "hashes": {
+        "Local-Companion-0.12.4-arm64.zip": "3a8cdb2dc3eee047c521e5aca770755d83fb9c55f679e2c1475c32c0e4167c99",
+        "Local-Companion-0.12.4-darwin-arm64.manifest.json": "dcb6345c76c92415d951dd7654a13ed2b9aafe8a33157880dc4f2c28144a72de",
+        "Local-Companion-0.12.4-darwin-arm64.manifest.sig": "5de93c74baf1de17a1c266899ab097b3aa7aa968c5942ef36bf28e7f13baddf3",
+        "companion-engine-1.0.2-darwin-arm64.tar.gz": "be79ee54df056f1b099cc5bfe13c8a923d5ed9c151d9c447a8d93df11b9cd53b",
+        "companion-sdks-1.0.2.tar.gz": "2d2beacda8067f08dbd2707cfb8047b03ac81804e29471980e58e8320358fe37",
+        "local-agent-companion-0.12.4-ollama-darwin-arm64.vsix": "c635094dcbee22eb3585304d2ebcf28923a756c1fb80aea637dd0c1d2b6d7ed0"
+      }
+    },
+    "sdk": {
+      "state": "passed",
+      "version": "1.0.2",
+      "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+      "files": 32
+    },
+    "installedEngineParity": {
+      "state": "passed",
+      "engine": "1.0.2",
+      "engineCommit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+      "extensionVersion": "0.12.4",
+      "macVersion": "0.12.4",
+      "components": [
+        {
+          "component": "standalone",
+          "version": "1.0.2",
+          "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+          "node": "22.23.4",
+          "target": "darwin-arm64",
+          "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+        },
+        {
+          "component": "mac",
+          "version": "1.0.2",
+          "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+          "node": "22.23.4",
+          "target": "darwin-arm64",
+          "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+        },
+        {
+          "component": "vscode",
+          "version": "1.0.2",
+          "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+          "node": "22.23.4",
+          "target": "darwin-arm64",
+          "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+        }
+      ]
+    },
+    "installedLiveEngine": {
+      "version": "1.0.2",
+      "protocol": "1.0",
+      "node": "22.23.4",
+      "requiredNode": "22.23.4",
+      "product": "companion-mac",
+      "quiescing": false,
+      "build": {
+        "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+        "target": "darwin-arm64",
+        "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+      },
+      "capabilities": [
+        "sessions",
+        "runs",
+        "events",
+        "approvals",
+        "goals",
+        "sqlite-checkpoints",
+        "chunked-transfers",
+        "durable-approvals",
+        "bound-tool-receipts",
+        "ollama-model-jobs",
+        "model-assistance",
+        "public-session-snapshots"
+      ]
+    },
+    "standaloneRealInference": {
+      "version": "1.0.2",
+      "protocol": "1.0",
+      "node": "22.23.4",
+      "build": {
+        "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+        "target": "darwin-arm64",
+        "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+      },
+      "model": "qwen3.5:latest",
+      "results": [
+        {
+          "runtime": "standard",
+          "state": "completed",
+          "response": "MOTOR_OK"
+        },
+        {
+          "runtime": "deep",
+          "state": "completed",
+          "response": "MOTOR_OK"
+        }
+      ],
+      "assistance": [
+        {
+          "purpose": "advisor",
+          "state": "completed",
+          "response": "ASSISTANCE_OK"
+        },
+        {
+          "purpose": "connection",
+          "state": "completed"
+        }
+      ]
+    },
+    "realServiceRecovery": {
+      "version": "1.0.2",
+      "node": "22.23.4",
+      "build": {
+        "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+        "target": "darwin-arm64",
+        "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+      },
+      "profile": "desktop-service-not-gui",
+      "model": "qwen3.5:latest",
+      "results": [
+        {
+          "runtime": "standard",
+          "recovery": "client-disconnect-and-reattach",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "standard",
+          "recovery": "service-restart-and-explicit-resume",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "deep",
+          "recovery": "client-disconnect-and-reattach",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "deep",
+          "recovery": "service-restart-and-explicit-resume",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        }
+      ]
+    },
+    "installedEngineRollback": {
+      "state": "passed",
+      "scope": "actual-installed-engine-rollback",
+      "current": {
+        "version": "1.0.2",
+        "protocol": "1.0",
+        "node": "22.23.4",
+        "requiredNode": "22.23.4",
+        "product": "companion-mac",
+        "quiescing": false,
+        "build": {
+          "commit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
+          "target": "darwin-arm64",
+          "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+        },
+        "capabilities": [
+          "sessions",
+          "runs",
+          "events",
+          "approvals",
+          "goals",
+          "sqlite-checkpoints",
+          "chunked-transfers",
+          "durable-approvals",
+          "bound-tool-receipts",
+          "ollama-model-jobs",
+          "model-assistance",
+          "public-session-snapshots"
+        ]
+      },
+      "previous": {
+        "version": "1.0.0-rc.7",
+        "protocol": "1.0",
+        "node": "22.23.4",
+        "requiredNode": "22.23.4",
+        "product": "companion-mac",
+        "quiescing": false,
+        "build": {
+          "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+          "target": "darwin-arm64",
+          "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c"
+        },
+        "capabilities": [
+          "sessions",
+          "runs",
+          "events",
+          "approvals",
+          "goals",
+          "sqlite-checkpoints",
+          "chunked-transfers",
+          "durable-approvals",
+          "bound-tool-receipts",
+          "ollama-model-jobs",
+          "public-session-snapshots"
+        ]
+      },
+      "reactivated": "1.0.2",
+      "sessionId": "770020be-dc7b-4da2-b2ff-fc3750a29796",
+      "runId": "c71c283a-3993-4e87-9dfe-dae580cf2579",
+      "postUpdateResponse": "10",
+      "postUpdateMessages": 2,
+      "historySha256": "db625b771a24b4abf08572e506e900b757c98b576372bb3ec49cf4a6eeff55d1",
+      "originalMacConversations": 18,
+      "originalMacDomainPreserved": true,
+      "toolsConfigured": 0,
+      "interfacesRunning": false,
+      "interfaceFilesChanged": false,
+      "priorPairedUiRollback": "release/final-1.0.1/installed-rollback.json"
+    },
+    "originalHistory": {
+      "state": "passed",
+      "originalThreads": 16,
+      "currentThreads": 21,
+      "allOriginalMessagesAndEvidencePreserved": true,
+      "normalization": "empty executionSteps omitted; all nonempty data, statuses, IDs and timestamps compared",
+      "modelRolesPreserved": true,
+      "originalWorkspaceRestored": true,
+      "originalRuntimeRestored": true,
+      "originalModeRestored": true,
+      "originalSelectedThreadRestored": true
+    },
+    "retainedPostUpdateRuns": {
+      "state": "passed",
+      "engine": "1.0.2",
+      "retained": [
+        {
+          "id": "827a9c79-fcda-4c63-951e-126acf89b8a5",
+          "runId": "b78e0c45-cf60-4a78-bf59-12ba973dcf66",
+          "messages": 2,
+          "state": "completed"
+        },
+        {
+          "id": "a1166b79-d2de-461c-9380-78a5ddd2030e",
+          "runId": "ac93c1b9-ce40-4412-816b-8e8f84c733a8",
+          "messages": 2,
+          "state": "completed"
+        }
+      ]
+    },
+    "restoredOriginalContext": {
+      "state": "passed",
+      "scope": "restore-temporary-test-selection-with-client-closed",
+      "onlyFieldChanged": "activeThreadId",
+      "allOtherStateUnchanged": true,
+      "originalSelectedThreadRestored": true
+    },
+    "macUiAcceptance": {
+      "state": "passed",
+      "application": "0.12.4",
+      "engine": "1.0.2",
+      "provider": "ollama",
+      "model": "qwen3.5:latest",
+      "cases": [
+        {
+          "runtime": "deep",
+          "state": "passed",
+          "sessionId": "6dd61aeb-4157-4575-8a22-31bbce4ff93d",
+          "runId": "7ccfcb4b-3a78-4866-a786-cc9806f3b723",
+          "responseVisibleAfterReopen": "4",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "activeUiObservedBeforeClose": true,
+          "processExitVerified": true,
+          "commands": 0,
+          "changes": 0,
+          "engineObservedRunningWithAppClosed": true
+        },
+        {
+          "runtime": "standard",
+          "state": "passed",
+          "sessionId": "46f23f9b-a4e0-42c1-be50-8075ebbdddfa",
+          "runId": "ad40a8e2-2187-4e57-9937-7761851693ae",
+          "responseVisibleAfterReopen": "6",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "activeUiObservedBeforeClose": true,
+          "processExitVerified": true,
+          "commands": 0,
+          "changes": 0
+        }
+      ],
+      "originalContextVisiblyRestored": true,
+      "originalDeliveredFailureEvidenceVisible": true
+    },
+    "vscodeUiAcceptance": {
+      "state": "passed",
+      "application": "0.12.4",
+      "engine": "1.0.2",
+      "provider": "ollama",
+      "model": "qwen3.5:latest",
+      "workspace": "temporary-owned-acceptance-fixture",
+      "cases": [
+        {
+          "runtime": "standard",
+          "state": "passed",
+          "sessionId": "4d7f3089-6437-4f09-99b6-45656c08e80d",
+          "runId": "315b3c63-e9bb-4376-9c67-eed974b4760f",
+          "responseVisible": "Resposta: 8",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "readOnly": true,
+          "initialThinkingIndicators": 1,
+          "completedThinkingIndicators": 0,
+          "responseVisibleInOriginalWindow": true
+        },
+        {
+          "runtime": "deep",
+          "state": "passed",
+          "sessionId": "fe7abb69-bec1-45a6-b47e-42faa2b0b8e4",
+          "runId": "01a4c13c-56e9-474d-a914-94f427828c88",
+          "responseVisible": "5 + 5 = 10",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "readOnly": true,
+          "initialThinkingIndicators": 1,
+          "completedThinkingIndicators": 0,
+          "thinkingIndicatorsAt40Seconds": 1,
+          "clientClosedWhileRunning": true,
+          "processExitVerified": true,
+          "completedWithEditorClosed": true,
+          "responseVisibleAfterReopen": true
+        }
+      ]
+    },
+    "installedProductIsolation": {
+      "state": "passed",
+      "engine": "1.0.2",
+      "sameWorkspace": true,
+      "existingCredentialsOnly": true,
+      "cases": [
+        {
+          "product": "companion-vscode",
+          "state": "rejected-foreign-run",
+          "code": -32004
+        },
+        {
+          "product": "companion-mac",
+          "state": "rejected-foreign-run",
+          "code": -32004
+        }
+      ]
+    },
+    "pairedInstalledRollback": {
+      "state": "passed",
+      "current": {
+        "engine": "1.0.2",
+        "application": "0.12.4"
+      },
+      "previous": {
+        "engine": "1.0.1",
+        "application": "0.12.3"
+      },
+      "allBaselineMacHistoryUnchanged": true,
+      "baselineMacConversations": 20,
+      "currentMacConversations": 21,
+      "additionalConversationsRetained": 1,
+      "baselineMacDomainSha256": "7ce1cb5f339ae2f343c5c2d39405d86849878a6c31f2f595f0913359cf8b9bfb",
+      "editorResponseVisibleOnPrevious": "5 + 5 = 10",
+      "macResponseVisibleOnPrevious": "6",
+      "bothPreviousInterfacesOpened": true,
+      "waitedForServiceToBecomeIdle": true,
+      "noActiveWorkCancelled": true,
+      "reactivated": {
+        "engine": "1.0.2",
+        "application": "0.12.4",
+        "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+      },
+      "currentPayloadsReverified": true,
+      "postUpdateRunsUnchangedAfterReactivation": true,
+      "reactivationVerifiedWithoutUI": true,
+      "postReactivationUIReopenNotObservedBecauseMacLocked": true,
+      "originalSelectionRequiredRestorationAfterRollback": true,
+      "originalContextRestoredAfterReactivation": true,
+      "selectionRestoration": {
+        "state": "passed",
+        "scope": "restore-temporary-test-selection-with-client-closed",
+        "onlyFieldChanged": "activeThreadId",
+        "allOtherStateUnchanged": true,
+        "originalSelectedThreadRestored": true
+      }
+    },
+    "exactReactivatedVSIX": {
+      "state": "passed",
+      "version": "0.12.4",
+      "profiles": [
+        "Default",
+        "KidOS Companion"
+      ],
+      "providerVariant": "ollama",
+      "engine": "1.0.2",
+      "exactInstalledPayloadVerified": true
+    }
+  },
+  "installation": {
+    "state": "installed-and-accepted",
+    "mac": "0.12.4",
+    "vscode": "0.12.4-ollama",
+    "profiles": [
+      "Default",
+      "KidOS Companion"
+    ],
+    "exactMacPayload": {
+      "state": "passed",
+      "application": "0.12.4",
+      "engine": "1.0.2",
+      "payloadEntriesCompared": 659,
+      "previousVersionsRetained": [
+        "0.11.15",
+        "0.12.3"
+      ],
+      "signedMacArtifactVerified": true
+    },
+    "exactVSIXPayloadVerified": true,
+    "activeEditorProvider": "ollama",
+    "model": "qwen3.5:latest",
+    "previousVersionsRetained": true,
+    "personalBackupsRetained": true,
+    "originalMacConversations": 16,
+    "currentMacConversations": 21,
+    "visualAcceptance": "passed-on-exact-0.12.4-before-controlled-rollback",
+    "postRollbackVerification": "exact installed Mac/VSIX payloads, live engine, run state and public messages verified; GUI not reopened after device relocked",
+    "originalContextRestored": true,
+    "editorAcceptanceOptionsRestored": {
+      "approval": "ask-first",
+      "runtime": "standard",
+      "mode": "review-work",
+      "provider": "ollama"
+    }
+  },
+  "priorInstalledVisualEvidence": {
+    "engine": "1.0.1",
+    "application": "0.12.3",
+    "macUiRecovery": {
+      "application": "0.12.3",
+      "engine": "1.0.1",
+      "model": "qwen3.5:latest",
+      "planner": "gpt-oss:20b",
+      "mode": "plan",
+      "cases": [
+        {
+          "runtime": "deep",
+          "state": "passed",
+          "case": "MAC_DEEP_101",
+          "clientClosedWhileRunning": true,
+          "engineRunningAfterClientExit": true,
+          "responseVisibleAfterReopen": "4",
+          "sessionId": "827a9c79-fcda-4c63-951e-126acf89b8a5",
+          "runId": "b78e0c45-cf60-4a78-bf59-12ba973dcf66",
+          "changes": 0,
+          "commands": 0,
+          "durableRunCount": 1,
+          "domainMessages": 2,
+          "pendingApprovals": 0,
+          "reconciliation": 0
+        },
+        {
+          "runtime": "standard",
+          "state": "passed",
+          "case": "MAC_STANDARD_101",
+          "clientClosedWhileRunning": true,
+          "engineRunningAfterClientExit": true,
+          "responseVisibleAfterReopen": "6",
+          "sessionId": "a1166b79-d2de-461c-9380-78a5ddd2030e",
+          "runId": "ac93c1b9-ce40-4412-816b-8e8f84c733a8",
+          "changes": 0,
+          "commands": 0,
+          "durableRunCount": 1,
+          "domainMessages": 2,
+          "pendingApprovals": 0,
+          "reconciliation": 0
+        }
+      ]
+    },
+    "editorConnection": {
+      "state": "passed",
+      "application": "0.12.3",
+      "engine": "1.0.1",
+      "provider": "ollama",
+      "model": "qwen3.5:latest",
+      "requestPath": "loopback /v1/chat/completions",
+      "connectionTest": "streaming-and-tools-supported",
+      "durationMs": 5535,
+      "embeddingMemory": "disabled-in-original-configuration",
+      "authorizedProviderChange": true,
+      "previousCredentialExported": false,
+      "previousConfigurationBackupRetained": true,
+      "externalProviderInitialStatus": 429
+    },
+    "pairedUiRollback": {
+      "state": "passed",
+      "from": {
+        "engine": "1.0.1",
+        "application": "0.12.3"
+      },
+      "previous": {
+        "engine": "1.0.0-rc.7",
+        "application": "0.11.15"
+      },
+      "previousMacAndEditorOpened": true,
+      "postUpdateMacResponseVisible": "6",
+      "postUpdateEditorResponseVisible": "8",
+      "previousProvider": "ollama",
+      "macThreads": 18,
+      "domainHistoryUnchanged": true,
+      "macDomainSha256": "a44bda9fda83b554ff95f8288e2b806e6c6d9e53ea6d3fd3e99b62853772926f",
+      "newRunNotReexecuted": true,
+      "reactivated": {
+        "version": "1.0.1",
+        "build": {
+          "commit": "f1ebe66fa48ae304f7fa09c34697eb209df5cd32",
+          "target": "darwin-arm64",
+          "manifestSha256": "59e7eba63a12d81aa5d0646bf5dd2f6fb192cde07a2bbd2f2c481b88cfbe360c"
+        }
+      },
+      "reactivatedWithoutAnyInterfaceRunning": true,
+      "postUpdateCases": [
+        {
+          "sessionId": "827a9c79-fcda-4c63-951e-126acf89b8a5",
+          "runId": "b78e0c45-cf60-4a78-bf59-12ba973dcf66",
+          "state": "completed",
+          "messages": 2
+        },
+        {
+          "sessionId": "a1166b79-d2de-461c-9380-78a5ddd2030e",
+          "runId": "ac93c1b9-ce40-4412-816b-8e8f84c733a8",
+          "state": "completed",
+          "messages": 2
+        }
+      ]
+    },
+    "notCurrentStreamingAcceptance": true
+  },
+  "pending": [
+    "Final review before merging PR #15 and promoting the unchanged signed engine 1.0.2 release."
+  ],
+  "publication": {
+    "state": "draft-not-promoted",
+    "tag": "companion-engine-v1.0.2",
+    "isPrerelease": false,
+    "url": "https://github.com/rlsgarcia-code/local-agent-companion/releases/tag/untagged-b8a7611f1b168a807501",
+    "targetCommitish": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a"
+  },
+  "appleSigning": {
+    "mode": "ad-hoc-not-notarized",
+    "notarized": false,
+    "validDistributionIdentityVisibleAtCheck": false
+  },
+  "kidOS": {
+    "status": "on-hold",
+    "requiredForThisDelivery": false,
+    "remoteInstallationResumed": false
+  },
+  "limits": [
+    "The final 0.12.4 Mac and VS Code interfaces were visually exercised in standard and Deep modes before the controlled paired rollback. After reactivation the Mac relocked; complete app/VSIX payloads, live engine identity and unchanged run/message state were verified without reopening either GUI.",
+    "The VS Code standard response completed in the original window. Its Deep run completed with the editor closed and appeared once after reopening. Mac Deep execution was observed running after client exit; the standard run completed near client exit and its result was visible after reopening.",
+    "The paired rollback preserved all 20 baseline Mac conversations and retained one additional blank conversation. All 16 pre-migration conversations and their nonempty execution evidence remain unchanged. The originally selected conversation was restored with the client closed, changing no other state.",
+    "The five-platform matrix verifies native builds, contracts, SQLite, IPC and editor installation/activation in CI. Physical Mac and VS Code GUI acceptance was performed on this Apple Silicon Mac; Linux/Windows GUI use was not physically exercised here.",
+    "The original signed release indexes and artifacts are unchanged. The local readiness report is acceptance evidence, not publication authorization.",
+    "The original editor provider returned HTTP 429 no credits. The user explicitly chose Ollama; prior credentials remained in Secret Storage and were not exported.",
+    "Apple sealing is ad-hoc without Developer ID signing or notarization because no valid distribution identity was available.",
+    "The concurrent original developer checkout remains untouched; KidOS/Navi/Alien deployment is on hold by explicit scope."
+  ]
+}

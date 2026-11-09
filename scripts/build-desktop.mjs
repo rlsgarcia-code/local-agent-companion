@@ -1,12 +1,13 @@
 import * as esbuild from "esbuild";
-import { copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { generateThirdPartyNotices } from "./generate-third-party-notices.mjs";
 
 const output = path.resolve("desktop-dist");
 await rm(output, { recursive: true, force: true });
 await mkdir(path.join(output, "renderer"), { recursive: true });
 
-await Promise.all([
+const [mainBuild] = await Promise.all([
   esbuild.build({
     entryPoints: ["desktop/main.ts"],
     outfile: path.join(output, "main.cjs"),
@@ -16,6 +17,7 @@ await Promise.all([
     target: "node22",
     external: ["electron"],
     sourcemap: true,
+    metafile: true,
     logLevel: "info"
   }),
   esbuild.build({
@@ -30,17 +32,24 @@ await Promise.all([
     logLevel: "info"
   })
 ]);
+const inputs = Object.keys(mainBuild.metafile.inputs);
+if (inputs.some((name) => /node_modules\/(?:langchain|deepagents|@langchain)\//.test(name))) {
+  throw new Error("The Mac client contains an agent runtime. Keep execution inside the shared engine.");
+}
+await writeFile(path.join(output, "dependencies.json"), JSON.stringify({ inputs }, null, 2) + "\n");
+await generateThirdPartyNotices({ metafile: mainBuild.metafile, outputDirectory: path.join(output, "licenses") });
 
 await cp("desktop/renderer", path.join(output, "renderer"), { recursive: true });
 await copyFile("desktop/assets/icon.png", path.join(output, "icon.png"));
 await copyFile("LICENSE", path.join(output, "LICENSE"));
 const desktopPackage = {
   name: "local-companion-desktop",
-  version: "0.11.10",
+  version: JSON.parse(await readFile("package.json", "utf8")).version,
   private: true,
   description: "Local Ollama coding companion for macOS",
   author: "Local Agent Companion contributors",
   license: "MIT",
+  dependencies: {},
   main: "main.cjs"
 };
 await writeFile(path.join(output, "package.json"), `${JSON.stringify(desktopPackage, null, 2)}\n`, "utf8");

@@ -32,6 +32,7 @@ const el = Object.fromEntries([
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "theme-control",
+  "active-model-roles", "active-model-status",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
   "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
@@ -62,6 +63,10 @@ async function initialize() {
 
 function handleEvent(event) {
   let conversationEffect = null;
+  if (event.type === "run-state") {
+    appState.snapshot.runState = event.state;
+    appState.snapshot.running = Boolean(event.state && !["completed", "failed", "cancelled"].includes(event.state));
+  }
   if (event.type === "snapshot") appState.snapshot = event.snapshot;
   if (event.type === "context-snapshot") appState.snapshot.context = event.snapshot;
   if (event.type === "context-focus") {
@@ -117,7 +122,11 @@ function handleEvent(event) {
     appState.draftMessages.delete(event.threadId);
     appState.changes = event.changes;
     const thread = appState.snapshot.threads.find((candidate) => candidate.id === event.threadId);
-    if (thread && !thread.messages.some((message) => message.id === event.message.id)) thread.messages.push(event.message);
+    if (thread) {
+      const existing = thread.messages.findIndex((message) => message.id === event.message.id);
+      if (existing >= 0) thread.messages[existing] = event.message;
+      else thread.messages.push(event.message);
+    }
     conversationEffect = { type: "complete", messageId: event.message.id };
   }
   if (event.type === "activity") {
@@ -165,14 +174,18 @@ function render(conversationEffect = null) {
   el["send-button"].disabled = snapshot.running;
   const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
   const inspectorTitles = {
-    activity: snapshot.running ? "Agente trabalhando" : "Execução",
+    activity: ({
+      running: "Agente trabalhando", cancelling: "Encerrando a execução…",
+      awaiting_approval: "Aguardando sua aprovação", awaiting_host: "Aguardando o aplicativo",
+      awaiting_credentials: "Aguardando credenciais", awaiting_reconciliation: "Aguardando verificação do resultado",
+    })[snapshot.runState] || (snapshot.running ? "Agente trabalhando" : "Execução"),
     context: activeContext?.title || "Páginas e pesquisa",
     preview: activeContext?.title || "Preview local",
     changes: `${appState.selectedOutputs?.changeCount ?? appState.changes.length} arquivo${(appState.selectedOutputs?.changeCount ?? appState.changes.length) === 1 ? "" : "s"}`,
     commands: "Auditoria de comandos"
   };
   el["run-state"].textContent = inspectorTitles[appState.inspectorMode] || "Bancada";
-  el["run-pulse"].classList.toggle("active", snapshot.running || (["context", "preview"].includes(appState.inspectorMode) && activeContext?.status === "loading"));
+  el["run-pulse"].classList.toggle("active", (snapshot.running && (!snapshot.runState || snapshot.runState === "running")) || (["context", "preview"].includes(appState.inspectorMode) && activeContext?.status === "loading"));
 }
 
 function renderThreadList(threads, activeThreadId) {
@@ -523,6 +536,19 @@ function renderInspector() {
 function renderRecommendation() {
   const snapshot = appState.snapshot;
   const plan = snapshot.lastRecommendation;
+  const activeLabels = { executor: "Executor", planner: "Planner", evaluator: "Evaluator", vision: "Vision", embedding: "Embedding" };
+  el["active-model-roles"].replaceChildren(...Object.entries(snapshot.modelRoles || {}).map(([role, model]) => {
+    const row = document.createElement("div");
+    const label = document.createElement("span");
+    const value = document.createElement("strong");
+    label.textContent = activeLabels[role] || role;
+    value.textContent = model;
+    row.append(label, value);
+    return row;
+  }));
+  el["active-model-status"].textContent = snapshot.modelRoleNotices?.length
+    ? snapshot.modelRoleNotices.join(" ")
+    : "Somente modelos instalados entram na configuração ativa.";
   el["docker-sandbox-toggle"].checked = Boolean(snapshot.dockerSandboxEnabled);
   el["docker-sandbox-status"].textContent = snapshot.dockerSandboxEnabled
     ? "Ativo: comandos usam somente Docker; não existe fallback nativo."
@@ -589,11 +615,12 @@ function renderRecommendation() {
     return row;
   }));
   el["pull-recommended"].disabled = !plan.requiredPulls.length;
+  el["apply-recommendation"].disabled = Boolean(plan.requiredPulls.length);
   if (appState.recommendationNotice) {
     setRecommendationNotice(appState.recommendationNotice.text, appState.recommendationNotice.kind);
   } else {
     const nextStep = plan.requiredPulls.length
-      ? `Aplicar escolhe os papéis, mas não inicia downloads. Depois, use “Baixar ausentes” para obter ${plan.requiredPulls.length} modelo(s).`
+      ? `A configuração ideal está pendente. Baixe ${plan.requiredPulls.length} modelo(s) antes de aplicá-la; a configuração ativa permanece pronta para uso.`
       : "Aplicar escolhe os papéis imediatamente; nenhum download adicional é necessário.";
     setRecommendationNotice(nextStep, "neutral", false);
   }
@@ -618,6 +645,7 @@ function setRecommendationBusy(busy, title = "Analisando máquina e modelos…")
   }
   if (!busy && appState.snapshot?.lastRecommendation) {
     el["pull-recommended"].disabled = !appState.snapshot.lastRecommendation.requiredPulls.length;
+    el["apply-recommendation"].disabled = Boolean(appState.snapshot.lastRecommendation.requiredPulls.length);
   }
 }
 
@@ -640,16 +668,13 @@ async function applyRoleConfiguration(roles, label) {
   setRecommendationNotice(`Aplicando ${label.toLowerCase()}…`, "active");
   try {
     appState.snapshot = await window.companion.applyRecommendation(roles);
-    const missing = label === "Configuração ideal" ? appState.snapshot.lastRecommendation?.requiredPulls?.length || 0 : 0;
-    setRecommendationNotice(missing
-      ? `${label} aplicada. Os papéis já foram salvos; agora baixe ${missing} modelo(s) ausente(s).`
-      : `${label} aplicada e pronta para uso.`, "success");
+    setRecommendationNotice(`${label} aplicada e pronta para uso.`, "success");
     render();
   } catch (error) {
     setRecommendationNotice(error?.message || String(error), "error");
     showError(error);
   } finally {
-    el["apply-recommendation"].disabled = false;
+    el["apply-recommendation"].disabled = Boolean(appState.snapshot?.lastRecommendation?.requiredPulls?.length);
     el["apply-installed-recommendation"].disabled = false;
     el["reanalyze-models"].disabled = false;
     el["pull-recommended"].disabled = !appState.snapshot?.lastRecommendation?.requiredPulls?.length;

@@ -1,9 +1,13 @@
 import * as path from "node:path";
-import { access, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { access, mkdtemp, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { runTests, runVSCodeCommand } from "@vscode/test-electron";
+import { runTests, downloadAndUnzipVSCode } from "@vscode/test-electron";
+
+import { cleanupEditorTestEngine } from "./cleanup-editor-test-engine.mjs";
+import { runBoundedCli } from "./editor-test-cli.mjs";
+import { installedVSIXDirectory } from "./verify-installed-vsix.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requestedVsix = process.argv[2]?.trim();
@@ -30,11 +34,13 @@ try {
 }
 
 const version = process.env.VSCODE_TEST_VERSION?.trim() || "1.106.0";
+const configuredExecutable = process.env.VSCODE_EXECUTABLE_PATH?.trim();
 const shortTemporaryRoot = process.platform === "win32" ? tmpdir() : "/tmp";
 const profileRoot = await mkdtemp(path.join(shortTemporaryRoot, "ldc-vsix-"));
 const userDataDirectory = path.join(profileRoot, "user");
 const extensionsDirectory = path.join(profileRoot, "extensions");
 let completed = false;
+let installedRoot;
 
 try {
   const installArgs = [
@@ -44,18 +50,26 @@ try {
     `--user-data-dir=${userDataDirectory}`,
     `--extensions-dir=${extensionsDirectory}`
   ];
+  const vscodeExecutable=configuredExecutable || await downloadAndUnzipVSCode({version});
+  const cli=path.join(path.dirname(vscodeExecutable),process.platform==='darwin'?'../Resources/app/out/cli.js':'resources/app/out/cli.js');
+  await access(cli,constants.R_OK);
   try {
-    await runVSCodeCommand(installArgs, { version });
+    await runBoundedCli(vscodeExecutable,[cli,...installArgs],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1'}});
   } catch (error) {
-    // Some Windows VS Code builds exit with V8 code 134 after the CLI has
-    // already installed the VSIX. Continue only when the package is present
-    // in the isolated extension directory; a real install failure remains fatal.
-    if (process.platform !== "win32" || !(await installedExtensionPresent(extensionsDirectory))) throw error;
-    console.warn("PACKAGED_EXTENSION_TEST_INSTALL_WARNING VS Code CLI crashed after installing the VSIX; continuing with the verified isolated copy.");
+    // Electron 1.106 may abort after a successful CLI install on Mac/Windows.
+    // Accept only that known crash and only a byte-verified payload; activation still runs below.
+    const diagnostic=[error?.message,error?.stdout,error?.stderr].filter(value=>typeof value==='string').join('\n');
+    if(!/v8::ToLocalChecked Empty MaybeLocal/.test(diagnostic)||!(await installedVSIXDirectory(vsixPath,extensionsDirectory)))throw error;
+    console.warn("PACKAGED_EXTENSION_TEST_INSTALL_WARNING Known VS Code CLI shutdown crash; the exact installed payload was verified.");
   }
+
+  installedRoot=await installedVSIXDirectory(vsixPath,extensionsDirectory);
+  if(!installedRoot)throw new Error("The installed copy does not match the exact VSIX.");
+  console.log("PACKAGED_EXTENSION_PAYLOAD_VERIFIED");
 
   await runTests({
     version,
+    vscodeExecutablePath: vscodeExecutable,
     extensionDevelopmentPath: path.join(projectRoot, "test", "fixtures", "vsix-test-harness"),
     extensionTestsPath: path.join(projectRoot, "dist-extension-tests", "index.js"),
     extensionTestsEnv: {
@@ -69,6 +83,9 @@ try {
       ...(process.env.LDC_VSIX_TEST_VERBOSE === "1" ? ["--verbose"] : [])
     ]
   });
+  console.log("PACKAGED_EXTENSION_HOST_EXITED");
+  const teardown=await cleanupEditorTestEngine(projectRoot,installedRoot,path.join(projectRoot,"test/fixtures/extension-host-workspace"));
+  console.log("PACKAGED_EXTENSION_ENGINE_TEARDOWN",JSON.stringify(teardown));
   completed = true;
 } catch (error) {
   console.error(
@@ -78,21 +95,16 @@ try {
   process.exitCode = 1;
 } finally {
   if (completed) {
+    console.log("PACKAGED_EXTENSION_PROFILE_CLEANUP_STARTED");
     await rm(profileRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    console.log("PACKAGED_EXTENSION_PROFILE_CLEANUP_OK");
   } else {
     console.error(`PACKAGED_EXTENSION_TEST_PROFILE_PRESERVED ${profileRoot}`);
   }
 }
 
-async function installedExtensionPresent(extensionsDirectory) {
-  let entries;
-  try { entries = await readdir(extensionsDirectory, { withFileTypes: true }); } catch { return false; }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    try {
-      const manifest = JSON.parse(await readFile(path.join(extensionsDirectory, entry.name, "package.json"), "utf8"));
-      if (manifest.name === "local-agent-companion" && typeof manifest.version === "string") return true;
-    } catch { /* ignore incomplete install entries */ }
-  }
-  return false;
-}
+console.log("PACKAGED_EXTENSION_DRIVER_COMPLETED");
+// Assertions, explicit fixture teardown and profile cleanup have already settled.
+// Windows Electron can retain driver handles after exit; never let them turn a finished test into an indefinite job.
+if(process.platform==='win32'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted')
+  process.exit(process.exitCode??0);

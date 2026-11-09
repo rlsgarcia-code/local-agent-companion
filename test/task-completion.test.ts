@@ -37,6 +37,9 @@ test("parses a semantic task contract, rejecting malformed model output", () => 
     acceptanceCriteria: criteria
   })).acceptanceCriteria, criteria);
   assert.throws(() => parseTaskContract("No JSON"), /task contract/);
+  assert.deepEqual(parseTaskContract('{"outcome":"answer","objective":"Answer the arithmetic question","acceptanceCriteria":"Return the correct result"}').acceptanceCriteria,
+    ["Return the correct result"]);
+  assert.throws(() => parseTaskContract('{"outcome":"answer","objective":"Answer","acceptanceCriteria":42}'));
   assert.throws(() => parseTaskContract('{"outcome":"unknown","objective":"x","reason":"x","acceptanceCriteria":[]}'));
   assert.equal(parseTaskVerdict('{"verdict":"needs_work","reason":"No diff"}').verdict, "needs_work");
 });

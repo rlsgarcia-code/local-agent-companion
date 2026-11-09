@@ -2,7 +2,7 @@
   "name": "local-agent-companion",
   "displayName": "Local Agent Companion",
   "description": "A local LangChain agent foundation for VS Code with user-configured LiteLLM and approval-gated corporate MCP connections.",
-  "version": "0.11.10",
+  "version": "0.12.4",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/rlsgarcia-code/local-agent-companion#readme",
@@ -195,7 +195,7 @@
             "en"
           ],
           "enumDescriptions": [
-            "Respostas exclusivamente em português do Brasil.",
+            "Respostas exclusivamente em portugu\u00eas do Brasil.",
             "Responses exclusively in English."
           ],
           "default": "pt-BR",
@@ -261,7 +261,11 @@
             "properties": {
               "api": {
                 "type": "string",
-                "enum": ["auto", "chat_completions", "responses"]
+                "enum": [
+                  "auto",
+                  "chat_completions",
+                  "responses"
+                ]
               },
               "reasoningEffort": {
                 "type": "string",
@@ -442,11 +446,11 @@
     "build": "node esbuild.mjs",
     "desktop:build": "node scripts/build-desktop.mjs",
     "desktop:dev": "npm run desktop:build && electron desktop-dist/main.cjs",
-    "desktop:package": "npm run desktop:build && electron-builder --projectDir desktop-dist --config ../desktop/electron-builder.yml",
+    "desktop:package": "node scripts/package-desktop.mjs",
     "watch": "node esbuild.mjs --watch",
     "check": "tsc --noEmit",
     "test": "npm run compile:tests && node --test dist-tests/test/**/*.test.js && npm run test:repository",
-    "test:repository": "node --test test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs",
+    "test:repository": "node --test test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs test/release-artifacts.test.mjs test/installed-vsix.test.mjs",
     "compile:tests": "node scripts/clean-test-output.mjs && tsc -p tsconfig.test.json",
     "compile:extension-host-tests": "node scripts/clean-extension-host-test-output.mjs && tsc -p tsconfig.extension-test.json",
     "test:extension-host": "npm run build && npm run compile:extension-host-tests && node scripts/run-extension-host-tests.mjs",
@@ -462,23 +466,33 @@
     "package:openai": "node esbuild.mjs --provider=openai && node scripts/package-native.mjs --provider=openai",
     "package:verified": "npm run verify && node scripts/package-native.mjs",
     "package:verified:ollama": "npm run verify && node esbuild.mjs --provider=ollama && node scripts/package-native.mjs --provider=ollama",
-    "package:verified:openai": "npm run verify && node esbuild.mjs --provider=openai && node scripts/package-native.mjs --provider=openai"
+    "package:verified:openai": "npm run verify && node esbuild.mjs --provider=openai && node scripts/package-native.mjs --provider=openai",
+    "engine:build": "npm run engine:check && node scripts/build-engine.mjs",
+    "engine:test": "npm run compile:tests && node --test dist-tests/test/engine-*.test.js",
+    "engine:package": "node scripts/package-engine.mjs",
+    "suite:check": "npm run check && npm test && npm run engine:build",
+    "engine:check": "tsc --noEmit -p tsconfig.engine.json"
   },
   "dependencies": {
     "@langchain/community": "^1.1.29",
     "@langchain/core": "^1.2.17",
     "@langchain/langgraph": "^1.5.0",
+    "@langchain/langgraph-checkpoint-sqlite": "1.1.0",
     "@langchain/mcp-adapters": "^2.0.1",
     "@langchain/openai": "^1.6.2",
     "@modelcontextprotocol/client": "^2.3.1",
+    "@peculiar/x509": "3.1.0",
+    "better-sqlite3": "12.10.0",
     "chromadb": "^3.5.0",
     "deepagents": "^1.15.0",
     "langchain": "^1.5.16",
     "playwright-core": "^1.58.2",
-    "undici": "^6.29.0",
+    "reflect-metadata": "0.2.2",
+    "undici": "6.29.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.106.0",
     "@vscode/test-electron": "^3.1.0",
@@ -487,5 +501,8 @@
     "electron-builder": "^26.18.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

@@ -6,8 +6,7 @@ import type { RunEvidenceSnapshot } from "./run-evidence";
 import type { GoalRecord } from "./goal-state";
 import type { ResponseLanguage } from "./response-language";
 
-export type RunMode = "review" | "execute" | "plan";
-export type AgentRuntime = "standard" | "deep";
+export type { RunMode, AgentRuntime } from "../packages/contracts/src/execution";
 export type ImageAttachment = { mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; data: string; name?: string };
 export type { ResponseLanguage };
 

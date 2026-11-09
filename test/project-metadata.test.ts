@@ -35,7 +35,7 @@ test("keeps professional extension metadata and a valid package icon", () => {
   assert.deepEqual(notifications?.enum, ["whenHidden", "always", "never"]);
   assert.equal(
     manifest.scripts?.["test:repository"],
-    "node --test test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs"
+    "node --test test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs test/release-artifacts.test.mjs test/installed-vsix.test.mjs"
   );
   assert.match(manifest.scripts?.test ?? "", /npm run test:repository/);
   assert.equal(manifest.scripts?.package, "npm run build && node scripts/package-native.mjs");
@@ -88,12 +88,12 @@ test("CI verifies and packages every supported native target", () => {
   assert.match(workflow, /actions\/upload-artifact@[a-f0-9]{40} # v7/);
   assertWorkflowActionsPinned(workflow);
   assert.match(workflow, /if: matrix\.target == 'linux-x64'[\s\S]*xvfb-run -a npm run test:extension-host/);
-  assert.match(workflow, /Verify the local packaging entrypoint on Windows\s+if: matrix\.target == 'win32-x64'\s+run: npm run package/);
+  assert.match(workflow, /Verify the local packaging entrypoint on Windows\s+if: matrix\.target == 'win32-x64'\s+run: node --test test\/native-package\.test\.mjs/);
   assert.match(workflow, /if: matrix\.target == 'win32-x64'\s+run: npm run test:extension-host/);
   assert.match(workflow, /if: matrix\.target == 'win32-x64'\s+run: npm run test:vsix-install -- local-agent-companion-win32-x64\.vsix/);
 });
 
-test("tagged releases publish a complete, immutable, checksummed native package set", () => {
+test("tagged releases prepare a complete, immutable, checksummed native package draft for review", () => {
   const workflow = readFileSync(".github/workflows/release.yml", "utf8");
   assert.match(workflow, /tags:\s+\- "v\*\.\*\.\*"/);
   for (const target of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"]) {
@@ -113,7 +113,7 @@ test("tagged releases publish a complete, immutable, checksummed native package 
   }
   assert.match(workflow, /publish:[\s\S]*permissions:\s+contents: write/);
   assert.match(workflow, /gh release create[\s\S]*--draft/);
-  assert.match(workflow, /gh release edit[\s\S]*--draft=false/);
+  assert.doesNotMatch(workflow, /gh release edit[^\n]*--draft=false|--latest/);
   assert.match(workflow, /if: matrix\.target == 'win32-x64'\s+run: npm run test:extension-host/);
   assert.match(workflow, /if: matrix\.target == 'win32-x64'\s+run: \|[\s\S]*Get-Content package\.json[\s\S]*npm run test:vsix-install -- "release\/local-agent-companion-\$version-win32-x64\.vsix"/);
   assertWorkflowActionsPinned(workflow);

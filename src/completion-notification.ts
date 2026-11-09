@@ -1,5 +1,5 @@
 export type CompletionNotificationMode = "whenHidden" | "always" | "never";
-export type RunOutcome = "completed" | "failed" | "cancelled";
+export type RunOutcome = "completed" | "failed" | "cancelled" | "waiting";
 
 export type CompletionNotification = {
   level: "information" | "warning";
@@ -16,7 +16,7 @@ export function completionNotification(
   viewVisible: boolean,
   outcome: RunOutcome
 ): CompletionNotification | undefined {
-  if (outcome === "cancelled" || mode === "never" || (mode === "whenHidden" && viewVisible)) {
+  if (outcome === "waiting" || outcome === "cancelled" || mode === "never" || (mode === "whenHidden" && viewVisible)) {
     return undefined;
   }
   return outcome === "failed"

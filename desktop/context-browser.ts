@@ -19,7 +19,7 @@ const MAX_PAGE_TEXT = 12_000;
 const MAX_TOTAL_CONTEXT = 24_000;
 const CONTEXT_PARTITION = "local-companion-visual-context";
 
-type ManagedTab = DesktopContextTab & { view: WebContentsView };
+type ManagedTab = DesktopContextTab & { view: WebContentsView; blockedResources: Set<string> };
 
 export class DesktopContextBrowser {
   private readonly tabs = new Map<string, ManagedTab>();
@@ -37,7 +37,19 @@ export class DesktopContextBrowser {
     this.browserSession.setPermissionCheckHandler(() => false);
     this.browserSession.on("will-download", (event) => event.preventDefault());
     this.browserSession.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: !isAllowedBrowserResource(details.url, this.externalAccess, this.approvedDomains) });
+      const allowed = isAllowedBrowserResource(details.url, this.externalAccess, this.approvedDomains);
+      if (!allowed) {
+        const tab = [...this.tabs.values()].find((candidate) => candidate.view.webContents.id === details.webContentsId);
+        if (tab && isLoopbackContextUrl(tab.url)) {
+          try {
+            const resource = new URL(details.url);
+            if (resource.protocol === "http:" || resource.protocol === "https:") tab.blockedResources.add(resource.hostname);
+          } catch {
+            // Invalid resources are blocked without being surfaced as trusted context.
+          }
+        }
+      }
+      callback({ cancel: !allowed });
     });
   }
 
@@ -45,7 +57,7 @@ export class DesktopContextBrowser {
     return {
       externalAccess: this.externalAccess,
       activeTabId: this.activeTabId,
-      tabs: [...this.tabs.values()].map(({ view: _view, ...tab }) => ({ ...tab }))
+      tabs: [...this.tabs.values()].map(({ view: _view, blockedResources: _blockedResources, ...tab }) => ({ ...tab }))
     };
   }
 
@@ -105,6 +117,7 @@ export class DesktopContextBrowser {
       included: false,
       canGoBack: false,
       canGoForward: false,
+      blockedResources: new Set<string>(),
       view
     };
     this.tabs.set(id, tab);
@@ -206,13 +219,19 @@ export class DesktopContextBrowser {
       void this.approveAndNavigate(tab, event.url);
     });
     contents.on("did-start-loading", () => {
+      tab.blockedResources.clear();
       tab.status = "loading";
       this.publish();
     });
     contents.on("did-stop-loading", () => {
       this.updateTabNavigation(tab);
-      tab.status = "ready";
-      tab.error = undefined;
+      if (tab.blockedResources.size) {
+        tab.status = "failed";
+        tab.error = `O preview depende de recursos externos bloqueados: ${[...tab.blockedResources].sort().join(", ")}. Inclua esses recursos no projeto para manter a execução local.`;
+      } else {
+        tab.status = "ready";
+        tab.error = undefined;
+      }
       this.publish();
     });
     contents.on("did-fail-load", (_event, code, description, validatedUrl, isMainFrame) => {

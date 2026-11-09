@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "packages",
+    "outDir": "release/sdk/typescript",
+    "declaration": true,
+    "emitDeclarationOnly": true
+  },
+  "include": ["packages/client-ts/src/*.ts", "packages/contracts/src/index.ts"]
+}

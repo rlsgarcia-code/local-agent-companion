@@ -4575,9 +4575,11 @@ function executionEventIcon(kind, title) {
 
 function appendExecutionTimelineEvent(kind, title, detail = '') {
   document.getElementById('welcome')?.remove();
-  const element = document.createElement('article');
   const normalizedKind = String(kind || 'activity').toLowerCase();
+  const previousStatus = normalizedKind === 'status' ? runActivityState?.statusElement : undefined;
+  const element = previousStatus?.isConnected ? previousStatus : document.createElement('article');
   if (normalizedKind === 'status' && String(title || '').toLowerCase() !== 'ready') {
+    if (runActivityState) runActivityState.statusElement = element;
     element.className = 'thinking-event';
     element.innerHTML = '<details open><summary><strong>Thinking</strong><small>' + escapeHtml(String(title || '')) + '</small></summary><div class="thinking-event-body"><span>' + escapeHtml(String(title || '')) + '</span>' + (detail ? '<span>' + localLinkify(detail) + '</span>' : '') + '</div></details>';
   } else {
@@ -4592,8 +4594,10 @@ function appendExecutionTimelineEvent(kind, title, detail = '') {
   const activeAssistant = [...assistantStreamStates.values()]
     .map(state => state.element)
     .find(candidate => candidate?.isConnected);
-  if (activeAssistant) timeline.insertBefore(element, activeAssistant);
-  else timeline.appendChild(element);
+  if (!element.isConnected) {
+    if (activeAssistant) timeline.insertBefore(element, activeAssistant);
+    else timeline.appendChild(element);
+  }
   scrollConversationToBottom();
 }
 
@@ -5997,7 +6001,9 @@ function resetConversation(context, history, threads, draft = '') {
   }
   if (pendingRequestText && recovery?.status === 'running') {
     appendRecovery(
-      recovery.partialAssistant?.content
+      recovery.engineRequestKey
+        ? 'This request is running in the local intelligence service. You can close the editor and refresh later.'
+        : recovery.partialAssistant?.content
         ? 'A partial response is preserved above. This request is still active in another VS Code window; continue there or refresh after it finishes.'
         : 'This request is still marked active in another VS Code window. Continue there, or refresh after that run finishes.',
       false,
@@ -6007,12 +6013,14 @@ function resetConversation(context, history, threads, draft = '') {
     );
   } else if (pendingRequestText && recovery?.status === 'interrupted') {
     appendRecovery(
-      recovery.partialAssistant?.content
+      recovery.engineRequestKey
+        ? ({awaiting_host:'Waiting for the editor adapter. Resume to reconnect the original tools.',awaiting_approval:'Waiting for your approval. Resume to answer the saved request.',awaiting_credentials:'Waiting for credentials. Resume after restoring the provider key.',awaiting_reconciliation:'A tool may have executed. Reconcile its result before continuing.'}[recovery.engineState] || 'The service preserved this execution. Resume from its checkpoint.')
+        : recovery.partialAssistant?.content
         ? 'The partial response above was preserved after the previous session ended. Restarting replays the request safely from the beginning.'
         : 'The previous extension session ended before an answer was saved. Restarting replays this request safely from the beginning.',
       false,
       true,
-      'Restart request'
+      recovery.engineRequestKey ? 'Resume execution' : 'Restart request'
     );
   } else if (pendingRequestText && recovery?.status === 'cancelled') {
     appendRecovery(
@@ -6945,7 +6953,8 @@ window.addEventListener('message', ({ data }) => {
       setCancellationPending(false);
       currentRunSummary.cancelled = data.outcome === 'cancelled';
       currentRunSummary.failed = data.outcome === 'failed';
-      if (data.outcome !== 'completed') markAssistantStreamsInterrupted(data.outcome);
+      if (data.outcome !== 'completed' && data.outcome !== 'waiting') markAssistantStreamsInterrupted(data.outcome);
+      if (data.outcome === 'waiting') { status.textContent = 'Execution saved · waiting to continue'; appendRecovery('The local service preserved this execution. Refresh its status or resume after resolving the pending requirement.', false, true, 'Resume execution'); }
       renderRunSummary();
       if (liveRunThreadId && liveRunThreadId === activeThreadId) vscode.postMessage({ type: 'markThreadRead', id: liveRunThreadId });
       break;

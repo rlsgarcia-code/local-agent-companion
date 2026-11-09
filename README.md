@@ -1,14 +1,101 @@
 # Local Agent Companion
 
+> **Motor 1.0.2 + clientes Mac/VS Code 0.12.4 instalados e validados**, com Ollama local.
+> A entrega aguarda revisão para merge e publicação no
+> [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
+> KidOS permanece em espera e não condiciona esta entrega.
+>
+> A [matriz assinada](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42606762627)
+> passou nas cinco plataformas. Motor independente, aplicativo Mac e extensão
+> instalados compartilham o mesmo artefato, com Node 22.23.4 empacotado.
+> Passaram 325 testes da aplicação, 27 verificações, inferência real Ollama e
+> recuperação após desconexão do cliente e reinício do serviço.
+>
+> As duas interfaces foram exercitadas em Standard e Deep. O VS Code manteve
+> um único indicador durante 40 segundos de inferência; a resposta apareceu
+> uma vez após fechar e reabrir o editor. O Mac também recuperou os resultados.
+> O rollback conjunto 0.12.4/1.0.2 → 0.12.3/1.0.1 → 0.12.4/1.0.2 preservou
+> os históricos e exibiu as respostas novas nas interfaces anteriores.
+> O [relatório de aceite](docs/desktop-final-acceptance.json) distingue as provas
+> visuais da conferência dos arquivos e dados após a última reativação.
+>
+> LangChain/DeepAgents e o saver SQLite oficial controlam execução/checkpoints.
+> O serviço mantém planejamento, evidências, memória, objetivos, recomendações e
+> diagnósticos; interfaces mantêm apresentação, contexto e ferramentas autorizadas.
+> Recursos dependentes do editor aguardam sua reconexão. Provedores e históricos
+> continuam separados por produto, e as versões anteriores permanecem para rollback.
+
+O kit é montado por `scripts/assemble-desktop-delivery.mjs` a partir de um
+índice assinado e dos artefatos exatos. `node verify-delivery.mjs` verifica sua
+assinatura e os quatro arquivos incluídos. O relatório de aceite local não
+substitui a assinatura original. Dados pessoais e backups ficam fora do kit.
+Para reproduzir o aceite no VS Code já instalado, os scripts
+`scripts/test-editor-service.mjs` e `scripts/run-vsix-install-tests.mjs` aceitam
+`VSCODE_EXECUTABLE_PATH`; o primeiro também aceita `--bundle-dir` e `--report`.
+O smoke avulso `scripts/smoke-shared-engine.mjs` aceita `--bundle-dir` e `--sdk-dir`
+para validar exatamente os artefatos assinados.
+O parâmetro opcional `--assist` também verifica conselho Ollama e compatibilidade
+com streaming/tools usando inferência real somente de leitura. O script
+`scripts/check-installed-desktop.mjs` compara as assinaturas e o manifesto do
+núcleo avulso com os instalados no Mac e VS Code. O ensaio explícito
+`scripts/smoke-engine-rollback.cjs` verifica os dois SDKs antes de executá-los,
+cria um histórico após a atualização e alterna os binários assinados atual →
+anterior → atual em estado temporário. Ele exige igualdade desse histórico e
+preservação da execução concluída; não altera o serviço instalado.
+
+`models.assist` executa tarefas pontuais de autoria de catálogo MCP, conselho
+Ollama e diagnóstico de chat/embeddings pelo mesmo cliente LangChain do motor.
+Os SDKs transferem anexos em partes e enviam apenas referências de credenciais.
+O diagnóstico de tools publica o schema, sem executar chamadas devolvidas pelo
+modelo. O KidOS não pode usar essa rota para contornar seu gateway protegido.
+
+Candidate recovery behavior: cancellation remains `cancelling` until execution
+settles; disconnected UI tools wait, while unknown dispatched effects require
+explicit reconciliation. Provider call IDs are bound to persisted graph
+invocations and exact arguments. Missing checkpoints with recorded effects never
+restart from the original prompt. Public streams filter internal completion and
+compaction nodes. Session exports retain public history, virtual files, goals,
+product memory, model settings and historical operation receipts; importing an
+export does not replay effects or grant approval authority.
+
+Ollama model jobs are independent of conversation cancellation and survive client
+closure. Engine restart preserves an interrupted job with a diagnostic and
+requires a new explicit request. The Mac's model UI uses `models.*`; the older
+`desktop.*` model routes remain temporary compatibility adapters. Other providers'
+model-management surfaces retain their existing provider restrictions. The VS Code
+semantic-memory adapter now runs in the shared service.
+The bundled Node version is read from `packages/contracts/src/version.json`;
+installations stage verified, content-addressed version directories and activate
+only after the old service confirms it is idle.
+
+Bootstrap is serialized across clients using a transaction held by a short-lived
+helper under the verified bundled Node/SQLite. Closing or crashing its owner
+releases the OS lock. An older client cannot automatically downgrade a newer
+engine or replace another artifact under the same production version. Large
+public events use verified transfers just like domain imports and results.
+An atomic `sessions.snapshot` transfers complete public conversation state, all run summaries, pending approvals and unknown-effect identities. Its bounded recent activity tail explicitly declares when older activity requires replay. Both SDKs hydrate snapshot transfers.
+The engine now type-checks independently of the legacy `src/` and `desktop/` trees; its bundle rejects imports from either interface tree.
+
+The Mac Ollama profile constrains classifier/verifier responses with [LangChain structured output](https://docs.langchain.com/oss/javascript/langchain/models#structured-output), using the existing Chat Completions route and [Ollama response_format support](https://docs.ollama.com/capabilities/structured-outputs). Evidence and tool authorization remain enforced by the engine.
+
+The explicit `scripts/smoke-desktop-service.cjs --ollama-model=<configured-model>`
+check uses an empty temporary workspace and a read-only arithmetic request. It
+tests both client reconnection and service restart/resume in both agent modes,
+including public snapshot deduplication. `--bundle-dir` selects an exact signed
+engine and `--sdk-dir` selects its verified extracted SDK. This checks the service
+profile; it does not launch or install the GUI. Leased provider credentials are
+rejected in tool arguments before approval or effect admission; persisted approval
+payloads are also redacted.
+
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
 
 Uma extensão de Visual Studio Code com dois runtimes de agente construídos exclusivamente sobre primitivas do **LangChain**, executados localmente. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
 
 ### Objetivos persistentes
 
-Use o botão **Goal** no compositor para transformar uma solicitação em um objetivo de longo prazo. O objetivo fica ligado à thread atual e é salvo sem conversa ou credenciais em `.local-agent/goals/<goal-id>.json`. O arquivo mantém critérios, marcos, evidências, próximo passo e um histórico resumido. Depois de ativar o rascunho, objetivos ativos com retomada automática podem continuar após reiniciar o VS Code; cada iteração usa o runtime e o modo de autonomia salvos e passa por uma avaliação estruturada antes de marcar critérios como concluídos. Sem evidência suficiente, o objetivo continua; após duas iterações sem progresso ou 20 iterações, ele é pausado com diagnóstico.
+Use o botão **Goal** no compositor para transformar uma solicitação em um objetivo de longo prazo. O objetivo fica ligado à sessão do produto no serviço. O arquivo `.local-agent/goals/<goal-id>.json` permanece como projeção local legível e fonte de importação legada, com backup antes da migração. O registro mantém critérios, marcos, evidências, próximo passo e um histórico resumido. Depois de ativar o rascunho, objetivos ativos com retomada automática podem continuar após reiniciar o VS Code; cada iteração usa o runtime e o modo de autonomia salvos e passa por uma avaliação estruturada antes de marcar critérios como concluídos. Sem evidência suficiente, o objetivo continua; após duas iterações sem progresso ou 20 iterações, ele é pausado com diagnóstico.
 
-O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), estado (`MemorySaver`), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As únicas chamadas externas feitas pela extensão são:
+O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), checkpoints (saver SQLite oficial no serviço), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As únicas chamadas externas feitas pela extensão são:
 
 ```text
 POST <LITELLM_BASE_URL>/chat/completions
@@ -35,7 +122,7 @@ Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, f
 - Rascunho independente por thread, preservado localmente ao trocar de conversa ou recarregar a sidebar.
 - Resposta textual progressiva em uma única mensagem, com identidade estável do runtime até o histórico final, sem transformar chamadas de ferramenta em mensagens permanentes da conversa.
 - Recuperação de solicitações interrompidas com **Try again**, **Edit & resend** ou descarte confirmado, sem duplicar a mensagem no contexto do agente nem apagar turnos já concluídos.
-- Detecção de execução abandonada após reiniciar o Extension Host, com preservação local da resposta parcial, **Restart request** explícito e manutenção do modo original.
+- Reconexão ao serviço após reiniciar o Extension Host, com snapshot público, aprovações pendentes e recuperação sem duplicar mensagens ou efeitos.
 - Coordenação defensiva entre janelas: uma execução ativa em outro processo do VS Code bloqueia uma segunda execução no mesmo workspace e oferece atualização manual de status.
 - Seletor visível entre **LangChain Agent** e **Deep Agent**, persistido por workspace.
 - Contexto automático do arquivo ativo, seleção, cursor, diagnósticos, arquivos abertos e amostra da árvore.
@@ -48,7 +135,7 @@ Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, f
 - Navegação completa por teclado na sidebar, com foco devolvido ao controle de origem, fechamento de painéis por `Esc`, anúncios concisos para leitores de tela e suporte a alto contraste/redução de movimento.
 - Centro de revisão ao final de cada execução, reunindo resultado, plano final, arquivos, diffs, restauração, comandos, saídas, verificações, memória e uso do modelo.
 - Revisão por arquivo com diff nativo **before ↔ after**, restauração individual e uma ação para desfazer em conjunto todas as alterações de arquivo completamente capturadas, sempre protegidas contra a perda de edições posteriores.
-- Checkpoints das threads da sessão gerenciados por `MemorySaver`, com projeções limitadas de usuário/assistente no armazenamento local do workspace para restauração após reiniciar o VS Code.
+- Checkpoints dos grafos no saver SQLite oficial do serviço por namespace, com projeções limitadas de usuário/assistente no estado local do workspace para apresentação e importação legada.
 - Memória durável e auditável em `.local-agent/memory.md`, com recuperação semântica opcional pelo ChromaDB local.
 - Memória categorizada com proveniência opcional por arquivo: fatos e resumos derivados do código deixam de ser recuperados automaticamente quando a fonte muda, e o recibo da execução mostra quais lembranças influenciaram o turno.
 - Central de memória na sidebar para consultar, adicionar, editar e excluir entradas duráveis, abrir a fonte Markdown e compreender o modo de recuperação ativo.
@@ -155,11 +242,14 @@ open -a "Local Companion" --args --enable-docker-sandbox
 LOCAL_COMPANION_DOCKER_SANDBOX=1 "/Applications/Local Companion.app/Contents/MacOS/Local Companion"
 ```
 
-Para gerar os aplicativos Apple Silicon e Intel, além dos respectivos DMGs e ZIPs:
+Para gerar o aplicativo, selecione o motor assinado da arquitetura exata. Apple Silicon e Intel são empacotados em etapas separadas; cada uma inclui seu próprio Node e SQLite:
 
 ```bash
-npm run desktop:package
+COMPANION_ENGINE_BUNDLE=/caminho/do/motor-assinado-arm64 npm run desktop:package -- --arch=arm64
+# Repita com o motor darwin-x64 e --arch=x64 para Intel.
 ```
+
+O candidato piloto usa assinatura ad hoc do aplicativo e verifica novamente o motor após a montagem. Assinatura Developer ID e notarização não são realizadas por esse fluxo. O manifesto assinado registra essa condição.
 
 Os artefatos ficam em `release/desktop/`. Builds locais são deliberadamente não assinados; para distribuição ampla, configure a identidade Apple Developer ID e notarização no pipeline de release antes de entregá-los a outros usuários.
 
@@ -404,7 +494,7 @@ A escolha muda somente o cabeçalho HTTPS enviado ao gateway configurado. A chav
 
 ### Erro “Function tools with reasoning_effort are not supported”
 
-Algumas implantações usam reasoning por padrão, mas não aceitam reasoning junto de function tools no endpoint Chat Completions. Como o agente precisa das ferramentas locais e este projeto não usa Responses API, abra **LiteLLM** e selecione `none` em **Reasoning effort** para o alias afetado.
+Algumas implantações usam reasoning por padrão, mas não aceitam reasoning junto de function tools no endpoint Chat Completions. Para o perfil Chat Completions afetado, abra **LiteLLM** e selecione `none` em **Reasoning effort** para o alias afetado.
 
 O formulário detecta a família pelo alias e limita as opções conhecidas, mas o preset pode ser alterado manualmente. Se aparecer erro de temperatura incompatível, deixe **Temperature** e **Top P** em branco ou use o preset customizado conforme o contrato real do gateway.
 
@@ -415,7 +505,7 @@ Em cada turno, o runtime local:
 1. recupera a thread local selecionada e salva imediatamente a mensagem do usuário; em uma recuperação, substitui a solicitação pendente em vez de duplicá-la;
 2. coleta o contexto atual do editor;
 3. lê a memória durável do projeto;
-4. reconstrói o turno a partir da projeção local limitada da conversa; `MemorySaver` guarda apenas o estado do ciclo LangGraph em andamento, não um checkpoint persistente entre reinícios;
+4. recupera a sessão e os checkpoints persistentes pelo saver SQLite oficial no namespace autenticado do produto; a projeção da interface é reconstruída pelo snapshot público;
 5. quando configurado, indexa e consulta a memória do projeto no ChromaDB local por meio do vector store LangChain;
 6. instancia `ChatOpenAICompletions` sobre a base URL do LiteLLM;
 7. entrega mensagens e ferramentas ao `createAgent` ou `createDeepAgent`, conforme a escolha do usuário, e consome o `streamEvents` nativo do LangChain;
@@ -427,9 +517,9 @@ No **LangChain Agent**, a janela de conversa é limitada por middleware e todas 
 
 O contrato de conclusão não procura verbos específicos na mensagem mais recente: uma frase curta como “aplique as críticas” é interpretada junto com a revisão anterior. A classificação e a verificação usam o modelo configurado e podem acrescentar chamadas Chat Completions ao turno; seus JSONs internos não aparecem no diálogo. Um diff não basta por si só: o verificador deve considerá-lo pertinente ao objetivo. Um projeto já correto pode ser aceito sem edição somente quando houve leitura real do workspace e o verificador fundamenta o resultado. A revisão final opcional da interface é uma camada adicional de diagnóstico, não substitui esse gate.
 
-Durante uma execução, a thread persiste metadados mínimos da tentativa — identificador, modo, runtime, horários e processo proprietário — e uma projeção limitada da resposta parcial mais recente para recuperação de interface. Essa projeção não é adicionada à memória do projeto nem ao contexto como resposta concluída; ela é removida ao consolidar a mensagem final ou descartar a solicitação. Um lease atômico separado, mantido no armazenamento privado global da extensão e nunca no repositório, impede que duas janelas executem o agente simultaneamente sobre o mesmo workspace. Se o processo proprietário desaparecer antes de salvar a resposta, o lease pode ser recuperado, a tentativa passa para **interrupted** e o texto parcial permanece visível como incompleto. O botão **Restart request** repete o último pedido desde o início usando a projeção local restaurada; ele não afirma continuar do ponto exato de um checkpoint perdido. `MemorySaver` permanece o único checkpointer do runtime LangGraph.
+O serviço persiste sessões, estados, eventos públicos e recibos, com checkpoints SQLite dos grafos. Ao reabrir, a interface recupera o snapshot e retoma os eventos sem duplicar a resposta. Fechar o cliente preserva trabalho independente dele; ferramentas que precisam do editor aguardam sua reconexão. Após reiniciar o serviço, uma execução interrompida exige continuação explícita; credenciais ausentes e efeitos de resultado desconhecido produzem esperas distintas. Um efeito desconhecido precisa ser reconciliado antes de repetir a operação. O coordenador do serviço impede execuções concorrentes sobre o mesmo workspace entre produtos, mantendo históricos e memória isolados.
 
-Não existe cliente HTTP alternativo nem loop manual de function calling no projeto. A classe `ChatOpenAICompletions` força o caminho Chat Completions e não usa Responses API. O tracing externo do LangChain/LangSmith é explicitamente desativado pelo runtime.
+LangChain/DeepAgents controlam o ciclo de ferramentas no serviço; as interfaces não criam outro executor como fallback. `ChatOpenAICompletions` mantém sua rota Chat Completions. Perfis LiteLLM Responses explicitamente selecionados conservam suas rotas e restrições próprias; a variante OpenAI direta continua limitada a Chat Completions. O tracing externo LangChain/LangSmith permanece desativado.
 
 As ferramentas de leitura usam caminhos relativos e validam caminhos reais para impedir escape por `..` ou links simbólicos. Os comandos não passam por um shell, sempre exigem confirmação e recebem somente um conjunto mínimo de variáveis do sistema — nunca uma chave de provedor. A política local bloqueia interpretadores de shell, código inline, wrappers de comandos, clientes de rede, URLs remotas, downloads/publicações por gerenciadores de pacotes e operações Git remotas. Comandos capazes de remover ou descartar dados recebem um aviso destrutivo específico antes da execução.
 
@@ -519,7 +609,7 @@ O companion separa memória durável, histórico de conversa e estado transitór
 - **Rascunho**: texto por thread no `workspaceState`/estado da webview, até 50 mil caracteres; é temporário e não vira memória automaticamente.
 - **Registro de execução**: `.local-agent/threads/<thread-id>/runs/<run-id>.json`, com status, arquivos lidos, mudanças e evidências sanitizadas, sem conversa bruta, tokens ou segredos.
 - **Índice semântico**: vetores locais do Chroma derivados apenas de `memory.md`; o Markdown continua sendo a fonte de verdade e o índice pode ser recriado.
-- **Objetivos persistentes**: `.local-agent/goals/<goal-id>.json`, com critérios, marcos, evidências, iteração, diagnóstico de estagnação e próximo passo.
+- **Objetivos persistentes**: registros isolados no serviço, com projeção local em `.local-agent/goals/<goal-id>.json` e backup dos arquivos legados; preservam critérios, marcos, evidências, iteração, diagnóstico de estagnação e próximo passo.
 - **Contexto do turno**: seleção do editor, arquivo ativo, diagnósticos, orientação do repositório e itens fixados; é reunido sob limite por execução e não é memória durável.
 
 No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. A ação **Copy** aparece em cada mensagem completa; **Branch current conversation** cria uma nova thread com o histórico visível copiado, sem copiar rascunho, recuperação ativa ou checkpoint do LangGraph.
@@ -532,7 +622,7 @@ No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. 
 - Erros operacionais, diagnósticos, resultados de leitura/pesquisa e stdout/stderr passam por remoção local de chaves conhecidas, cabeçalhos de autenticação, credenciais em URLs, tokens comuns e blocos de chave privada antes de aparecerem na interface ou retornarem ao modelo.
 - A memória do projeto recusa entradas que contenham a chave configurada ou padrões reconhecíveis de credenciais; mensagens normais do usuário e respostas do agente não são reescritas silenciosamente.
 - Arquivos normalmente usados para credenciais — como `.env`, `.npmrc`, PEM/chaves privadas, keystores, `tfvars` e credenciais cloud — ficam fora do contexto automático, do seletor e de buscas amplas. Uma leitura direta exige confirmação local para aquele arquivo e ainda remove padrões reconhecidos antes de enviar o texto ao modelo.
-- Conversas ficam somente no `workspaceState` local e limitado do VS Code; não são copiadas para `.local-agent/memory.md`.
+- Conversas e checkpoints ficam no namespace privado do serviço; a extensão mantém uma projeção limitada no `workspaceState`. Não são copiados para `.local-agent/memory.md`.
 - LiteLLM e OpenAI exigem HTTPS; Ollama aceita somente `http(s)` em loopback.
 - O certificado PEM opcional é validado e copiado para o armazenamento global local da extensão; o caminho original não é persistido.
 - Arquivos só podem ser lidos ou alterados dentro do workspace aberto.
@@ -540,8 +630,8 @@ No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. 
 - Servidores MCP `stdio` são uma classe separada de comando: somente uma cópia exata importada e aprovada é iniciada, com ambiente reduzido, pacote fixado e encerramento junto da sessão. O processo e cada ferramenta continuam capazes de executar o comportamento documentado pelo servidor; revise o catálogo e cada aprovação.
 - Interpretadores, código inline, wrappers, clientes de rede e operações de download, publicação e Git remoto são bloqueados nas ferramentas do agente.
 - A política de comandos é uma defesa local em profundidade, não um sandbox do sistema operacional: um script já presente no workspace e aprovado pelo usuário pode conter comportamento próprio. Revise o comando e os scripts associados antes de autorizar.
-- O histórico do agente fica no armazenamento local do workspace do VS Code; não é copiado para `memory.md`.
-- A projeção limitada da conversa fica no estado local do workspace; os vetores Chroma ficam no armazenamento privado local da extensão, fora do repositório.
+- O histórico do agente fica no namespace do serviço vinculado ao produto e workspace; a projeção do editor não é copiada para `memory.md`.
+- A projeção limitada da conversa fica no estado local do workspace; o serviço administra os vetores Chroma no armazenamento privado autorizado, fora do repositório.
 - O provedor selecionado recebe apenas as mensagens necessárias para inferência, incluindo trechos de arquivos e resultados de ferramentas usados naquele turno. Isso inclui resultados de um MCP corporativo quando o usuário aprovou a chamada e o agente precisa usá-los como contexto. No modo Ollama local, essas chamadas permanecem em loopback.
 - Revise as alterações antes de fazer commit.
 
@@ -577,38 +667,22 @@ O prefixo `localAgentCompanion` foi mantido para que configurações e segredos 
 ## Arquitetura
 
 ```text
-VS Code Secondary Sidebar
+macOS Companion / VS Code / Navi
     │
-    ├── AgentViewProvider ── chat, threads, timeline, plano e configurações
-    ├── ContextCollector ─── editor, seleção, diagnósticos, arquivos e orientação do projeto
-    ├── ProjectMemory ────── .local-agent/memory.md (fonte de verdade)
-    ├── ChangeReviewManager  snapshots efêmeros, diff e restauração protegida
-    ├── VsCodeIntelligence ─ Problems, símbolos, navegação, code actions e rename
-    ├── LocalProjectIndex ── mapa estrutural local, testes relacionados e playbooks
-    ├── LocalProcessManager  servidores/watchers do usuário, sem shell ou daemon
-    └── DevelopmentAgent ─── orquestra primitivas LangChain
+    ├── apresentação, contexto e credenciais do host
+    ├── SDK sem grafo ou loop de ferramentas
+    │
+    └── JSON-RPC autenticado em socket Unix / named pipe
             │
-            ├── runtime escolhido por workspace
-            │     ├── createAgent · enxuto e explícito
-            │     └── createDeepAgent · planejamento, compactação e subagentes
-            ├── MemorySaver + até 30 projeções locais limitadas
-            ├── Chroma vector store local ──► 127.0.0.1 (opcional)
-            ├── ChatOpenAICompletions
-            ├── LocalToolHost (`tool()` + Zod)
-            │     ├── list/search/read
-            │     ├── edit/create
-            │     ├── approved command execution
-            │     ├── plan/memory/inteligência VS Code
-            │     ├── processos locais aprovados ──► loopback
-            │     └── browser local aprovado ──► Chrome/Edge instalado ──► loopback
-            │
-            ├── HTTPS ──► LiteLLM POST /v1/chat/completions
-            ├── HTTPS ──► LiteLLM POST /v1/embeddings (opcional)
-            ├── loopback ──► Ollama /v1/chat/completions|embeddings (VSIX opcional)
-            ├── HTTPS fixo ──► OpenAI /v1/chat/completions|embeddings (VSIX opcional)
-            ├── HTTPS ──► catálogo GET /models (opcional e sob demanda)
-            ├── HTTPS ──► MCP corporativo exato (opcional, allowlist + aprovação)
-            └── stdio ──► processo MCP local aprovado (opcional, sem shell)
+            └── Agent Service (Node 22.23.4 empacotado, por usuário)
+                  ├── namespace por produto/perfil/workspace
+                  ├── Agent Core: createAgent / createDeepAgent
+                  ├── saver SQLite oficial, eventos e recibos
+                  ├── planejamento, avaliação, memória e objetivos
+                  ├── adaptadores de inferência e processos aprovados
+                  ├── ferramentas do editor aguardam o host disponível
+                  └── KidOS: adaptador assinado, gateway protegido e Core
+                         sob o UID real, sem shell/filesystem genérico
 ```
 
 ## Limitações

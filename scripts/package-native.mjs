@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, cpSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -92,6 +92,20 @@ export function verifyProviderVariant(projectRoot, expectedVariant) {
   return markerPath;
 }
 
+export async function verifyPackagedEngine(archive,manifest){
+  const {createHash}=await import("node:crypto");const yauzl=require("yauzl");
+  const expected=new Set([...Object.keys(manifest.files),"manifest.json","manifest.sig"]);const seen=new Set();
+  await new Promise((resolve,reject)=>yauzl.open(archive,{lazyEntries:true},(error,zip)=>{
+    if(error)return reject(error);zip.on("error",reject);zip.on("end",()=>{if(seen.size!==expected.size)return reject(new Error("The VSIX omitted signed engine files."));resolve();});
+    zip.on("entry",entry=>{
+      const prefix="extension/dist/engine/";if(!entry.fileName.startsWith(prefix)||entry.fileName.endsWith("/"))return zip.readEntry();
+      const name=entry.fileName.slice(prefix.length);if(!expected.has(name)||seen.has(name))return reject(new Error("The VSIX contains an undeclared engine entry."));seen.add(name);
+      zip.openReadStream(entry,(error,stream)=>{if(error)return reject(error);const hash=createHash("sha256");stream.on("data",chunk=>hash.update(chunk));stream.on("error",reject);stream.on("end",()=>{
+        const digest=hash.digest("hex");if(manifest.files[name]&&digest!==manifest.files[name])return reject(new Error("The VSIX changed a signed engine file."));zip.readEntry();});});
+    });zip.readEntry();
+  }));
+}
+
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";
 if (import.meta.url === invokedPath) {
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -101,6 +115,15 @@ if (import.meta.url === invokedPath) {
   const providerArgument = process.argv.find((argument) => argument.startsWith("--provider="));
   const providerVariant = providerArgument?.slice("--provider=".length) || "litellm";
   const output = nativePackageName(version, target, providerVariant);
+  const bundle=process.env.COMPANION_ENGINE_BUNDLE;
+  if(!bundle)throw new Error("Set COMPANION_ENGINE_BUNDLE to the exact signed native engine before packaging this client.");
+  const {buildSync}=require("esbuild");
+  const verified=buildSync({entryPoints:[path.join(projectRoot,"packages/client-ts/src/bootstrap.ts")],bundle:true,platform:"node",format:"cjs",write:false});
+  const verifier={exports:{}};new Function("module","exports","require",verified.outputFiles[0].text)(verifier,verifier.exports,require);
+  const key=readFileSync(path.join(projectRoot,"release-keys/companion-ed25519.pub"),"utf8");
+  await verifier.exports.verifyBundle(path.resolve(bundle),key,false,target);
+  const destination=path.join(projectRoot,"dist/engine");rmSync(destination,{recursive:true,force:true});cpSync(path.resolve(bundle),destination,{recursive:true,dereference:false});
+  await verifier.exports.verifyBundle(destination,key,false,target);
   verifyPackagedBrowserRuntime(projectRoot);
   verifyProviderVariant(projectRoot, providerVariant);
   const invocation = packageInvocation(version, target, { providerVariant });
@@ -111,5 +134,5 @@ if (import.meta.url === invokedPath) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exitCode = result.status ?? 1;
-  else process.stdout.write(`NATIVE_VSIX_READY ${target} ${path.join(projectRoot, output)}\n`);
+  else {await verifyPackagedEngine(path.join(projectRoot,output),JSON.parse(readFileSync(path.join(destination,"manifest.json"),"utf8")));process.stdout.write(`NATIVE_VSIX_READY ${target} ${path.join(projectRoot, output)}\n`);}
 }

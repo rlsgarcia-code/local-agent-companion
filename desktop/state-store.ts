@@ -1,5 +1,6 @@
+import { constants } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import type { DesktopAgentRuntime, DesktopMessage, DesktopRunMode, DesktopRunOutputs, DesktopState, DesktopThread } from "./contracts";
 import { redactSensitiveText } from "../src/redaction";
@@ -15,6 +16,7 @@ const MAX_EXECUTION_STEP_CHARACTERS = 12_000;
 
 export class DesktopStateStore {
   private state: DesktopState;
+  private saving: Promise<void> = Promise.resolve();
 
   private constructor(private readonly filePath: string, initial: DesktopState) {
     this.state = initial;
@@ -24,6 +26,8 @@ export class DesktopStateStore {
     let stored: Partial<DesktopState> & { model?: unknown } = {};
     try {
       stored = JSON.parse(await readFile(filePath, "utf8")) as Partial<DesktopState>;
+      try { await copyFile(filePath, `${filePath}.pre-engine-v1.bak`, constants.COPYFILE_EXCL); await chmod(`${filePath}.pre-engine-v1.bak`, 0o600); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
@@ -78,7 +82,9 @@ export class DesktopStateStore {
 
   public async appendMessage(threadId: string, message: DesktopThread["messages"][number]): Promise<void> {
     const thread = this.thread(threadId);
-    thread.messages.push(message);
+    const existing = thread.messages.findIndex((item) => item.id === message.id);
+    if (existing >= 0) thread.messages[existing] = message;
+    else thread.messages.push(message);
     thread.updatedAt = Date.now();
     if (message.role === "user" && thread.messages.filter((item) => item.role === "user").length === 1) {
       thread.title = titleFrom(message.text);
@@ -96,11 +102,16 @@ export class DesktopStateStore {
     await this.save();
   }
 
-  private async save(): Promise<void> {
-    await mkdir(path.dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(this.state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, this.filePath);
+  private save(): Promise<void> {
+    const data = `${JSON.stringify(this.state, null, 2)}\n`;
+    const write = this.saving.catch(() => {}).then(async () => {
+      await mkdir(path.dirname(this.filePath), { recursive: true });
+      const temporary = `${this.filePath}.tmp`;
+      await writeFile(temporary, data, { encoding: "utf8", mode: 0o600 });
+      await rename(temporary, this.filePath);
+    });
+    this.saving = write;
+    return write;
   }
 }
 

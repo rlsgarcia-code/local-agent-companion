@@ -1,0 +1,325 @@
+import * as path from "node:path";
+import { AgentClient, type HostResponses } from "../packages/client-ts/src/index";
+import { COMPANION_RELEASE_PUBLIC_KEY } from "../packages/client-ts/src/release-key";
+import { ensureEngine } from "../packages/client-ts/src/bootstrap";
+import type {
+  DesktopActivity,
+  DesktopMessage,
+  DesktopChange,
+  DesktopExecutionStep,
+  PullProgress,
+} from "./contracts";
+import type { OllamaDesktopRuntime as EngineRuntime } from "../packages/agent-core/src/desktop-runtime";
+import { AgentError, errors, type Run, type Session, type RunState } from "../packages/contracts/src/index";
+import type { ModelJob } from "../packages/contracts/src/models";
+import type { OllamaRoleConfiguration, OllamaRecommendationPlan } from "../packages/agent-core/src/ollama-recommendation";
+
+type RuntimeOptions = Parameters<EngineRuntime["run"]>[0];
+export type RecoverableDesktopRun = {
+  run: Run;
+  profile: "desktop";
+  threadId: string;
+  assistantMessageId: string;
+  request: string;
+};
+export type DesktopRecoveryHandler = {
+  callbacks: RuntimeOptions["callbacks"];
+  openPreview: RuntimeOptions["openPreview"];
+  complete: (result: { message: DesktopMessage; changes: DesktopChange[] }) => Promise<void>;
+};
+
+export class OllamaDesktopRuntime {
+  constructor(
+    private readonly installation: {
+      bundleDirectory: string;
+      development: boolean;
+      onRunState?: (state: RunState | undefined) => void;
+    },
+  ) {}
+  private client?: AgentClient;
+  private readonly clients = new Map<string, Promise<AgentClient>>();
+  private active?: { id: string; client: AgentClient };
+  private detached = false;
+  private preparing = false;
+  private cancelRequested = false;
+  private currentState?: RunState;
+  private downloadJob?: string;
+  private recommendationJob?: string;
+  get state(): RunState | undefined { return this.currentState; }
+  private setState(state: RunState | undefined): void {
+    if (this.currentState === state) return;
+    this.currentState = state;
+    this.installation.onRunState?.(state);
+  }
+  get running(): boolean {
+    return this.preparing || Boolean(this.active);
+  }
+  private async connect(workspace = ""): Promise<AgentClient> {
+    let pending = this.clients.get(workspace);
+    if (!pending) {
+      pending = ensureEngine({
+        ...this.installation,
+        product: "companion-mac",
+        profile: "default",
+        workspace,
+        providers: ["ollama"],
+        hostTools: [],
+        publicKey: this.installation.development
+          ? undefined
+          : COMPANION_RELEASE_PUBLIC_KEY,
+      });
+      this.clients.set(workspace, pending);
+      pending.catch(() => this.clients.delete(workspace));
+    }
+    this.client = await pending;
+    if (!this.client.connected) {
+      this.clients.delete(workspace);
+      return this.connect(workspace);
+    }
+    return this.client;
+  }
+  cancel(): void {
+    if (this.running) this.cancelRequested = true;
+    void this.active?.client.call("runs.cancel", { id: this.active.id });
+  }
+  cancelDownload(): void {
+    void this.connect().then(async (client) => {
+      const id = this.downloadJob ?? (await client.call<ModelJob[]>("models.jobs")).find((job) => job.kind === "download" && ["running", "cancelling"].includes(job.state))?.id;
+      if (id) await client.call("models.cancel", { id });
+    });
+  }
+  dispose(): void {
+    this.detached = true;
+    for (const client of this.clients.values())
+      void client.then((c) => c.close());
+    this.clients.clear();
+  }
+  async ollamaStatus(): ReturnType<EngineRuntime["ollamaStatus"]> {
+    return (await this.connect()).call("models.list");
+  }
+  async modelRoles(initial?: OllamaRoleConfiguration): Promise<OllamaRoleConfiguration | undefined> {
+    const client = await this.connect();
+    const saved = await client.call<{ revision: number; roles: OllamaRoleConfiguration } | null>("models.configuration");
+    if (saved) return saved.roles;
+    if (initial?.executor) return (await client.call<{ roles: OllamaRoleConfiguration }>("models.configure", { revision: 0, roles: initial })).roles;
+  }
+  async configureModelRoles(roles: OllamaRoleConfiguration): Promise<void> {
+    const client = await this.connect();
+    const previous = await client.call<{ revision: number } | null>("models.configuration");
+    await client.call("models.configure", { revision: previous?.revision ?? 0, roles });
+  }
+  async recommendModels(input: { advisorModel?: string; publicCatalog?: unknown; installedDockerImages: string[] }, signal: AbortSignal): Promise<OllamaRecommendationPlan> {
+    signal.throwIfAborted(); const client = await this.connect();
+    const job = await client.call<ModelJob>("models.recommend", { ...input, key: crypto.randomUUID() });
+    this.recommendationJob = job.id;
+    const abort = () => { void this.connect().then((c) => c.call("models.cancel", { id: job.id })); };
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+    try { return (await this.observeModelJob(job.id)).result as OllamaRecommendationPlan; }
+    finally { signal.removeEventListener("abort", abort); this.recommendationJob = undefined; }
+  }
+  async cancelRecommendation(): Promise<void> {
+    const client = await this.connect();
+    const id = this.recommendationJob ?? (await client.call<ModelJob[]>("models.jobs")).find((job) => job.kind === "recommendation" && ["running", "cancelling"].includes(job.state))?.id;
+    if (id) await client.call("models.cancel", { id });
+  }
+  async recoverModelJobs(progress: (value: PullProgress) => void, recommendation: (value: OllamaRecommendationPlan) => Promise<void>): Promise<void> {
+    const jobs = await (await this.connect()).call<ModelJob[]>("models.jobs");
+    const latest = jobs.find((job) => job.kind === "recommendation");
+    await Promise.all(jobs.filter((job) => ["running", "cancelling"].includes(job.state) || job.id === latest?.id && job.state === "completed").map(async (job) => {
+      if (job.kind === "download") this.downloadJob = job.id;
+      else this.recommendationJob = job.id;
+      try {
+        const result = await this.observeModelJob(job.id, job.kind === "download" ? progress : undefined);
+        if (job.kind === "recommendation") await recommendation(result.result as OllamaRecommendationPlan);
+      } finally {
+        if (job.kind === "download") this.downloadJob = undefined; else this.recommendationJob = undefined;
+      }
+    }));
+  }
+  private async observeModelJob(id: string, progress?: (value: PullProgress) => void): Promise<ModelJob> {
+    let previous = "";
+    while (!this.detached) {
+      const client = await this.connect();
+      const job = await client.call<ModelJob>("models.job", { id });
+      const serialized = JSON.stringify(job.progress);
+      if (job.progress && serialized !== previous) { progress?.(job.progress); previous = serialized; }
+      if (job.state === "completed") return job;
+      if (["failed", "cancelled", "interrupted"].includes(job.state)) throw new Error(job.error || `Model job ${job.state}.`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    throw new Error("Interface closed; the model job remains with the engine.");
+  }
+  async dockerStatus(): ReturnType<EngineRuntime["dockerStatus"]> {
+    return (await this.connect()).call("desktop.dockerStatus");
+  }
+  async configureDockerSandbox(enabled: boolean): Promise<void> {
+    await (await this.connect()).call("desktop.configureDocker", { enabled });
+  }
+  async invokeAdvisor(
+    model: string,
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<string> {
+    signal.throwIfAborted();
+    const client = await this.connect();
+    const abort = () => {
+      void client.call("desktop.cancelAdvisor");
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    try {
+      signal.throwIfAborted();
+      return await client.call("desktop.advisor", { model, prompt }, 610_000);
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+  }
+  async pullModel(
+    model: string,
+    onProgress: (progress: PullProgress) => void,
+  ): Promise<void> {
+    const client = await this.connect();
+    const job = await client.call<ModelJob>("models.download", { model, key: crypto.randomUUID() });
+    this.downloadJob = job.id;
+    try { await this.observeModelJob(job.id, onProgress); }
+    finally { this.downloadJob = undefined; }
+  }
+  async run(
+    options: Parameters<EngineRuntime["run"]>[0],
+  ): ReturnType<EngineRuntime["run"]> {
+    if (this.running) throw new Error("A run is already active.");
+    this.preparing = true;
+    this.cancelRequested = false;
+    try {
+      let client = await this.connect(options.workspacePath);
+      const key = `desktop:${options.thread.id}`;
+      const existing = (await client.call<Session[]>("sessions.list")).find(
+        (session) => session.importedFrom === key,
+      );
+      const session =
+        existing ??
+        (await client.importSession(key, { thread: options.thread }));
+      const { callbacks, openPreview, execution: _execution, ...provided } = options;
+      const spec = { ...provided, workspacePath: client.options.credential.registration.workspace };
+      if (this.cancelRequested) throw new Error("Run cancelled before admission.");
+      let run: Run | undefined;
+      for (let attempt = 0; !run; attempt++) {
+        try { run = await client.startRun(session.id, options.assistantMessageId, spec, "desktop"); }
+        catch (error) {
+          if (error instanceof AgentError && error.code !== errors.unavailable || attempt >= 2 || this.detached) throw error;
+          // Lost acknowledgements retry the exact admission key, never a new run.
+          client = await this.connect(options.workspacePath);
+        }
+      }
+      this.active = { id: run.id, client };
+      if (this.cancelRequested) await client.call("runs.cancel", { id: run.id });
+      const result = await this.observe(client, run, session.id, callbacks, openPreview);
+      if (result.state !== "completed")
+        throw new Error(result.error || "Execution did not complete.");
+      return result.result as {
+        message: DesktopMessage;
+        changes: DesktopChange[];
+      };
+    } finally {
+      this.preparing = false;
+      this.active = undefined;
+      this.setState(undefined);
+    }
+  }
+  private observe(
+    client: AgentClient, run: Run, sessionId: string,
+    callbacks: RuntimeOptions["callbacks"], openPreview: RuntimeOptions["openPreview"],
+  ): Promise<Run> {
+    this.setState(run.state);
+    return this.observeWithReconnect(client, run, sessionId, callbacks, openPreview);
+  }
+  private async observeWithReconnect(
+    client: AgentClient, run: Run, sessionId: string,
+    callbacks: RuntimeOptions["callbacks"], openPreview: RuntimeOptions["openPreview"],
+  ): Promise<Run> {
+    let cursor = 0;
+    const hostResponses: HostResponses = new Map();
+    for (let attempt = 0; ; attempt++) {
+      try { return await client.waitForRun(
+      run.id,
+      sessionId,
+        (event) => {
+          const data = event.data as {
+            messageId: string;
+            delta: string;
+            step: DesktopExecutionStep;
+          };
+          if (event.type === "run.state") this.setState((event.data as { state: RunState }).state);
+          if (event.type === "desktop.delta")
+            callbacks.delta(data.messageId, data.delta);
+          else if (event.type === "desktop.reset")
+            callbacks.reset(data.messageId);
+          else if (event.type === "desktop.step")
+            callbacks.step(data.messageId, data.step);
+          else if (event.type === "desktop.activity")
+            callbacks.activity(event.data as DesktopActivity);
+        },
+        async (request) => {
+          if (request.kind === "approval")
+            return callbacks.approval(
+              { ...(request.payload as Parameters<typeof callbacks.approval>[0]), id: request.id },
+            );
+          const preview = request.payload as { operation: string; url: string };
+          if (preview.operation === "preview") {
+            await openPreview(preview.url);
+            return { opened: true };
+          }
+          throw new Error("Unknown desktop host request.");
+        },
+        undefined,
+        { cursor, onCursor: (value) => { cursor = value; }, hostResponses, onState: (state) => this.setState(state) },
+      );
+      } catch (error) {
+        if (this.detached || attempt >= 2 || !(error instanceof AgentError) || error.code !== errors.unavailable) throw error;
+        this.setState("awaiting_host");
+        client = await this.connect(client.options.credential.registration.workspace);
+        this.active = { id: run.id, client };
+        const current = await client.call<Run>("runs.get", { id: run.id });
+        if (current.state === "awaiting_host" || current.state === "awaiting_approval")
+          await client.call("runs.resume", { id: run.id });
+      }
+    }
+  }
+
+  async recover(
+    workspace: string,
+    handler: (run: RecoverableDesktopRun) => DesktopRecoveryHandler | undefined,
+  ): Promise<void> {
+    if (this.running) return;
+    this.preparing = true;
+    try {
+      const client = await this.connect(workspace);
+      const sessions = await client.call<Session[]>("sessions.list");
+      for (const session of sessions) {
+        const runs = await client.call<Run[]>("runs.list", { sessionId: session.id });
+        for (const run of [...runs].reverse()) {
+          if (this.detached) return;
+          const description = await client.call<RecoverableDesktopRun | { profile: "generic" }>("runs.describe", { id: run.id });
+          if (description.profile !== "desktop") continue;
+          const projection = handler(description);
+          if (!projection) continue;
+          this.active = { id: run.id, client };
+          if (run.state === "awaiting_host" || run.state === "awaiting_approval")
+            await client.call("runs.resume", { id: run.id });
+          const result = await this.observe(client, run, session.id, projection.callbacks, projection.openPreview);
+          if (result.state === "completed")
+            await projection.complete(result.result as { message: DesktopMessage; changes: DesktopChange[] });
+          else await projection.complete({ message: {
+            id: description.assistantMessageId, role: "assistant", text: result.error || "A execução foi interrompida.",
+            createdAt: result.updatedAt, status: "failed",
+          }, changes: [] });
+          this.active = undefined;
+        }
+      }
+    } finally {
+      this.preparing = false;
+      this.active = undefined;
+      this.setState(undefined);
+    }
+  }
+}

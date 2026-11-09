@@ -64,6 +64,13 @@ export class GoalStore {
     }
   }
 
+  public async backupLegacy(id:string):Promise<void>{
+    const source=this.goalUri(id);const directory=vscode.Uri.joinPath(this.directoryUri(),"legacy-engine-backup");
+    const destination=vscode.Uri.joinPath(directory,`${id}.json`);
+    try{await vscode.workspace.fs.stat(destination);return;}catch(error){if(!(error instanceof vscode.FileSystemError)||error.code!=="FileNotFound")throw error;}
+    await vscode.workspace.fs.createDirectory(directory);await vscode.workspace.fs.copy(source,destination,{overwrite:false});
+  }
+
   public async open(goal: GoalRecord): Promise<void> {
     await vscode.window.showTextDocument(this.goalUri(goal.id), { preview: false });
   }

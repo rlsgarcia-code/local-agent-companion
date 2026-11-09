@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.12.4
+
+- Publish run state callbacks only on transitions, preserving all public streaming deltas and event cursors.
+- Update one status indicator per editor run instead of appending a new Thinking card on each poll. Tool events and the single assistant response remain separate and intact.
+- Add regression tests for repeated states, cancellation transitions, public deltas and 1,000 status updates. Advance the immutable candidate to engine 1.0.2.
+
+## 0.12.3
+
+- Preserve already delivered failed and legacy Mac responses, timestamps, execution steps and evidence when reconnecting to the engine. Replay only missing or streaming projections.
+- Add reopening regression tests and advance the immutable candidate to engine 1.0.1. The superseded 1.0.0 draft is not promoted.
+
+## 0.12.2
+
+- Complete the independent shared engine and Mac/VS Code clients; keep KidOS deployment on hold.
+- Route MCP catalog authoring, Ollama setup advice and model/embedding diagnostics through authenticated model assistance in the service. Preserve product provider restrictions and temporary credential leases.
+- Reject child access, foreign attachments and arbitrary helper tools; model probes never execute returned tool calls.
+- Add thin SDK methods and shared schemas for model assistance, including chunked transfer support.
+- Align private package and Python SDK versions with engine 1.0.0; preserve immutable prior release artifacts.
+
+## 0.11.15
+
+- Move active VS Code standard/Deep executions to the shared per-user service; preserve the editor's tools and exact approvals.
+- Keep goal coordination, semantic recall, evidence evaluation and managed processes in the service; recover public results without repeating effects after editor reconnection.
+- Verify a separately signed immutable KidOS gateway/Core adapter against the administrator-provisioned product, UID and catalog.
+- Include the exact signed engine in every native VSIX and require all fifteen provider/platform artifacts in candidate drafts.
+- Add actual Extension Host read-only executor/detach recovery tests and protected adapter/approval/installation tests. Installed suite acceptance remains a separate gate.
+
+## 0.11.12
+
+- Use LangChain schema-constrained Ollama output for task classification and evidence verification. Preserve scalar legacy criteria without relaxing task outcomes or tool authority.
+
+## 0.11.11
+
+- Shared-engine candidate: recoverable Mac service client, durable approvals and effect receipts, isolated model jobs and chunked domain migration. Full VS Code/Navi conversion and installed suite acceptance remain pending.
+- Mac packaging verifies an exact signed engine per architecture; release workflows leave reviewable drafts.
+
 ## 0.11.10
 
 - `/env` now opens the relevant connection setup surface automatically when the read-only preflight identifies a provider, model, or certificate remediation.
