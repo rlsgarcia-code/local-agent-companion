@@ -4575,9 +4575,11 @@ function executionEventIcon(kind, title) {
 
 function appendExecutionTimelineEvent(kind, title, detail = '') {
   document.getElementById('welcome')?.remove();
-  const element = document.createElement('article');
   const normalizedKind = String(kind || 'activity').toLowerCase();
+  const previousStatus = normalizedKind === 'status' ? runActivityState?.statusElement : undefined;
+  const element = previousStatus?.isConnected ? previousStatus : document.createElement('article');
   if (normalizedKind === 'status' && String(title || '').toLowerCase() !== 'ready') {
+    if (runActivityState) runActivityState.statusElement = element;
     element.className = 'thinking-event';
     element.innerHTML = '<details open><summary><strong>Thinking</strong><small>' + escapeHtml(String(title || '')) + '</small></summary><div class="thinking-event-body"><span>' + escapeHtml(String(title || '')) + '</span>' + (detail ? '<span>' + localLinkify(detail) + '</span>' : '') + '</div></details>';
   } else {
@@ -4592,8 +4594,10 @@ function appendExecutionTimelineEvent(kind, title, detail = '') {
   const activeAssistant = [...assistantStreamStates.values()]
     .map(state => state.element)
     .find(candidate => candidate?.isConnected);
-  if (activeAssistant) timeline.insertBefore(element, activeAssistant);
-  else timeline.appendChild(element);
+  if (!element.isConnected) {
+    if (activeAssistant) timeline.insertBefore(element, activeAssistant);
+    else timeline.appendChild(element);
+  }
   scrollConversationToBottom();
 }
 

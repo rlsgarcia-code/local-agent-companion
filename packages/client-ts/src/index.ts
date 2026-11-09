@@ -252,6 +252,7 @@ export class AgentClient {
   ): Promise<Run> {
     let cursor = replay.cursor ?? 0;
     const handled = new Set<string>();
+    let previousState: RunState | undefined;
     const responses: HostResponses = replay.hostResponses ?? new Map();
     while (true) {
       signal?.throwIfAborted();
@@ -295,7 +296,10 @@ export class AgentClient {
         }
       }
       const run = await this.call<Run>("runs.get", { id });
-      replay.onState?.(run.state);
+      if (run.state !== previousState) {
+        previousState = run.state;
+        replay.onState?.(run.state);
+      }
       if (terminalStates.has(run.state) && events.length === 0) {
         const result = run.result as { kind?: string; id?: string } | undefined;
         if (result?.kind === "agent-result-transfer" && result.id)

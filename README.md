@@ -1,27 +1,30 @@
 # Local Agent Companion
 
-> A entrega **motor 1.0.0 + clientes Mac/VS Code 0.12.2** está em validação
+> A entrega **motor 1.0.2 + clientes Mac/VS Code 0.12.4** está em validação
 > final na branch `codex/companion-suite-engine`, [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
-> KidOS permanece em espera por solicitação do responsável e não condiciona
-> esta entrega. O núcleo funciona sem nenhuma interface instalada.
-> A [matriz assinada](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42538629711)
-> passou nas cinco plataformas. Os binários exatos passaram nos testes Ollama
-> de execução, recuperação e rollback. O [relatório atual](docs/desktop-final-acceptance.json)
-> distingue esses resultados da instalação local ainda pendente: o Mac está
-> bloqueado, as interfaces instaladas continuam em 0.11.15 e o gateway real do
-> editor ainda precisa ser conferido. O rascunho final não foi promovido.
+> KidOS permanece em espera e não condiciona esta entrega. O núcleo funciona
+> sem nenhuma interface instalada.
 >
-> Os executores e todas as chamadas de modelo das interfaces rodam no serviço
+> A versão 1.0.1 / 0.12.3 foi instalada e passou na matriz assinada das cinco
+> plataformas. Os testes reais comprovaram inferência independente, recuperação
+> do serviço e reabertura do aplicativo Mac, com as 16 conversas originais
+> preservadas. O VS Code agora usa Ollama local, por solicitação do usuário.
+> A observação real revelou status repetidos no streaming do editor; o SDK passa
+> a publicar mudanças de estado, e a interface atualiza um indicador por execução.
+> O novo candidato inclui testes de regressão para mil atualizações. O
+> [relatório](docs/desktop-final-acceptance.json) distingue evidências e pendências;
+> os rascunhos anteriores não devem ser promovidos.
+>
+> Os executores e as chamadas de modelo das interfaces rodam no serviço
 > comum: LangChain/DeepAgents, saver SQLite oficial, planejamento, conclusão,
 > memória semântica, objetivos, recomendações e diagnósticos. As interfaces
 > mantêm apresentação, contexto e ferramentas autorizadas do host. Recursos
 > dependentes do editor aguardam sua reconexão; indisponibilidade do serviço
 > produz diagnóstico recuperável, sem outro executor como fallback.
 >
-> A versão anterior rc.7 e seus pacotes permanecem imutáveis para rollback.
-> O [relatório rc.7](docs/desktop-pilot-rc7.json) é evidência histórica; não
-> comprova sozinho a aceitação dos novos artefatos 1.0.0. A nova publicação
-> exige seus próprios testes, instalação e revisão dos pacotes exatos.
+> Os pacotes anteriores permanecem imutáveis para rollback. O
+> [relatório rc.7](docs/desktop-pilot-rc7.json) é evidência histórica; cada
+> versão exige seus próprios testes, instalação e revisão dos pacotes exatos.
 
 O kit é montado por `scripts/assemble-desktop-delivery.mjs` a partir de um
 índice assinado e dos artefatos exatos. `node verify-delivery.mjs` verifica sua

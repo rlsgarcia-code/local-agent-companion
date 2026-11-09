@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.4
+
+- Publish run state callbacks only on transitions, preserving all public streaming deltas and event cursors.
+- Update one status indicator per editor run instead of appending a new Thinking card on each poll. Tool events and the single assistant response remain separate and intact.
+- Add regression tests for repeated states, cancellation transitions, public deltas and 1,000 status updates. Advance the immutable candidate to engine 1.0.2.
+
 ## 0.12.3
 
 - Preserve already delivered failed and legacy Mac responses, timestamps, execution steps and evidence when reconnecting to the engine. Replay only missing or streaming projections.
