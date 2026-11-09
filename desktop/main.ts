@@ -1,3 +1,4 @@
+import { needsDesktopRecovery } from "./recovery";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
@@ -70,7 +71,7 @@ app.whenReady().then(async () => {
   ).catch((error) => publish({ type: "run-error", threadId: store.snapshot().activeThreadId, message: String(error) }));
   void runtime.recover(store.snapshot().workspacePath, (description) => {
     const thread = store.snapshot().threads.find((item) => item.id === description.threadId);
-    if (!thread || thread.messages.some((message) => message.id === description.assistantMessageId && message.status === "complete")) return;
+    if (!thread || !needsDesktopRecovery(thread.messages.find((message) => message.id === description.assistantMessageId))) return;
     let text = "";
     const steps: DesktopExecutionStep[] = [];
     const savePartial = () => store.replaceMessage(thread.id, {

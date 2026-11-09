@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.3
+
+- Preserve already delivered failed and legacy Mac responses, timestamps, execution steps and evidence when reconnecting to the engine. Replay only missing or streaming projections.
+- Add reopening regression tests and advance the immutable candidate to engine 1.0.1. The superseded 1.0.0 draft is not promoted.
+
 ## 0.12.2
 
 - Complete the independent shared engine and Mac/VS Code clients; keep KidOS deployment on hold.
