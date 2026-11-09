@@ -1,30 +1,28 @@
 # Local Agent Companion
 
-> A entrega **motor 1.0.2 + clientes Mac/VS Code 0.12.4** está em validação
-> final na branch `codex/companion-suite-engine`, [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
-> KidOS permanece em espera e não condiciona esta entrega. O núcleo funciona
-> sem nenhuma interface instalada.
+> **Motor 1.0.2 + clientes Mac/VS Code 0.12.4 instalados**, com Ollama local.
+> A entrega está em validação final na branch `codex/companion-suite-engine`,
+> [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
+> KidOS permanece em espera e não condiciona esta entrega.
 >
-> A versão 1.0.1 / 0.12.3 foi instalada e passou na matriz assinada das cinco
-> plataformas. Os testes reais comprovaram inferência independente, recuperação
-> do serviço e reabertura do aplicativo Mac, com as 16 conversas originais
-> preservadas. O VS Code agora usa Ollama local, por solicitação do usuário.
-> A observação real revelou status repetidos no streaming do editor; o SDK passa
-> a publicar mudanças de estado, e a interface atualiza um indicador por execução.
-> O novo candidato inclui testes de regressão para mil atualizações. O
-> [relatório](docs/desktop-final-acceptance.json) distingue evidências e pendências;
-> os rascunhos anteriores não devem ser promovidos.
+> A [matriz assinada](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42606762627)
+> passou nas cinco plataformas. Os três pacotes instalados têm o mesmo motor
+> assinado, independente de Node global e das interfaces. Passaram 325 testes
+> da aplicação, 27 verificações, inferência real Ollama e recuperação após queda
+> do cliente/reinício. O retorno do motor instalado 1.0.2 → rc.7 → 1.0.2 preservou
+> uma conversa nova e todas as 18 conversas atuais do Mac.
 >
-> Os executores e as chamadas de modelo das interfaces rodam no serviço
-> comum: LangChain/DeepAgents, saver SQLite oficial, planejamento, conclusão,
-> memória semântica, objetivos, recomendações e diagnósticos. As interfaces
-> mantêm apresentação, contexto e ferramentas autorizadas do host. Recursos
-> dependentes do editor aguardam sua reconexão; indisponibilidade do serviço
-> produz diagnóstico recuperável, sem outro executor como fallback.
+> O SDK publica mudanças de estado, e o editor atualiza um indicador por execução:
+> mil atualizações não duplicam cartões nem a resposta. A correção está instalada;
+> sua conferência visual ainda aguarda o desbloqueio do Mac. O
+> [relatório](docs/desktop-final-acceptance.json) separa o aceite atual da evidência
+> visual anterior em 1.0.1 / 0.12.3. Os rascunhos não foram promovidos.
 >
-> Os pacotes anteriores permanecem imutáveis para rollback. O
-> [relatório rc.7](docs/desktop-pilot-rc7.json) é evidência histórica; cada
-> versão exige seus próprios testes, instalação e revisão dos pacotes exatos.
+> LangChain/DeepAgents e o saver SQLite oficial controlam execução/checkpoints.
+> O serviço mantém planejamento, evidências, memória, objetivos, recomendações e
+> diagnósticos; interfaces mantêm apresentação, contexto e ferramentas autorizadas.
+> Recursos dependentes do editor aguardam sua reconexão. Provedores e históricos
+> continuam separados por produto, e as versões anteriores permanecem para rollback.
 
 O kit é montado por `scripts/assemble-desktop-delivery.mjs` a partir de um
 índice assinado e dos artefatos exatos. `node verify-delivery.mjs` verifica sua
