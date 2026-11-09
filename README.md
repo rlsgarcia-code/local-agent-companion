@@ -1,22 +1,23 @@
 # Local Agent Companion
 
-> **Motor 1.0.2 + clientes Mac/VS Code 0.12.4 instalados**, com Ollama local.
-> A entrega está em validação final na branch `codex/companion-suite-engine`,
+> **Motor 1.0.2 + clientes Mac/VS Code 0.12.4 instalados e validados**, com Ollama local.
+> A entrega aguarda revisão para merge e publicação no
 > [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
 > KidOS permanece em espera e não condiciona esta entrega.
 >
 > A [matriz assinada](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42606762627)
-> passou nas cinco plataformas. Os três pacotes instalados têm o mesmo motor
-> assinado, independente de Node global e das interfaces. Passaram 325 testes
-> da aplicação, 27 verificações, inferência real Ollama e recuperação após queda
-> do cliente/reinício. O retorno do motor instalado 1.0.2 → rc.7 → 1.0.2 preservou
-> uma conversa nova e todas as 18 conversas atuais do Mac.
+> passou nas cinco plataformas. Motor independente, aplicativo Mac e extensão
+> instalados compartilham o mesmo artefato, com Node 22.23.4 empacotado.
+> Passaram 325 testes da aplicação, 27 verificações, inferência real Ollama e
+> recuperação após desconexão do cliente e reinício do serviço.
 >
-> O SDK publica mudanças de estado, e o editor atualiza um indicador por execução:
-> mil atualizações não duplicam cartões nem a resposta. A correção está instalada;
-> sua conferência visual ainda aguarda o desbloqueio do Mac. O
-> [relatório](docs/desktop-final-acceptance.json) separa o aceite atual da evidência
-> visual anterior em 1.0.1 / 0.12.3. Os rascunhos não foram promovidos.
+> As duas interfaces foram exercitadas em Standard e Deep. O VS Code manteve
+> um único indicador durante 40 segundos de inferência; a resposta apareceu
+> uma vez após fechar e reabrir o editor. O Mac também recuperou os resultados.
+> O rollback conjunto 0.12.4/1.0.2 → 0.12.3/1.0.1 → 0.12.4/1.0.2 preservou
+> os históricos e exibiu as respostas novas nas interfaces anteriores.
+> O [relatório de aceite](docs/desktop-final-acceptance.json) distingue as provas
+> visuais da conferência dos arquivos e dados após a última reativação.
 >
 > LangChain/DeepAgents e o saver SQLite oficial controlam execução/checkpoints.
 > O serviço mantém planejamento, evidências, memória, objetivos, recomendações e

@@ -1,6 +1,6 @@
 {
   "scope": "companion-engine-mac-vscode",
-  "status": "installed-awaiting-visual-acceptance",
+  "status": "accepted-awaiting-publication-review",
   "engine": "1.0.2",
   "engineCommit": "0d5030bfe244c1bbfd33f3b24eb8037bd4ba012a",
   "application": "0.12.4",
@@ -18,7 +18,15 @@
       "statusIndicators": 1,
       "allPublicDeltasRetained": true,
       "toolEventsAndAssistantRetained": true,
-      "statesOnlyOnTransitions": true
+      "statesOnlyOnTransitions": true,
+      "actualInstalledEditor": {
+        "state": "passed",
+        "runtime": "deep",
+        "observedSeconds": 40,
+        "thinkingIndicatorsDuringRun": 1,
+        "thinkingIndicatorsAfterCompletion": 0,
+        "responseVisibleAfterEditorReopen": true
+      }
     },
     "signedPlatformMatrix": {
       "state": "passed",
@@ -300,7 +308,7 @@
     "originalHistory": {
       "state": "passed",
       "originalThreads": 16,
-      "currentThreads": 18,
+      "currentThreads": 21,
       "allOriginalMessagesAndEvidencePreserved": true,
       "normalization": "empty executionSteps omitted; all nonempty data, statuses, IDs and timestamps compared",
       "modelRolesPreserved": true,
@@ -329,21 +337,160 @@
     },
     "restoredOriginalContext": {
       "state": "passed",
-      "scope": "offline-domain-migration-with-interface-closed",
-      "restoredOnlyTemporaryTestFields": [
-        "workspacePath",
-        "agentRuntime",
-        "activeThreadId"
-      ],
-      "allMessagesUnchanged": true,
-      "modelRolesUnchanged": true,
-      "originalWorkspaceRestored": true,
-      "originalRuntimeRestored": true,
+      "scope": "restore-temporary-test-selection-with-client-closed",
+      "onlyFieldChanged": "activeThreadId",
+      "allOtherStateUnchanged": true,
       "originalSelectedThreadRestored": true
+    },
+    "macUiAcceptance": {
+      "state": "passed",
+      "application": "0.12.4",
+      "engine": "1.0.2",
+      "provider": "ollama",
+      "model": "qwen3.5:latest",
+      "cases": [
+        {
+          "runtime": "deep",
+          "state": "passed",
+          "sessionId": "6dd61aeb-4157-4575-8a22-31bbce4ff93d",
+          "runId": "7ccfcb4b-3a78-4866-a786-cc9806f3b723",
+          "responseVisibleAfterReopen": "4",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "activeUiObservedBeforeClose": true,
+          "processExitVerified": true,
+          "commands": 0,
+          "changes": 0,
+          "engineObservedRunningWithAppClosed": true
+        },
+        {
+          "runtime": "standard",
+          "state": "passed",
+          "sessionId": "46f23f9b-a4e0-42c1-be50-8075ebbdddfa",
+          "runId": "ad40a8e2-2187-4e57-9937-7761851693ae",
+          "responseVisibleAfterReopen": "6",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "activeUiObservedBeforeClose": true,
+          "processExitVerified": true,
+          "commands": 0,
+          "changes": 0
+        }
+      ],
+      "originalContextVisiblyRestored": true,
+      "originalDeliveredFailureEvidenceVisible": true
+    },
+    "vscodeUiAcceptance": {
+      "state": "passed",
+      "application": "0.12.4",
+      "engine": "1.0.2",
+      "provider": "ollama",
+      "model": "qwen3.5:latest",
+      "workspace": "temporary-owned-acceptance-fixture",
+      "cases": [
+        {
+          "runtime": "standard",
+          "state": "passed",
+          "sessionId": "4d7f3089-6437-4f09-99b6-45656c08e80d",
+          "runId": "315b3c63-e9bb-4376-9c67-eed974b4760f",
+          "responseVisible": "Resposta: 8",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "readOnly": true,
+          "initialThinkingIndicators": 1,
+          "completedThinkingIndicators": 0,
+          "responseVisibleInOriginalWindow": true
+        },
+        {
+          "runtime": "deep",
+          "state": "passed",
+          "sessionId": "fe7abb69-bec1-45a6-b47e-42faa2b0b8e4",
+          "runId": "01a4c13c-56e9-474d-a914-94f427828c88",
+          "responseVisible": "5 + 5 = 10",
+          "publicMessages": 2,
+          "durableRuns": 1,
+          "readOnly": true,
+          "initialThinkingIndicators": 1,
+          "completedThinkingIndicators": 0,
+          "thinkingIndicatorsAt40Seconds": 1,
+          "clientClosedWhileRunning": true,
+          "processExitVerified": true,
+          "completedWithEditorClosed": true,
+          "responseVisibleAfterReopen": true
+        }
+      ]
+    },
+    "installedProductIsolation": {
+      "state": "passed",
+      "engine": "1.0.2",
+      "sameWorkspace": true,
+      "existingCredentialsOnly": true,
+      "cases": [
+        {
+          "product": "companion-vscode",
+          "state": "rejected-foreign-run",
+          "code": -32004
+        },
+        {
+          "product": "companion-mac",
+          "state": "rejected-foreign-run",
+          "code": -32004
+        }
+      ]
+    },
+    "pairedInstalledRollback": {
+      "state": "passed",
+      "current": {
+        "engine": "1.0.2",
+        "application": "0.12.4"
+      },
+      "previous": {
+        "engine": "1.0.1",
+        "application": "0.12.3"
+      },
+      "allBaselineMacHistoryUnchanged": true,
+      "baselineMacConversations": 20,
+      "currentMacConversations": 21,
+      "additionalConversationsRetained": 1,
+      "baselineMacDomainSha256": "7ce1cb5f339ae2f343c5c2d39405d86849878a6c31f2f595f0913359cf8b9bfb",
+      "editorResponseVisibleOnPrevious": "5 + 5 = 10",
+      "macResponseVisibleOnPrevious": "6",
+      "bothPreviousInterfacesOpened": true,
+      "waitedForServiceToBecomeIdle": true,
+      "noActiveWorkCancelled": true,
+      "reactivated": {
+        "engine": "1.0.2",
+        "application": "0.12.4",
+        "manifestSha256": "048f07c95f9b183f29a13af2b12994f61a46721ab342225a70da4c8a20b72eff"
+      },
+      "currentPayloadsReverified": true,
+      "postUpdateRunsUnchangedAfterReactivation": true,
+      "reactivationVerifiedWithoutUI": true,
+      "postReactivationUIReopenNotObservedBecauseMacLocked": true,
+      "originalSelectionRequiredRestorationAfterRollback": true,
+      "originalContextRestoredAfterReactivation": true,
+      "selectionRestoration": {
+        "state": "passed",
+        "scope": "restore-temporary-test-selection-with-client-closed",
+        "onlyFieldChanged": "activeThreadId",
+        "allOtherStateUnchanged": true,
+        "originalSelectedThreadRestored": true
+      }
+    },
+    "exactReactivatedVSIX": {
+      "state": "passed",
+      "version": "0.12.4",
+      "profiles": [
+        "Default",
+        "KidOS Companion"
+      ],
+      "providerVariant": "ollama",
+      "engine": "1.0.2",
+      "exactInstalledPayloadVerified": true
     }
   },
   "installation": {
-    "state": "installed-and-core-validated",
+    "state": "installed-and-accepted",
     "mac": "0.12.4",
     "vscode": "0.12.4-ollama",
     "profiles": [
@@ -367,8 +514,16 @@
     "previousVersionsRetained": true,
     "personalBackupsRetained": true,
     "originalMacConversations": 16,
-    "currentMacConversations": 18,
-    "visualAcceptance": "awaiting-owner-unlock"
+    "currentMacConversations": 21,
+    "visualAcceptance": "passed-on-exact-0.12.4-before-controlled-rollback",
+    "postRollbackVerification": "exact installed Mac/VSIX payloads, live engine, run state and public messages verified; GUI not reopened after device relocked",
+    "originalContextRestored": true,
+    "editorAcceptanceOptionsRestored": {
+      "approval": "ask-first",
+      "runtime": "standard",
+      "mode": "review-work",
+      "provider": "ollama"
+    }
   },
   "priorInstalledVisualEvidence": {
     "engine": "1.0.1",
@@ -474,9 +629,7 @@
     "notCurrentStreamingAcceptance": true
   },
   "pending": [
-    "Unlock the Mac to inspect streaming in the installed VS Code 0.12.4; confirm one indicator during real inference and standard/Deep editor recovery.",
-    "Demonstrate current installed Mac UI recovery and confirm the original context restored by the offline migration.",
-    "Final review before merge and release promotion."
+    "Final review before merging PR #15 and promoting the unchanged signed engine 1.0.2 release."
   ],
   "publication": {
     "state": "draft-not-promoted",
@@ -496,10 +649,13 @@
     "remoteInstallationResumed": false
   },
   "limits": [
-    "The new SDK/renderer streaming fix passed deterministic tests and is installed; physical UI verification of this exact version remains pending because the Mac locked again.",
-    "The 1.0.2 rollback used the actual installed engine/state while both interfaces were closed; interface binaries remained current. The earlier paired Mac/VS Code UI rollback was demonstrated on 1.0.1 / 0.12.3 and is identified separately.",
-    "The original signed release indexes are unchanged. The local readiness report is acceptance evidence, not a new publication authorization.",
-    "The original editor provider returned HTTP 429 no credits. The user then explicitly chose Ollama; its connection was verified through the installed editor without exporting the previous credential.",
-    "The concurrent original developer checkout remains untouched; KidOS and Alien deployment are on hold."
+    "The final 0.12.4 Mac and VS Code interfaces were visually exercised in standard and Deep modes before the controlled paired rollback. After reactivation the Mac relocked; complete app/VSIX payloads, live engine identity and unchanged run/message state were verified without reopening either GUI.",
+    "The VS Code standard response completed in the original window. Its Deep run completed with the editor closed and appeared once after reopening. Mac Deep execution was observed running after client exit; the standard run completed near client exit and its result was visible after reopening.",
+    "The paired rollback preserved all 20 baseline Mac conversations and retained one additional blank conversation. All 16 pre-migration conversations and their nonempty execution evidence remain unchanged. The originally selected conversation was restored with the client closed, changing no other state.",
+    "The five-platform matrix verifies native builds, contracts, SQLite, IPC and editor installation/activation in CI. Physical Mac and VS Code GUI acceptance was performed on this Apple Silicon Mac; Linux/Windows GUI use was not physically exercised here.",
+    "The original signed release indexes and artifacts are unchanged. The local readiness report is acceptance evidence, not publication authorization.",
+    "The original editor provider returned HTTP 429 no credits. The user explicitly chose Ollama; prior credentials remained in Secret Storage and were not exported.",
+    "Apple sealing is ad-hoc without Developer ID signing or notarization because no valid distribution identity was available.",
+    "The concurrent original developer checkout remains untouched; KidOS/Navi/Alien deployment is on hold by explicit scope."
   ]
 }
