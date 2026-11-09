@@ -1,0 +1,262 @@
+{
+  "scope": "companion-engine-mac-vscode",
+  "status": "awaiting-local-installation-and-gateway-check",
+  "engine": "1.0.0",
+  "engineCommit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+  "application": "0.12.2",
+  "node": "22.23.4",
+  "protocol": "1.0",
+  "target": "darwin-arm64",
+  "checks": {
+    "applicationTests": 321,
+    "repositoryChecks": 27,
+    "failed": 0,
+    "independentEngineBuild": "passed",
+    "signedPlatformMatrix": {
+      "state": "passed",
+      "run": 42538629711,
+      "url": "https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42538629711",
+      "jobs": [
+        {
+          "name": "linux-arm64",
+          "conclusion": "success"
+        },
+        {
+          "name": "linux-x64",
+          "conclusion": "success"
+        },
+        {
+          "name": "win32-x64",
+          "conclusion": "success"
+        },
+        {
+          "name": "darwin-x64",
+          "conclusion": "success"
+        },
+        {
+          "name": "darwin-arm64",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (windows-2025, win32-x64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (ubuntu-24.04, linux-x64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (macos-15-intel, darwin-x64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (ubuntu-24.04-arm, linux-arm64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / engine (macos-15, darwin-arm64)",
+          "conclusion": "success"
+        },
+        {
+          "name": "signed-candidate / draft",
+          "conclusion": "success"
+        }
+      ]
+    },
+    "downloadedArtifacts": {
+      "state": "passed",
+      "engine": "1.0.0",
+      "commit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+      "application": "0.12.2",
+      "indexSha256": "240ea96c88a0ca788c21a34d88babc62a52250ec2891e1923c327b4f609dc435",
+      "appleSigning": "ad-hoc-not-notarized",
+      "hashes": {
+        "Local-Companion-0.12.2-arm64.zip": "25553cf75551fc263c5bb92d717710e44cb06e630aa446ef4c8d0f8427b71967",
+        "Local-Companion-0.12.2-darwin-arm64.manifest.json": "b136279dc766fa8cad9d52e4353b1e031c3bdb175ac61d276bfd0f5a776d9f84",
+        "Local-Companion-0.12.2-darwin-arm64.manifest.sig": "78367a984c301b95480f3bc2c15b1a3d400176f6fd5c29a0cc684528716b3622",
+        "companion-engine-1.0.0-darwin-arm64.tar.gz": "b71119b8ea88dda196ac81eb805171f5619ef6760f24edca2cce2d533caf9786",
+        "companion-sdks-1.0.0.tar.gz": "58993794ec6352038b9a77fa624798e8452e6ce4d1495a3e5d3bb54369fb3fb9",
+        "local-agent-companion-0.12.2-openai-darwin-arm64.vsix": "efeda8e849282aebbc697f9e104a98362133d96d257ad2613c230d4880f440d7"
+      }
+    },
+    "stagedEngineParity": {
+      "state": "passed",
+      "scope": "staged-artifacts-not-installed",
+      "components": [
+        {
+          "component": "standalone",
+          "version": "1.0.0",
+          "commit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+          "node": "22.23.4",
+          "target": "darwin-arm64",
+          "manifestSha256": "590e39ccffe50bc55ebf6861d94b0c5a82f480468befc2787ecc196911a9551f"
+        },
+        {
+          "component": "staged-mac",
+          "version": "1.0.0",
+          "commit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+          "node": "22.23.4",
+          "target": "darwin-arm64",
+          "manifestSha256": "590e39ccffe50bc55ebf6861d94b0c5a82f480468befc2787ecc196911a9551f"
+        },
+        {
+          "component": "staged-vscode",
+          "version": "1.0.0",
+          "commit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+          "node": "22.23.4",
+          "target": "darwin-arm64",
+          "manifestSha256": "590e39ccffe50bc55ebf6861d94b0c5a82f480468befc2787ecc196911a9551f"
+        }
+      ]
+    },
+    "standaloneRealInference": {
+      "version": "1.0.0",
+      "protocol": "1.0",
+      "node": "22.23.4",
+      "build": {
+        "commit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+        "target": "darwin-arm64",
+        "manifestSha256": "590e39ccffe50bc55ebf6861d94b0c5a82f480468befc2787ecc196911a9551f"
+      },
+      "model": "qwen3.5:latest",
+      "results": [
+        {
+          "runtime": "standard",
+          "state": "completed",
+          "response": "MOTOR_OK"
+        },
+        {
+          "runtime": "deep",
+          "state": "completed",
+          "response": "MOTOR_OK"
+        }
+      ],
+      "assistance": [
+        {
+          "purpose": "advisor",
+          "state": "completed",
+          "response": "ASSISTANCE_OK"
+        },
+        {
+          "purpose": "connection",
+          "state": "completed"
+        }
+      ]
+    },
+    "realServiceRecovery": {
+      "version": "1.0.0",
+      "node": "22.23.4",
+      "build": {
+        "commit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+        "target": "darwin-arm64",
+        "manifestSha256": "590e39ccffe50bc55ebf6861d94b0c5a82f480468befc2787ecc196911a9551f"
+      },
+      "profile": "desktop-service-not-gui",
+      "model": "qwen3.5:latest",
+      "results": [
+        {
+          "runtime": "standard",
+          "recovery": "client-disconnect-and-reattach",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "standard",
+          "recovery": "service-restart-and-explicit-resume",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "deep",
+          "recovery": "client-disconnect-and-reattach",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        },
+        {
+          "runtime": "deep",
+          "recovery": "service-restart-and-explicit-resume",
+          "state": "completed",
+          "response": "4",
+          "publicMessages": 2
+        }
+      ]
+    },
+    "signedBinaryRollback": {
+      "state": "passed",
+      "current": {
+        "version": "1.0.0",
+        "build": {
+          "commit": "009f3f17c4844f2b603532ba7df21a81e65ce1b0",
+          "target": "darwin-arm64",
+          "manifestSha256": "590e39ccffe50bc55ebf6861d94b0c5a82f480468befc2787ecc196911a9551f"
+        }
+      },
+      "previous": {
+        "version": "1.0.0-rc.7",
+        "build": {
+          "commit": "27f2bcd21a31b1d1434dc992908d757f8793ddf1",
+          "target": "darwin-arm64",
+          "manifestSha256": "8b14804b5d554b4b856253ce7bc1aa2f7bd1a1a8681fb3ea02e28dc5cd488b2c"
+        }
+      },
+      "reactivated": "1.0.0",
+      "historySha256": "720ba1909d86f840afc80549f2e34f09a207115f7d6cb6b58aa0397f567adb14",
+      "postUpdateRunPreserved": true,
+      "historyUnchanged": true,
+      "toolsConfigured": 0,
+      "scope": "isolated-signed-binary-rollback"
+    },
+    "windowsInstalledAcceptance": {
+      "exactPayload": "passed",
+      "nativeActivation": "passed",
+      "originalFixtureProcessExited": true,
+      "profileCleanup": "passed"
+    }
+  },
+  "installation": {
+    "state": "staged-not-activated",
+    "observedCurrentMac": "0.11.15",
+    "observedCurrentVSCode": "0.11.15",
+    "preparedMac": "0.12.2",
+    "preparedVSCode": "0.12.2-openai",
+    "existingProviderSettingsPreserved": true,
+    "existingApplicationFilesReplaced": false
+  },
+  "pending": [
+    "Unlock the Mac so the installed clients can be inspected and their replacement completed at an idle point.",
+    "Install the exact Mac application and selected OpenAI VSIX in the existing editor profiles, preserving previous versions and personal backups.",
+    "Verify the configured real VS Code gateway from the editor through its original Secret Storage; no credential extraction or provider fallback.",
+    "Demonstrate recovery in the newly installed Mac and VS Code interfaces.",
+    "Demonstrate installed-client rollback and reactivation while retaining post-update history.",
+    "Complete the final review and publish the release; merge and release promotion remain review-gated by the agreed plan."
+  ],
+  "publication": {
+    "state": "draft",
+    "isPrerelease": false,
+    "tag": "companion-engine-v1.0.0",
+    "draftUrl": "https://github.com/rlsgarcia-code/local-agent-companion/releases/tag/untagged-8cad484c7be5be2ac959",
+    "targetCommitish": "009f3f17c4844f2b603532ba7df21a81e65ce1b0"
+  },
+  "appleSigning": {
+    "mode": "ad-hoc-not-notarized",
+    "notarized": false,
+    "validDistributionIdentityVisibleAtCheck": false,
+    "planCondition": "Apply Developer ID/notarization according to the identity available and identify the condition in the installation report."
+  },
+  "kidOS": {
+    "status": "on-hold",
+    "requiredForThisDelivery": false,
+    "remoteInstallationResumed": false
+  },
+  "limits": [
+    "The real read-only provider used in standalone and service recovery tests was local Ollama. The configured VS Code corporate gateway has not yet been exercised through the new installed interface.",
+    "Staged artifact equality is not claimed as proof of installed-client acceptance. The existing installed clients are still 0.11.15.",
+    "The binary rollback test used a temporary owned state directory. It is not a rollback of the current personal installation.",
+    "The Mac remains locked. No alternative technology was used to bypass the device lock or access the editor credential store.",
+    "The original signed build index remains unchanged. This report is local acceptance evidence and is not a new signed publication authorization.",
+    "Concurrent edits in the original developer checkout were preserved; this release is built from the exact source commit identified above."
+  ]
+}

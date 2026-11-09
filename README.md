@@ -4,6 +4,12 @@
 > final na branch `codex/companion-suite-engine`, [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
 > KidOS permanece em espera por solicitação do responsável e não condiciona
 > esta entrega. O núcleo funciona sem nenhuma interface instalada.
+> A [matriz assinada](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42538629711)
+> passou nas cinco plataformas. Os binários exatos passaram nos testes Ollama
+> de execução, recuperação e rollback. O [relatório atual](docs/desktop-final-acceptance.json)
+> distingue esses resultados da instalação local ainda pendente: o Mac está
+> bloqueado, as interfaces instaladas continuam em 0.11.15 e o gateway real do
+> editor ainda precisa ser conferido. O rascunho final não foi promovido.
 >
 > Os executores e todas as chamadas de modelo das interfaces rodam no serviço
 > comum: LangChain/DeepAgents, saver SQLite oficial, planejamento, conclusão,
