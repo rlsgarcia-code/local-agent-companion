@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { runTests, downloadAndUnzipVSCode } from "@vscode/test-electron";
 
+import { cleanupEditorTestEngine } from "./cleanup-editor-test-engine.mjs";
 import { runBoundedCli } from "./editor-test-cli.mjs";
 import { installedVSIXDirectory } from "./verify-installed-vsix.mjs";
 
@@ -39,6 +40,7 @@ const profileRoot = await mkdtemp(path.join(shortTemporaryRoot, "ldc-vsix-"));
 const userDataDirectory = path.join(profileRoot, "user");
 const extensionsDirectory = path.join(profileRoot, "extensions");
 let completed = false;
+let installedRoot;
 
 try {
   const installArgs = [
@@ -61,7 +63,9 @@ try {
     console.warn("PACKAGED_EXTENSION_TEST_INSTALL_WARNING Known VS Code CLI shutdown crash; the exact installed payload was verified.");
   }
 
-  if(!(await installedVSIXDirectory(vsixPath,extensionsDirectory)))throw new Error("The installed copy does not match the exact VSIX.");
+  installedRoot=await installedVSIXDirectory(vsixPath,extensionsDirectory);
+  if(!installedRoot)throw new Error("The installed copy does not match the exact VSIX.");
+  console.log("PACKAGED_EXTENSION_PAYLOAD_VERIFIED");
 
   await runTests({
     version,
@@ -79,6 +83,9 @@ try {
       ...(process.env.LDC_VSIX_TEST_VERBOSE === "1" ? ["--verbose"] : [])
     ]
   });
+  console.log("PACKAGED_EXTENSION_HOST_EXITED");
+  const teardown=await cleanupEditorTestEngine(projectRoot,installedRoot,path.join(projectRoot,"test/fixtures/extension-host-workspace"));
+  console.log("PACKAGED_EXTENSION_ENGINE_TEARDOWN",JSON.stringify(teardown));
   completed = true;
 } catch (error) {
   console.error(
@@ -88,8 +95,16 @@ try {
   process.exitCode = 1;
 } finally {
   if (completed) {
+    console.log("PACKAGED_EXTENSION_PROFILE_CLEANUP_STARTED");
     await rm(profileRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    console.log("PACKAGED_EXTENSION_PROFILE_CLEANUP_OK");
   } else {
     console.error(`PACKAGED_EXTENSION_TEST_PROFILE_PRESERVED ${profileRoot}`);
   }
 }
+
+console.log("PACKAGED_EXTENSION_DRIVER_COMPLETED");
+// Assertions, explicit fixture teardown and profile cleanup have already settled.
+// Windows Electron can retain driver handles after exit; never let them turn a finished test into an indefinite job.
+if(process.platform==='win32'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted')
+  process.exit(process.exitCode??0);

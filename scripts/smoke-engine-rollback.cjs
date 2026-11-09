@@ -40,6 +40,9 @@ const digest=value=>createHash('sha256').update(JSON.stringify(canonical(value))
   const key=await readFile(path.resolve('release-keys/companion-ed25519.pub'),'utf8');
   const currentSdk=await verifiedSdk(required('--sdk-dir'),key),previousSdk=await verifiedSdk(required('--previous-sdk-dir'),key);
   await currentSdk.verifyBundle(current,key,false);await previousSdk.verifyBundle(previous,key,false);
+  const currentManifest=JSON.parse(await readFile(path.join(current,'manifest.json'))),previousManifest=JSON.parse(await readFile(path.join(previous,'manifest.json')));
+  if(currentManifest.version===previousManifest.version)throw Error('Rollback acceptance requires two distinct signed engine versions.');
+
   const directory=await mkdtemp(path.join(tmpdir(),'companion-version-rollback-'));
   const id=createHash('sha256').update(directory).digest('hex');
   const credential={registration:{id,product:'companion-mac',profile:'explicit-rollback-smoke',workspace:'',providers:['ollama'],hostTools:[]},token:randomBytes(32).toString('base64url')};
