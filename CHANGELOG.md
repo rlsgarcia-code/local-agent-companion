@@ -1,7 +1,7 @@
 # Changelog
 
 
-## [0.12.5] - 2026-11-10
+## 0.12.5 - 2026-11-10
 
 ### Fixed
 - Show the main and vision model fields for LiteLLM and OpenAI, outside Ollama-only controls.
