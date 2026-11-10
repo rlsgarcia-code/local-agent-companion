@@ -1,3 +1,4 @@
+import { withOfflineTokenCounting } from "./offline-token-count";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAICompletions } from "@langchain/openai";
 import type { OllamaModel, PullProgress } from "../../contracts/src/desktop";
@@ -103,7 +104,7 @@ export class OllamaModels {
   ): ChatOpenAICompletions {
     if (!MODEL_NAME.test(modelName))
       throw new Error(`Invalid Ollama model alias: ${modelName}`);
-    return new ChatOpenAICompletions({
+    return withOfflineTokenCounting(new ChatOpenAICompletions({
       model: modelName,
       apiKey: "ollama-local",
       streaming,
@@ -112,7 +113,7 @@ export class OllamaModels {
       maxRetries: streaming ? 0 : 1,
       timeout,
       configuration: { baseURL: OLLAMA_API_BASE, fetch: loopbackFetch },
-    });
+    }), modelName);
   }
 
   private async inspectModel(
