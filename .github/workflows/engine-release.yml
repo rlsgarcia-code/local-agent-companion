@@ -35,6 +35,10 @@ jobs:
       - run: npm rebuild better-sqlite3 --ignore-scripts=false
       - run: npm run check
       - run: npm test
+      - name: Verify connection settings in the Windows browser renderer
+        if: matrix.target == 'win32-x64'
+        timeout-minutes: 2
+        run: node scripts/smoke-connection-settings.mjs
       - run: npm run smoke:litellm
       - run: npm run engine:build
       - name: Sign the exact engine manifest

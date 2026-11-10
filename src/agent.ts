@@ -1,3 +1,4 @@
+import { parseLiteLlmModelProfiles } from "./litellm";
 import { serviceProcessTool } from "../packages/contracts/src/workspace-backend";
 import { assertPublicMetadata } from "../packages/client-ts/src/public-metadata";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
@@ -87,7 +88,7 @@ import { redactSensitiveText, safeErrorMessage } from "./redaction";
 import { RunEvidenceRecorder } from "./run-evidence";
 import type { RunEvidenceSnapshot } from "./run-evidence";
 import { agentRuntimeLabel, parseAgentRuntime } from "./runtime";
-import { appendAgentLog } from "./agent-log";
+import { connectionFailure, type ConnectionTestLog } from "./connection-test-log";
 import { parseResponseLanguage, responseLanguageInstruction, type ResponseLanguage } from "./response-language";
 import { ThreadJournal, type ThreadJournalRecord } from "./thread-journal";
 import { completionGateResult, createTaskCompletionMiddleware } from "./task-completion";
@@ -137,6 +138,7 @@ import type { WorkspaceRunLease } from "./workspace-run-lease";
 const CONVERSATION_KEY_PREFIX = "localAgentCompanion.localConversation";
 
 type ConnectionDiagnosticOptions = {
+  log?: ConnectionTestLog;
   connection: ModelConnection;
   profile: LiteLlmModelProfile;
   modelsEndpoint?: string;
@@ -388,7 +390,7 @@ export class DevelopmentAgent implements vscode.Disposable {
     const profile = connection.provider === "ollama"
       ? { api: "chat_completions" as const, preset: "custom" as const }
       : liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model);
-    if (connection.provider !== "ollama") validateLiteLlmModelProfile(connection.model, profile, true);
+    if (connection.provider !== "ollama") validateLiteLlmModelProfile(connection.model, profile, true, true, connection.endpoint);
     const {client,provider:providerSpec} = await this.modelAssistanceClient(connection,profile);
     const attachments: string[] = [];
     for (const image of images.slice(0,4)) {
@@ -545,7 +547,7 @@ export class DevelopmentAgent implements vscode.Disposable {
         validateLiteLlmModelProfile(
           connection.model,
           liteLlmModelProfile(configuration.get("liteLlmModelProfiles"), connection.model),
-          true
+          true, true, connection.endpoint
         );
       }
     } catch (error) {
@@ -621,7 +623,7 @@ export class DevelopmentAgent implements vscode.Disposable {
     const provider:RunSpec["provider"]={kind:connection.provider,endpoint:connection.endpoint,
       roles:{executor:connection.model},authHeader:connection.authHeader,
       ...(connection.apiKey?{credentialRef:reference}:{}),
-      ...(connection.provider === "litellm"?{profile}:{}),
+      ...(connection.provider !== "ollama"?{profile,modelProfiles:{...parseLiteLlmModelProfiles(vscode.workspace.getConfiguration("localAgentCompanion").get("liteLlmModelProfiles")),[connection.model]:profile}}:{}),
       ...(ca?{corporateCa:ca.map(value=>value.toString())}:{}),
     };
     return {client,provider};
@@ -722,7 +724,7 @@ export class DevelopmentAgent implements vscode.Disposable {
 
     const connection = validateModelConnection(options.connection);
     if (connection.provider !== "ollama") {
-      validateLiteLlmModelProfile(connection.model, options.profile, true);
+      validateLiteLlmModelProfile(connection.model, options.profile, true, true, connection.endpoint);
     }
     const authentication = modelClientAuthentication(connection);
     const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
@@ -743,7 +745,7 @@ export class DevelopmentAgent implements vscode.Disposable {
             dispatcher
           );
           return `${models.length} model aliases available`;
-        }, [connection.apiKey], { authHeader: connection.authHeader, surface: "catalog" }));
+        }, [connection.apiKey], { authHeader: connection.authHeader, surface: "catalog" }, options.log));
       } else {
         diagnostics.push({
           id: "catalog",
@@ -751,19 +753,20 @@ export class DevelopmentAgent implements vscode.Disposable {
           status: "skipped",
           detail: modelProviderSupportsCatalog(connection.provider)
             ? "Models URL is optional and was not configured"
-            : "This provider uses the model name entered by the user"
+            : "This provider uses the model name entered by the user", ...(options.log ? { testId: options.log.id } : {})
         });
+        await options.log?.record("finished", "catalog", diagnostics.at(-1));
       }
 
       const resolvedApi = connection.provider === "ollama"
         ? "chat_completions" as const
-        : resolveLiteLlmModelApi(connection.model, options.profile);
+        : resolveLiteLlmModelApi(connection.model, options.profile, connection.endpoint);
       const modelApi = resolvedApi === "responses" ? "Responses API" : "Chat Completions";
       diagnostics.push(await runDiagnostic("chat", modelApi, async () => {
         const {client,provider} = await this.modelAssistanceClient(connection,options.profile);
         await client.assistModel({purpose:"connection",provider});
         return `Model “${connection.model}” accepted ${modelApi} streaming and function tools`;
-      }, [connection.apiKey], { authHeader: connection.authHeader, surface: "chat" }));
+      }, [connection.apiKey], { authHeader: connection.authHeader, surface: "chat" }, options.log));
 
       const embeddingModel = options.embeddingModel?.trim();
       if (embeddingModel) {
@@ -772,25 +775,16 @@ export class DevelopmentAgent implements vscode.Disposable {
           const result = await client.assistModel({purpose:"embedding",provider,model:embeddingModel,
             ...(options.embeddingEndpoint?.trim()?{endpoint:options.embeddingEndpoint.trim()}:{})});
           return result.text;
-        }, [connection.apiKey], { authHeader: connection.authHeader, surface: "embeddings" }));
+        }, [connection.apiKey], { authHeader: connection.authHeader, surface: "embeddings" }, options.log));
       } else {
         diagnostics.push({
           id: "embeddings",
           label: "Embeddings",
           status: "skipped",
-          detail: "Semantic vector memory is disabled"
+          detail: "Semantic vector memory is disabled", ...(options.log ? { testId: options.log.id } : {})
         });
+        await options.log?.record("finished", "embeddings", diagnostics.at(-1));
       }
-      await appendAgentLog(workspace.uri.fsPath, {
-        event: "connection-test",
-        provider: connection.provider,
-        model: connection.model,
-        api: modelApi,
-        route: new URL(resolvedApi === "responses"
-          ? responsesUrl(connection, connection.model)
-          : chatCompletionsUrl(connection)).pathname,
-        diagnostics: diagnostics.map(({ id, label, status, detail, durationMs }) => ({ id, label, status, detail, durationMs }))
-      }, [connection.apiKey]);
       return diagnostics;
     } finally {
       await dispatcher?.close();
@@ -870,11 +864,11 @@ export class DevelopmentAgent implements vscode.Disposable {
         : storedModelProfile;
       activeModelProfile = modelProfile;
       if (connection.provider !== "ollama") {
-        validateLiteLlmModelProfile(connection.model, modelProfile, true);
+        validateLiteLlmModelProfile(connection.model, modelProfile, true, true, connection.endpoint);
       }
       const resolvedModelApi = connection.provider === "ollama"
         ? "chat_completions" as const
-        : resolveLiteLlmModelApi(connection.model, modelProfile);
+        : resolveLiteLlmModelApi(connection.model, modelProfile, connection.endpoint);
       const certificateAuthorities = modelProviderSupportsCorporateCa(connection.provider)
         ? await this.certificateAuthorities(workspaceRoot)
         : undefined;
@@ -1040,8 +1034,8 @@ export class DevelopmentAgent implements vscode.Disposable {
       for (const image of images) {const transfer=await engineClient.upload(`image:${contentHash(image)}`,Buffer.from(image.data,"base64"),image.mimeType);content.push({type:"image",attachmentId:transfer.id,detail:"auto"});}
       messages.push({role:"user",id:stagedUserMessage.id,content:images.length?content:request});
       const providerSpec: RunSpec["provider"] = {kind:connection.provider,endpoint:connection.endpoint,authHeader:connection.authHeader,
-        roles:{executor:connection.model,...(connection.provider === "ollama" ? Object.fromEntries([["planner","ollamaPlannerModel"],["evaluator","ollamaEvaluatorModel"],["vision","visionModel"]].flatMap(([role,key])=>{const model=configuration.get<string>(key!,"").trim();return model?[[role,model]]:[];})):{})},
-        ...(apiKey?{credentialRef:connection.provider}:{}),...(connection.provider === "litellm"?{profile:modelProfile}:{}),...(certificateAuthorities?{corporateCa:certificateAuthorities.map(value=>value.toString())}: {})};
+        roles:{executor:connection.model,...(configuration.get<string>("visionModel", "").trim() ? {vision:configuration.get<string>("visionModel", "").trim()} : {}),...(connection.provider === "ollama" ? Object.fromEntries([["planner","ollamaPlannerModel"],["evaluator","ollamaEvaluatorModel"]].flatMap(([role,key])=>{const model=configuration.get<string>(key!,"").trim();return model?[[role,model]]:[];})):{})},
+        ...(apiKey?{credentialRef:connection.provider}:{}),...(connection.provider !== "ollama"?{profile:modelProfile,modelProfiles:parseLiteLlmModelProfiles(configuration.get("liteLlmModelProfiles"))}:{}),...(certificateAuthorities?{corporateCa:certificateAuthorities.map(value=>value.toString())}: {})};
       const journalHistory = await this.threadJournal.recent(workspaceRoot,threadId);
       const spec: RunSpec = {runtime,mode,messages,provider:providerSpec,tools:catalog,
         systemPrompt:this.systemPrompt(mode,"",runtime,responseLanguage,context,Boolean(browserSession),Boolean(browserSession?.externalAccess),mcpSession.tools.map(tool=>tool.name),goal,journalHistory),
@@ -1768,28 +1762,28 @@ async function runDiagnostic(
   label: string,
   action: () => Promise<string>,
   sensitiveValues: readonly string[] = [],
-  fixContext: ConnectionDiagnosticFixContext = {}
+  fixContext: ConnectionDiagnosticFixContext = {},
+  log?: ConnectionTestLog
 ): Promise<ConnectionDiagnostic> {
   const startedAt = Date.now();
+  await log?.record("started", id);
   try {
-    return {
-      id,
-      label,
-      status: "passed",
-      detail: await action(),
-      durationMs: Date.now() - startedAt
+    const result: ConnectionDiagnostic = {
+      id, label, status: "passed", detail: await action(), durationMs: Date.now() - startedAt,
+      ...(log ? { testId: log.id } : {})
     };
+    await log?.record("finished", id, result);
+    return result;
   } catch (error) {
     const detail = safeErrorMessage(error, sensitiveValues);
     const fixes = connectionDiagnosticFixes(detail, fixContext);
-    return {
-      id,
-      label,
-      status: "failed",
-      detail,
-      ...(fixes.length ? { fixes } : {}),
+    const result: ConnectionDiagnostic = {
+      id, label, status: "failed", detail, ...connectionFailure(error),
+      ...(log ? { testId: log.id } : {}), ...(fixes.length ? { fixes } : {}),
       durationMs: Date.now() - startedAt
     };
+    await log?.record("finished", id, result);
+    return result;
   }
 }
 

@@ -1,3 +1,5 @@
+import { ConnectionTestLog, connectionFailure } from "./connection-test-log";
+import type { ModelCapabilityDeclaration } from "../packages/contracts/src/model-capabilities";
 import * as vscode from "vscode";
 import { DevelopmentAgent } from "./agent";
 import { ChangeReviewManager } from "./change-review";
@@ -134,6 +136,8 @@ type LiteLlmFormFields = {
   apiKey: string;
   authHeader: LiteLlmAuthHeader;
   modelsEndpoint: string;
+  capabilities?: ModelCapabilityDeclaration;
+  capabilityDeclarations?: Record<string, ModelCapabilityDeclaration>;
   preset: string;
   reasoningEffort: string;
   temperature: string;
@@ -619,6 +623,15 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "importConnectionProfile":
         await this.importConnectionProfile();
         break;
+      case "openConnectionLog": {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        if (!folder) { void vscode.window.showInformationMessage("Open a workspace to view its connection test log."); break; }
+        try {
+          const uri = vscode.Uri.joinPath(folder.uri, ".local-agent", "logs", "agent.log");
+          await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: true });
+        } catch { void vscode.window.showInformationMessage("No readable connection log is available. Run Test connection in a writable workspace first."); }
+        break;
+      }
       case "exportSupportBundle":
         await this.exportSupportBundle(message.diagnostics);
         break;
@@ -2045,7 +2058,12 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   private async testLiteLlmSettings(message: Extract<IncomingMessage, { type: "testLiteLlm" }>): Promise<void> {
-    this.post({ type: "connectionTestStarted" });
+    const secretName = modelProviderSecret(parseModelProvider(message.provider));
+    const storedSecret = secretName ? await this.extensionContext.secrets.get(secretName) : undefined;
+    const log = new ConnectionTestLog(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+      { provider: message.provider, model: message.model, api: message.modelApi, reasoningEffort: parseLiteLlmReasoningEffort(message.reasoningEffort) }, [message.apiKey, storedSecret ?? ""].filter(Boolean));
+    this.post({ type: "connectionTestStarted", testId: log.id });
+    await log.record("started", "configuration");
     let parsed: Awaited<ReturnType<AgentViewProvider["parseLiteLlmForm"]>>;
     try {
       parsed = await this.parseLiteLlmForm(message);
@@ -2055,16 +2073,15 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         authHeader: modelProviderAuthHeader(parseModelProvider(message.provider), message.authHeader),
         surface: "configuration"
       });
-      this.post({
-        type: "connectionTested",
-        diagnostics: [{
+      const diagnostic: ConnectionDiagnostic = {
           id: "configuration",
           label: "Configuration",
           status: "failed",
           detail,
-          ...(fixes.length ? { fixes } : {})
-        } satisfies ConnectionDiagnostic]
-      });
+          ...(fixes.length ? { fixes } : {}), testId: log.id, ...connectionFailure(error)
+      };
+      await log.record("finished", "configuration", diagnostic);
+      this.post({ type: "connectionTested", diagnostics: [diagnostic], testId: log.id, logAvailable: log.available });
       return;
     }
 
@@ -2072,10 +2089,12 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         id: "configuration",
         label: "Configuration",
         status: "passed",
-        detail: "Endpoint, credentials, model alias and parameters are valid"
+        detail: "Endpoint, credentials, model alias and parameters are valid", testId: log.id
     }];
+    await log.record("finished", "configuration", diagnostics[0]);
     try {
       diagnostics.push(...await this.agent.diagnoseConnection({
+        log,
         connection: parsed.connection,
         profile: liteLlmModelProfile(parsed.modelProfiles, parsed.connection.model),
         modelsEndpoint: parsed.modelsEndpoint,
@@ -2092,11 +2111,12 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         id: "chat",
         label: "Gateway connection",
         status: "failed",
-        detail,
+        detail, testId: log.id, ...connectionFailure(error),
         ...(fixes.length ? { fixes } : {})
       });
+      await log.record("finished", "chat", diagnostics.at(-1));
     }
-    this.post({ type: "connectionTested", diagnostics });
+    this.post({ type: "connectionTested", diagnostics, testId: log.id, logAvailable: log.available });
   }
 
   private async parseLiteLlmForm(message: LiteLlmFormFields) {
@@ -2133,21 +2153,25 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     const profileModel = message.profileModel.trim() || connection.model;
     const effectiveProfile: LiteLlmModelProfile = provider === 'ollama'
       ? { api: 'chat_completions', preset: 'custom', reasoningEffort: undefined, temperature, topP }
-      : { api: modelApi, preset, reasoningEffort, temperature, topP };
+      : { api: modelApi, preset, reasoningEffort, temperature, topP, ...(message.capabilities ? { capabilities: message.capabilities } : {}) };
     if (provider === 'ollama' && modelApi === 'responses') {
       throw new Error('Ollama local uses Chat Completions through its OpenAI-compatible /v1 route.');
     }
-    const modelProfiles = updateLiteLlmModelProfile(
-      configuration.get("liteLlmModelProfiles"),
-      profileModel,
-      effectiveProfile
-    );
+    let modelProfiles = parseLiteLlmModelProfiles(configuration.get("liteLlmModelProfiles"));
     if (provider !== 'ollama') {
-      validateLiteLlmModelProfile(profileModel, liteLlmModelProfile(modelProfiles, profileModel));
+      for (const [alias, capabilities] of Object.entries(message.capabilityDeclarations ?? {})) {
+        const previous = liteLlmModelProfile(modelProfiles, alias);
+        modelProfiles = updateLiteLlmModelProfile(modelProfiles, alias, { ...previous, capabilities,
+          ...(!capabilities.reasoning ? { reasoningEffort: undefined } : {}) });
+      }
+    }
+    modelProfiles = updateLiteLlmModelProfile(modelProfiles, profileModel, effectiveProfile);
+    if (provider !== 'ollama') {
+      validateLiteLlmModelProfile(connection.model, liteLlmModelProfile(modelProfiles, connection.model), false, true, connection.endpoint);
     }
     if (message.visionModel.trim() && message.visionModel.trim() !== profileModel) {
       if (provider !== 'ollama') {
-        validateLiteLlmModelProfile(message.visionModel.trim(), liteLlmModelProfile(modelProfiles, message.visionModel.trim()));
+        validateLiteLlmModelProfile(message.visionModel.trim(), liteLlmModelProfile(modelProfiles, message.visionModel.trim()), false, false, connection.endpoint);
       }
     }
     return { connection, modelsEndpoint, embeddingEndpoint, modelProfiles };
@@ -3098,6 +3122,18 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
             <small>Equivalent to <code>ollama list</code>; only this machine is queried.</small>
           </div>
         </div>
+          <div class="section-label settings-subheading">TASK MODELS</div>
+        <label class="field">
+          <span id="chat-model-label">Chat Model Alias</span>
+          <input id="litellm-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="company-coding-model" />
+          <small id="chat-model-help">The model used for chat and tool calls.</small>
+          <datalist id="litellm-model-aliases"></datalist>
+        </label>
+        <label class="field">
+          <span id="vision-model-label">Vision / OCR Model <small>optional</small></span>
+          <input id="vision-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="Use chat model for images" />
+          <small>Use an alias with Chat Completions image/OCR support for pasted images and browser screenshots.</small>
+        </label>
         <section class="ollama-role-setup hidden" id="ollama-role-setup" aria-label="Agent cognitive roles">
           <div class="brief-actions ollama-agent-actions">
             <button class="secondary-action" id="ollama-recommended" type="button">Recommend for this machine</button>
@@ -3122,18 +3158,6 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <div class="ollama-agent-flow" aria-label="Agent cognitive flow">
             <span>Understand</span><i>→</i><span>Plan</span><i>→</i><span>Act</span><i>→</i><span>Perceive</span><i>→</i><span>Evaluate</span><i>→</i><span>Remember</span>
           </div>
-          <div class="section-label settings-subheading">TASK MODELS</div>
-        <label class="field">
-          <span id="chat-model-label">Chat Model Alias</span>
-          <input id="litellm-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="company-coding-model" />
-          <small id="chat-model-help">The model used for chat and tool calls.</small>
-          <datalist id="litellm-model-aliases"></datalist>
-        </label>
-        <label class="field">
-          <span id="vision-model-label">Vision / OCR Model <small>optional</small></span>
-          <input id="vision-model" type="text" list="litellm-model-aliases" autocomplete="off" spellcheck="false" placeholder="Use chat model for images" />
-          <small>Use an alias with Chat Completions image/OCR support for pasted images and browser screenshots.</small>
-        </label>
           <div class="section-label settings-subheading">COGNITIVE ROLES</div>
           <div class="field-grid">
             <label class="field">
@@ -3148,6 +3172,21 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <datalist id="ollama-model-aliases"></datalist>
           <small class="settings-note" id="ollama-catalog-note"></small>
         </section>
+        <fieldset class="model-feature-fields" id="model-feature-fields">
+          <legend>Model capabilities · declared by you</legend>
+          <small id="model-feature-alias"></small>
+          <div class="field-grid">
+            <label class="toggle-field"><input type="checkbox" data-model-capability="functionCalling" /><span>Function calling</span></label>
+            <label class="toggle-field"><input type="checkbox" data-model-capability="vision" /><span>Vision</span></label>
+            <label class="toggle-field"><input type="checkbox" data-model-capability="jsonMode" /><span>JSON mode</span></label>
+            <label class="toggle-field"><input type="checkbox" data-model-capability="toolChoice" /><span>Tool choice</span></label>
+            <label class="toggle-field"><input type="checkbox" data-model-capability="parallelCalls" /><span>Parallel Calls</span></label>
+            <label class="toggle-field"><input type="checkbox" data-model-capability="promptCaching" /><span>Prompt caching</span></label>
+            <label class="toggle-field"><input type="checkbox" data-model-capability="reasoning" /><span>Reasoning</span></label>
+            <label class="toggle-field"><input type="checkbox" data-model-capability="pdfInput" /><span>PDF input</span></label>
+          </div>
+          <small>Enter any exact gateway alias. Checked features override the catalog. Function calling is required for the agent. The connection test checks streaming and tool-schema acceptance; it does not certify these eight features or add attachment support.</small>
+        </fieldset>
         <div class="model-compatibility hidden" id="model-compatibility" role="status" aria-live="polite" aria-atomic="true">
           <span class="model-compatibility-signal" aria-hidden="true"></span>
           <span class="model-compatibility-copy"><strong id="model-compatibility-title"></strong><small id="model-compatibility-detail"></small></span>
@@ -3158,7 +3197,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           <label class="field">
             <span>Model API</span>
             <select id="litellm-model-api">
-              <option value="auto">Auto (conservative)</option>
+              <option value="auto">Auto (configured route; otherwise Chat Completions)</option>
               <option value="chat_completions">Chat Completions</option>
               <option value="responses">Responses API</option>
             </select>
@@ -3191,6 +3230,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
               <option value="xhigh">xhigh</option>
               <option value="max">max</option>
             </select>
+            <small>Chat Completions sends reasoning_effort in the JSON body beside model and messages. Omit leaves that field out; checking Reasoning alone sends no effort.</small>
           </label>
           <div class="field-grid">
             <label class="field">
@@ -3229,6 +3269,8 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         </div>
         <p class="settings-note" id="litellm-details"></p>
         <div class="connection-diagnostics hidden" id="connection-diagnostics" role="status" aria-live="polite" aria-atomic="true"></div>
+        <p class="settings-note" id="connection-test-reference"></p>
+        <button class="secondary-action" id="connection-open-log" type="button">Open test log</button>
       </section>
       <p class="settings-error hidden" id="litellm-settings-error" role="alert"></p>
       <div class="profile-actions" id="profile-actions">
@@ -3828,6 +3870,11 @@ textarea { display: block; width: 100%; min-height: 58px; max-height: 180px; res
 .sr-only { position: fixed; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 [tabindex="-1"]:focus { outline: none; }
 button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.model-feature-fields { min-width: 0; margin: 12px 0; padding: 10px; border: 1px solid var(--line); border-radius: 4px; }
+.model-feature-fields legend { padding: 0 4px; font-weight: 600; }
+.model-feature-fields > small { display: block; color: var(--muted); }
+.model-feature-fields .field-grid { margin: 8px 0; }
+.model-feature-fields .toggle-field { margin: 4px 0; }
 .hidden { display: none !important; }
 @keyframes pulse { 0%,100% { opacity: .55; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); } 50% { opacity: 1; box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 5%, transparent); } }
 @keyframes stream-cursor { 0%,48% { opacity: 1; } 49%,100% { opacity: .18; } }
@@ -3925,6 +3972,11 @@ const embeddingProviderNote = document.getElementById('embedding-provider-note')
 const liteLlmEndpoint = document.getElementById('litellm-endpoint');
 const liteLlmModelsEndpoint = document.getElementById('litellm-models-endpoint');
 const liteLlmModel = document.getElementById('litellm-model');
+const modelFeatureFields = document.getElementById('model-feature-fields');
+const modelFeatureAlias = document.getElementById('model-feature-alias');
+const modelFeatureInputs = [...document.querySelectorAll('[data-model-capability]')];
+let capabilityDrafts = {};
+let capabilityAlias = '';
 const visionModel = document.getElementById('vision-model');
 const ollamaRoleSetup = document.getElementById('ollama-role-setup');
 const ollamaPlannerModel = document.getElementById('ollama-planner-model');
@@ -3963,6 +4015,8 @@ const readinessTitle = document.getElementById('readiness-title');
 const readinessDetail = document.getElementById('readiness-detail');
 const connectionDiagnostics = document.getElementById('connection-diagnostics');
 const connectionTestButton = document.getElementById('litellm-test');
+const connectionTestReference = document.getElementById('connection-test-reference');
+document.getElementById('connection-open-log').addEventListener('click', () => vscode.postMessage({ type: 'openConnectionLog' }));
 const connectionSaveButton = document.getElementById('litellm-save');
 const setupSteps = [...document.querySelectorAll('[data-setup-step]')];
 const setupStepButtons = [...document.querySelectorAll('[data-setup-step-target]')];
@@ -5475,6 +5529,8 @@ function moveToConnectionSetupStep(target) {
 
 function fillLiteLlmSettings(liteLlm) {
   diagnosticFixApplied = false;
+  capabilityDrafts = {};
+  capabilityAlias = "";
   activeProvider = liteLlm.provider || 'litellm';
   availableModelProviders = liteLlm.availableProviders || ['litellm'];
   providerKeyStates = liteLlm.providerKeyStates || providerKeyStates;
@@ -5590,6 +5646,7 @@ function renderProviderFields() {
   const isLiteLlm = provider === 'litellm';
   const isOllama = provider === 'ollama';
   ollamaRoleSetup.classList.toggle('hidden', !isOllama);
+  modelFeatureFields.classList.toggle('hidden', isOllama);
   setupModelsTitle.textContent = isOllama ? 'Agent Setup' : 'Choose the models';
   setupModelsNote.textContent = isOllama
     ? 'Configure the cognitive roles of the local agent. Each role may use a different Ollama model.'
@@ -5651,7 +5708,7 @@ function renderConnectionDiagnostics(diagnostics) {
       : '';
     return '<div class="diagnostic ' + escapeHtml(item.status) + '">' +
       '<span class="diagnostic-dot" aria-hidden="true"></span>' +
-      '<span class="diagnostic-copy"><strong>' + escapeHtml(item.label) + '</strong><small>' + escapeHtml(item.detail) + '</small>' + fixes + '</span>' +
+      '<span class="diagnostic-copy"><strong>' + escapeHtml(item.label) + '</strong><small>' + escapeHtml(item.detail) + (item.failureKind ? ' · ' + escapeHtml(item.failureKind) : '') + (item.httpStatus ? ' · HTTP ' + Number(item.httpStatus) : '') + '</small>' + fixes + '</span>' +
       duration + '</div>';
   }).join('');
   connectionDiagnostics.classList.remove('hidden');
@@ -5715,8 +5772,37 @@ function fillEmbeddingModelOptions(models, selected) {
   embeddingModel.value = selected || '';
 }
 
+function declaredCapabilitiesFor(alias, profile) {
+  if (capabilityDrafts[alias]) return capabilityDrafts[alias];
+  if (profile && profile.capabilities) return profile.capabilities;
+  const metadata = modelMetadataCatalog[String(alias).toLowerCase()];
+  return {
+    functionCalling: Boolean(metadata && metadata.supportsFunctionCalling),
+    vision: Boolean(metadata && metadata.vision),
+    jsonMode: Boolean(metadata && metadata.supportsStructuredOutput),
+    toolChoice: Boolean(metadata && metadata.toolChoice && metadata.toolChoice.length),
+    parallelCalls: Boolean(metadata && metadata.supportsParallelFunctionCalling),
+    promptCaching: Boolean(metadata && metadata.promptCaching),
+    reasoning: Boolean(metadata && metadata.supportsReasoning),
+    pdfInput: Boolean(metadata && metadata.pdf)
+  };
+}
+
+function fillDeclaredCapabilities(alias, profile) {
+  if (capabilityAlias && modelProvider.value !== 'ollama') capabilityDrafts[capabilityAlias] = currentDeclaredCapabilities();
+  capabilityAlias = alias;
+  const declaration = declaredCapabilitiesFor(alias, profile);
+  modelFeatureInputs.forEach(input => { input.checked = Boolean(declaration[input.dataset.modelCapability]); });
+  modelFeatureAlias.textContent = alias ? 'Features for: ' + alias : 'Enter a model alias above.';
+}
+
+function currentDeclaredCapabilities() {
+  return Object.fromEntries(modelFeatureInputs.map(input => [input.dataset.modelCapability, input.checked]));
+}
+
 function fillModelProfile(model, fallback, recommendDefaults = false) {
   const profile = liteLlmModelProfiles[String(model).trim()] || fallback || {};
+  fillDeclaredCapabilities(String(model).trim(), profile);
   liteLlmModelApi.value = profile.api || 'auto';
   liteLlmModelPreset.value = profile.preset || 'auto';
   liteLlmReasoningEffort.value = profile.reasoningEffort || 'omit';
@@ -5750,6 +5836,7 @@ function profileModelForControls() {
 
 function previewModelCompatibility() {
   const selectedModel = profileModelForControls();
+  if (capabilityAlias !== selectedModel) fillDeclaredCapabilities(selectedModel, liteLlmModelProfiles[selectedModel]);
   const resolved = liteLlmModelPreset.value === 'auto'
     ? detectModelPreset(selectedModel)
     : liteLlmModelPreset.value;
@@ -5763,6 +5850,17 @@ function renderModelCompatibility(resolved, capabilities) {
   const automatic = liteLlmModelPreset.value === 'auto';
   const modelApi = liteLlmModelApi.value;
   const metadata = modelMetadataCatalog[alias.toLowerCase()];
+  if (modelProvider.value !== 'ollama') {
+    const declaration = currentDeclaredCapabilities();
+    const needsTools = profileTarget === 'chat';
+    const ready = !needsTools || declaration.functionCalling;
+    modelCompatibility.classList.remove('ready', 'warning', 'failed');
+    modelCompatibility.classList.add(ready ? 'ready' : 'warning');
+    modelCompatibilityTitle.textContent = ready ? 'User-declared capabilities · ready to test' : 'Function calling is required for the agent';
+    modelCompatibilityDetail.textContent = 'The exact alias is sent unchanged. Your declaration overrides catalog compatibility. Auto preserves the configured route, defaulting to Chat Completions. Responses is an explicit choice.';
+    renderModelMetadata(alias, metadata, modelApi === 'auto' ? (/\/responses\/?$/i.test(liteLlmEndpoint.value) ? 'responses' : 'chat_completions') : modelApi);
+    return;
+  }
   const ollamaMetadata = lookupOllamaMetadata(alias);
   const effectiveApi = modelApi === 'auto'
     ? (ollamaMetadata ? 'chat_completions' : metadata?.supportsReasoning && metadata?.endpoints.includes('responses') ? 'responses' : metadata?.endpoints?.[0])
@@ -5810,6 +5908,11 @@ function renderModelMetadata(alias, metadata, effectiveApi) {
   if (!element) return;
   if (!alias) { element.classList.add('hidden'); return; }
   element.classList.remove('hidden');
+  if (modelProvider.value !== 'ollama') {
+    const enabled = modelFeatureInputs.filter(input => input.checked).map(input => input.nextElementSibling.textContent);
+    element.textContent = 'Declared for ' + alias + ': ' + (enabled.join(' · ') || 'none') + ' · not certified by the connection test';
+    return;
+  }
   const local = lookupOllamaMetadata(alias);
   if (local) {
     const capabilities = (local.capabilities || []).join(', ') || 'not declared';
@@ -5880,29 +5983,21 @@ function applyModelCapabilities(recommendDefaults) {
     return;
   }
 
-  liteLlmModelApi.disabled = false;
-  liteLlmReasoningEffort.disabled = false;
-  if (presetField) presetField.classList.remove('hidden');
-  [...liteLlmReasoningEffort.options].forEach(option => {
-    option.disabled = option.value !== 'omit' && !capabilities.reasoningEfforts.includes(option.value);
-  });
-  if (recommendDefaults && liteLlmModelApi.value === 'chat_completions' && capabilities.toolCalling === 'reasoning-none-only') {
-    liteLlmReasoningEffort.value = 'none';
-  } else if (currentEffort !== 'omit' && !capabilities.reasoningEfforts.includes(currentEffort)) {
-    liteLlmReasoningEffort.value = 'omit';
-  }
-  const effort = liteLlmReasoningEffort.value;
-  const samplingAllowed = capabilities.sampling === 'supported' || capabilities.sampling === 'custom' ||
-    (capabilities.sampling === 'reasoning-none-only' && effort === 'none') ||
-    (capabilities.sampling === 'reasoning-omitted-only' && effort === 'omit');
-  liteLlmTemperature.disabled = !samplingAllowed;
-  liteLlmTopP.disabled = !samplingAllowed;
-  if (!samplingAllowed) {
-    liteLlmTemperature.value = '';
-    liteLlmTopP.value = '';
-  }
-  liteLlmCapabilities.textContent = capabilities.label + ' · ' + capabilities.guidance;
-  renderModelCompatibility(resolved, capabilities);
+  liteLlmModelApi.disabled = modelProvider.value === 'openai';
+  if (modelProvider.value === 'openai') liteLlmModelApi.value = 'chat_completions';
+  if (capabilityAlias !== selectedModel) fillDeclaredCapabilities(selectedModel, liteLlmModelProfiles[selectedModel]);
+  const declaration = currentDeclaredCapabilities();
+  liteLlmModelPreset.value = 'custom';
+  if (presetField) presetField.classList.add('hidden');
+  liteLlmReasoningEffort.disabled = !declaration.reasoning;
+  [...liteLlmReasoningEffort.options].forEach(option => { option.disabled = !declaration.reasoning && option.value !== 'omit'; });
+  if (!declaration.reasoning) liteLlmReasoningEffort.value = 'omit';
+  liteLlmTemperature.disabled = false;
+  liteLlmTopP.disabled = false;
+  liteLlmCapabilities.textContent = 'User-declared features take precedence over alias matching. Only explicitly configured parameters are sent.';
+  renderModelCompatibility('custom', modelCapabilityCatalog.custom);
+  return;
+
 }
 
 function openLiteLlmSettings() {
@@ -5924,6 +6019,7 @@ function liteLlmFormMessage(type) {
     modelApi: liteLlmModelApi.value,
     apiKey: liteLlmApiKey.value,
     authHeader: liteLlmAuthHeader.value,
+    ...(modelProvider.value !== 'ollama' ? { capabilities: currentDeclaredCapabilities(), capabilityDeclarations: capabilityDrafts } : {}),
     preset: liteLlmModelPreset.value,
     reasoningEffort: liteLlmReasoningEffort.value,
     temperature: liteLlmTemperature.value,
@@ -6448,6 +6544,19 @@ visionModel.addEventListener('change', () => {
   fillModelProfile(selected, {}, !hasSavedProfile);
 });
 visionModel.addEventListener('input', previewModelCompatibility);
+modelFeatureInputs.forEach(input => input.addEventListener('change', () => {
+  const alias = profileModelForControls();
+  if (alias) capabilityDrafts[alias] = currentDeclaredCapabilities();
+  applyModelCapabilities(false);
+  markConnectionEdited();
+}));
+[liteLlmModel, visionModel].forEach(input => input.addEventListener('focus', () => {
+  const target = input === visionModel && visionModel.value.trim() ? 'vision' : 'chat';
+  if (profileTarget !== target) {
+    profileTarget = target;
+    fillModelProfile(profileModelForControls(), {});
+  }
+}));
 liteLlmModelPreset.addEventListener('change', () => applyModelCapabilities(true));
 liteLlmModelApi.addEventListener('change', () => applyModelCapabilities(true));
 liteLlmReasoningEffort.addEventListener('change', () => applyModelCapabilities(false));
@@ -6669,6 +6778,7 @@ window.addEventListener('message', ({ data }) => {
       connectionSaveButton.disabled = false;
       connectionTestButton.textContent = 'Test connection';
       renderConnectionDiagnostics(data.diagnostics);
+      connectionTestReference.textContent = data.testId ? 'Test ' + data.testId + ' · ' + (data.logAvailable ? 'Recorded locally in .local-agent/logs/agent.log' : 'Local log unavailable; see diagnostic results above.') : '';
       const failedDiagnostic = (data.diagnostics || []).find(item => item.status === 'failed');
       if (failedDiagnostic) {
         setConnectionReadiness('failed', 'Connection needs attention', failedDiagnostic.label + ': ' + failedDiagnostic.detail);

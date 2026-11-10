@@ -1,3 +1,4 @@
+import { modelCapabilityDeclaration, modelCapabilityDeclarations } from "../packages/contracts/src/model-capabilities";
 import { z } from "zod";
 
 const identifier = z.string().min(1).max(128);
@@ -32,6 +33,8 @@ const liteLlmFields = {
   apiKey: secretText,
   authHeader,
   modelsEndpoint: urlText,
+  capabilities: modelCapabilityDeclaration.optional(),
+  capabilityDeclarations: modelCapabilityDeclarations.optional(),
   preset: z.string().max(128),
   reasoningEffort: z.string().max(64),
   temperature: z.string().max(64),
@@ -46,6 +49,7 @@ const liteLlmFields = {
 
 export const incomingMessageSchema = z.discriminatedUnion("type", [
   noPayload("ready"),
+  noPayload("openConnectionLog"),
   noPayload("environmentCheck"),
   z.object({ type: z.literal("send"), text: messageText, mode: runMode, replacePending: z.boolean().optional(), images: z.array(imageAttachment).max(4).optional() }).strict(),
   z.object({ type: z.literal("generateMcpCatalog"), text: messageText, images: z.array(imageAttachment).max(4).optional() }).strict(),

@@ -2,7 +2,7 @@
   "name": "local-agent-companion",
   "displayName": "Local Agent Companion",
   "description": "A local LangChain agent foundation for VS Code with user-configured LiteLLM and approval-gated corporate MCP connections.",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/rlsgarcia-code/local-agent-companion#readme",
@@ -195,7 +195,7 @@
             "en"
           ],
           "enumDescriptions": [
-            "Respostas exclusivamente em portugu\u00eas do Brasil.",
+            "Respostas exclusivamente em português do Brasil.",
             "Responses exclusively in English."
           ],
           "default": "pt-BR",
@@ -301,11 +301,52 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "capabilities": {
+                "type": "object",
+                "description": "User-declared features of this exact alias. Overrides catalog compatibility; does not grant tools or certify provider support.",
+                "properties": {
+                  "functionCalling": {
+                    "type": "boolean"
+                  },
+                  "vision": {
+                    "type": "boolean"
+                  },
+                  "jsonMode": {
+                    "type": "boolean"
+                  },
+                  "toolChoice": {
+                    "type": "boolean"
+                  },
+                  "parallelCalls": {
+                    "type": "boolean"
+                  },
+                  "promptCaching": {
+                    "type": "boolean"
+                  },
+                  "reasoning": {
+                    "type": "boolean"
+                  },
+                  "pdfInput": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "functionCalling",
+                  "vision",
+                  "jsonMode",
+                  "toolChoice",
+                  "parallelCalls",
+                  "promptCaching",
+                  "reasoning",
+                  "pdfInput"
+                ],
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
           },
-          "description": "Optional API and compatibility parameters stored per exact model alias. Auto selection uses the versioned LiteLLM snapshot conservatively."
+          "description": "API, parameters and user-declared capabilities per exact model alias. Explicit capabilities override catalog compatibility."
         },
         "localAgentCompanion.gatewayCaCertificatePath": {
           "type": "string",
@@ -471,7 +512,8 @@
     "engine:test": "npm run compile:tests && node --test dist-tests/test/engine-*.test.js",
     "engine:package": "node scripts/package-engine.mjs",
     "suite:check": "npm run check && npm test && npm run engine:build",
-    "engine:check": "tsc --noEmit -p tsconfig.engine.json"
+    "engine:check": "tsc --noEmit -p tsconfig.engine.json",
+    "smoke:connection-settings": "npm run compile:tests && node scripts/smoke-connection-settings.mjs"
   },
   "dependencies": {
     "@langchain/community": "^1.1.29",
@@ -489,7 +531,8 @@
     "playwright-core": "^1.58.2",
     "reflect-metadata": "0.2.2",
     "undici": "6.29.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "js-tiktoken": "1.0.21"
   },
   "devDependencies": {
     "@types/better-sqlite3": "7.6.13",

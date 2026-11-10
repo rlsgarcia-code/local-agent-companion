@@ -1,3 +1,4 @@
+import { withOfflineTokenCounting } from "./offline-token-count";
 import type { Registration, RunSpec } from "../../contracts/src/index";
 import { embeddingsBaseUrl, embeddingsUrl } from "./litellm";
 import { ChatOpenAICompletions, ChatOpenAIResponses } from "@langchain/openai";
@@ -60,18 +61,22 @@ export class ProviderModels {
       this.dispatcher=new UndiciAgent({connect:{ca:provider.corporateCa}});
     }
   }
-  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number } = {}) {
-    const provider=this.provider,profile=role==="executor"?provider.profile??{}:{};
+  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number; requiresTools?: boolean } = {}) {
+    const provider=this.provider;
+    const alias=provider.roles[role]||provider.roles.executor;
+    const profile=provider.modelProfiles?.[alias] ?? (alias===provider.roles.executor ? provider.profile??{} : {});
     if(provider.kind==="kidos-gateway")throw new AgentError(errors.unavailable,"Install the protected KidOS model adapter.");
     if(provider.kind!=="litellm"&&profile.api==="responses")throw new AgentError(errors.forbidden,"This product permits only Chat Completions for this provider.");
-    if(provider.kind==="litellm")validateLiteLlmModelProfile(provider.roles[role]||provider.roles.executor,profile,true);
+    if(provider.kind==="litellm" || profile.capabilities)validateLiteLlmModelProfile(alias,profile,true,options.requiresTools !== false,provider.endpoint);
+    if(role==="vision" && profile.capabilities && !profile.capabilities.vision)
+      throw new AgentError(errors.invalid,"Vision is not declared for the selected model alias.");
     const connection={endpoint:provider.endpoint,model:provider.roles[role]||provider.roles.executor,apiKey:this.credential||"ollama-local",authHeader:provider.authHeader};
-    const responses=provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile)==="responses";
+    const responses=provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile,connection.endpoint)==="responses";
     const common={model:connection.model,apiKey:connection.apiKey,streaming,disableStreaming:!streaming,maxRetries:options.maxRetries ?? 0,...(options.timeout ? {timeout:options.timeout}:{}),
       configuration:{baseURL:responses?responsesBaseUrl(connection,connection.model):chatCompletionsBaseUrl(connection),
         ...(this.credential&&provider.authHeader!=="authorization"?{defaultHeaders:{[provider.authHeader]:this.credential}}:{}),
         fetch:gatewayFetch(responses?responsesUrl(connection,connection.model):chatCompletionsUrl(connection),provider.authHeader!=="authorization",this.dispatcher,this.signal)}};
-    return responses?new ChatOpenAIResponses(common):new ChatOpenAICompletions({...common,...chatCompletionsModelOptions(profile)});
+    return withOfflineTokenCounting(responses?new ChatOpenAIResponses(common):new ChatOpenAICompletions({...common,...chatCompletionsModelOptions(profile)}),connection.model);
   }
   embeddingOptions(model: string, endpoint?: string) {
     validateProvider({ providers: [this.provider.kind] } as Registration, { ...this.provider, endpoint: endpoint || this.provider.endpoint });

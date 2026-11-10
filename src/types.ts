@@ -1,3 +1,4 @@
+import type { ConnectionFailureKind } from "./connection-test-log";
 import type { ConnectionDiagnosticFix } from "./connection-remediation";
 import type { CompletionReview } from "./completion-review";
 import type { RunOutcome } from "./completion-notification";
@@ -25,6 +26,9 @@ export type ConnectionDiagnostic = {
   status: "passed" | "failed" | "skipped";
   detail: string;
   durationMs?: number;
+  testId?: string;
+  failureKind?: ConnectionFailureKind;
+  httpStatus?: number;
   fixes?: ConnectionDiagnosticFix[];
 };
 

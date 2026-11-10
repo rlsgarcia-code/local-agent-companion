@@ -99,3 +99,17 @@ test("an update waits for model assistance and service shutdown cancels its netw
     await rejected;
   } finally {await f.close();}
 });
+
+
+test("manual aliases and all eight features cross the authenticated service without alias rewriting", async () => {
+  const f = await fixture();
+  try {
+    const capabilities = { functionCalling:true, vision:true, jsonMode:true, toolChoice:true, parallelCalls:true, promptCaching:true, reasoning:true, pdfInput:true };
+    const provider = { ...f.provider, roles: { executor: "gpt-5.4" }, profile: { capabilities } };
+    await f.client.assistModel({ purpose: "connection", provider });
+    assert.equal(f.requests[0]!.body.model, "gpt-5.4");
+    assert.equal("capabilities" in f.requests[0]!.body, false);
+    await assert.rejects(f.client.assistModel({ purpose: "connection", provider: { ...provider, profile: { capabilities: { ...capabilities, functionCalling:false } } } }), /Function calling/);
+    assert.equal(f.requests.length, 1);
+  } finally { await f.close(); }
+});

@@ -273,7 +273,7 @@ export class AgentService {
             }));
             return row.role === "user"?new HumanMessage({content}):row.role === "assistant"?new AIMessage({content}):new SystemMessage({content});
           }));
-          const answer=await models.model("vision",false).invoke(messages,{signal});
+          const answer=await models.model("vision",false,{requiresTools:false}).invoke(messages,{signal});
           return this.protect(reg,answer.text);
         } finally {await models.close();}
       }

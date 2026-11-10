@@ -31,3 +31,9 @@ When runtime behavior changes, also perform the local read-only Chat Completions
 - Use one accent color and minimal chrome.
 - Prefer a timeline and plain layout over dashboard cards.
 - Respect VS Code theme tokens and reduced-motion preferences.
+
+## Model aliases and connection diagnostics
+
+Read [model capability declarations and connection diagnostics](docs/MODEL_CAPABILITIES.md) before changing alias validation, model routing or setup. Exact user declarations override catalog heuristics, never tool authority or provider restrictions. Keep the eight booleans strict, per-alias and preserved by clients, profiles and the service. The test verifies streaming/tool schemas, not all declared features. Logs must remain local, bounded and credential/body-free.
+
+Token estimation stays offline through `packages/agent-core/src/offline-token-count.ts` in both service model factories. Do not reintroduce a runtime tokenizer CDN request. Provider-reported usage remains distinct from local estimates. Default to Chat Completions unless an API or Responses endpoint is explicit.
