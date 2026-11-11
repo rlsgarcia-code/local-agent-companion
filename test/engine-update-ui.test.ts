@@ -7,6 +7,7 @@ const service = readFileSync("packages/agent-service/src/service.ts", "utf8");
 const vscodeRuntime = readFileSync("src/service-runtime.ts", "utf8");
 const desktopMain = readFileSync("desktop/main.ts", "utf8");
 const desktopHtml = readFileSync("desktop/renderer/index.html", "utf8");
+const desktopRenderer = readFileSync("desktop/renderer/renderer.js", "utf8");
 
 test("engine updates expose blockers and require an explicit local-resource action", () => {
   assert.match(service, /engine\.updateStatus/);
@@ -33,4 +34,11 @@ test("legacy activation uses exact per-user service controls without a shell", (
   assert.match(bootstrap, /companion-engine\.service/);
   assert.match(bootstrap, /"taskkill"/);
   assert.doesNotMatch(bootstrap, /exec\(/);
+});
+
+test("desktop also guards new conversations with the authoritative workspace lease", () => {
+  assert.match(desktopMain, /runtime\.workspaceStatus\(state\.workspacePath\)/);
+  assert.match(desktopMain, /Retome ou cancele essa execução/);
+  assert.match(desktopRenderer, /snapshot\.workspaceRun\?\.busy/);
+  assert.match(desktopRenderer, /Execução preservada em outra conversa/);
 });

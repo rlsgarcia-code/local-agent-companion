@@ -173,14 +173,14 @@ function render(conversationEffect = null) {
   document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === snapshot.mode));
   document.querySelectorAll("[data-runtime]").forEach((button) => button.classList.toggle("active", button.dataset.runtime === snapshot.agentRuntime));
   el["cancel-button"].classList.toggle("hidden", !snapshot.running);
-  el["send-button"].disabled = snapshot.running;
+  el["send-button"].disabled = snapshot.running || Boolean(snapshot.workspaceRun?.busy);
   const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
   const inspectorTitles = {
     activity: ({
       running: "Agente trabalhando", cancelling: "Encerrando a execução…",
       awaiting_approval: "Aguardando sua aprovação", awaiting_host: "Aguardando o aplicativo",
       awaiting_credentials: "Aguardando credenciais", awaiting_reconciliation: "Aguardando verificação do resultado",
-    })[snapshot.runState] || (snapshot.running ? "Agente trabalhando" : "Execução"),
+    })[snapshot.runState] || (snapshot.running ? "Agente trabalhando" : snapshot.workspaceRun?.busy ? "Execução preservada em outra conversa" : "Execução"),
     context: activeContext?.title || "Páginas e pesquisa",
     preview: activeContext?.title || "Preview local",
     changes: `${appState.selectedOutputs?.changeCount ?? appState.changes.length} arquivo${(appState.selectedOutputs?.changeCount ?? appState.changes.length) === 1 ? "" : "s"}`,

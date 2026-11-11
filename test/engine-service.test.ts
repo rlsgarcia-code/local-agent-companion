@@ -211,6 +211,11 @@ test("namespaces, idempotency, imports and cross-product workspace leases are en
     const session = f.store.createSession(mac, "Mac");
     assert.throws(() => f.store.session(vscode, session.id), /not found/);
     const a = f.store.start(mac, session.id, "request-1", spec);
+    assert.deepEqual(f.store.workspaceStatus("/tmp/project"), {
+      busy: true,
+      runId: a.run.id,
+      state: "running",
+    });
     assert.equal(
       f.store.start(mac, session.id, "request-1", spec).run.id,
       a.run.id,
@@ -229,6 +234,7 @@ test("namespaces, idempotency, imports and cross-product workspace leases are en
       /Workspace/,
     );
     f.store.updateRun(mac, a.run.id, "completed");
+    assert.deepEqual(f.store.workspaceStatus("/tmp/project"), { busy: false });
     assert.ok(f.store.start(vscode, other.id, "other", spec).created);
     const imported = f.store.importDomain(mac, "legacy:1", {
       messages: [{ role: "assistant", content: "old" }],

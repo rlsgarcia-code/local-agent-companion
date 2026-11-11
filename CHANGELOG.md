@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.8 - 2026-11-11
+
+### Fixed
+- Detect the shared engine's authoritative workspace lease before admitting a request from a new conversation.
+- Keep the composer locked while another conversation has a running or preserved execution, including `awaiting_host` after an engine restart.
+- Replace the low-level `Workspace is in use by another run` failure with guidance to resume or cancel the owning conversation.
+- Allow the owning conversation to resume its exact preserved run without being blocked by its own lease.
+
+This hotfix advances the clients to 0.12.8 and the engine and SDKs to 1.0.6.
+
 ## 0.12.7 - 2026-11-11
 
 ### Added

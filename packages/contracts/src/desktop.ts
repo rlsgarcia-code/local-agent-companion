@@ -172,6 +172,10 @@ export type DesktopSnapshot = DesktopState & {
     state: "ready" | "busy";
     blockers: EngineUpdateBlockers;
   };
+  workspaceRun: {
+    busy: boolean;
+    state?: RunState;
+  };
   ollama: {
     connected: boolean;
     version?: string;

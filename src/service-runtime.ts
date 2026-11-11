@@ -47,6 +47,9 @@ export class EditorServiceRuntime {
   const key=`vscode:${thread.id}`;const existing=(await client.call<Session[]>("sessions.list")).find(session=>session.importedFrom===key);
   return existing??client.importSession(key,{thread});
  }
+ async workspaceStatus(workspace:string):Promise<{busy:boolean;runId?:string;state?:Run["state"]}>{
+  return (await this.connect(workspace)).call("workspace.status");
+ }
  async nativeApproval(payload:unknown):Promise<boolean>{
   const input=payload as Partial<LocalApprovalRequest>&{tool?:string;input?:unknown};
   const request:LocalApprovalRequest={prompt:input.prompt??`Allow ${input.tool??"this local operation"}?`,action:input.action??"Allow operation",target:input.target??input.tool??"Local workspace",explanation:input.explanation??JSON.stringify(input.input??{},null,2).slice(0,3000),risk:input.risk??"standard"};
