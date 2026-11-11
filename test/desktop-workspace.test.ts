@@ -249,6 +249,7 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.match(html, /Alta qualidade/);
   assert.match(html, /Alta velocidade/);
   assert.match(html, /id="refresh-model-catalog"/);
+  assert.match(html, /id="provider-model-picker"/);
   assert.match(html, /id="apply-installed-recommendation"/);
   assert.match(html, /Sandbox Docker/);
   assert.match(renderer, /dataset\[attribute\] = role/);

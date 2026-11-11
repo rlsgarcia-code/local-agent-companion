@@ -364,6 +364,7 @@ button, input, textarea { -webkit-tap-highlight-color: transparent; }
 .provider-key { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; margin-top: 11px; }
 .provider-catalog-status { margin: 9px 0 0; color: var(--quiet); font-size: 8px; line-height: 1.45; }
 .provider-role-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-top: 12px; }
+.provider-catalog-picker { display: block; margin-top: 10px; }
 .provider-role-editor label:first-child { grid-column: 1 / -1; }
 .provider-role-editor.read-only input { border-color: transparent; background: var(--control-fill); color: var(--muted); cursor: default; }
 .provider-settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }

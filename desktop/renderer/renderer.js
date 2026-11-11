@@ -34,7 +34,7 @@ const el = Object.fromEntries([
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "manual-pull", "theme-control",
   "active-model-roles", "active-model-status", "engine-status", "engine-detail", "restart-engine",
   "model-provider", "model-selection-mode", "model-optimization-profile", "openai-key-row", "openai-key", "clear-openai-key",
-  "refresh-model-catalog", "provider-catalog-status", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
+  "refresh-model-catalog", "provider-catalog-status", "provider-model-picker", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
   "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
@@ -662,6 +662,10 @@ function renderModelSettings(snapshot) {
     input.readOnly = !custom;
   }
   const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const pickerOptions = [new Option(catalog.length ? `Escolha entre ${catalog.length} modelos` : "Atualize o catálogo para escolher", "")]
+    .concat(catalog.map((model) => new Option(model, model)));
+  el["provider-model-picker"].replaceChildren(...pickerOptions);
+  el["provider-model-picker"].disabled = !catalog.length;
   el["provider-model-options"].replaceChildren(...catalog.map((model) => {
     const option = document.createElement("option"); option.value = model; return option;
   }));
@@ -670,6 +674,8 @@ function renderModelSettings(snapshot) {
   el["provider-catalog-status"].textContent = hosted
     ? `${snapshot.openAiKeyStored ? "Chave protegida no Keychain" : "Chave ainda não configurada"}${catalog.length ? ` · ${catalog.length} modelos do servidor · ${loaded}` : " · atualize para consultar o servidor"}`
     : `${snapshot.ollama.connected ? `${catalog.length} modelos instalados` : "Ollama desconectado"}${loaded ? ` · ${loaded}` : ""}`;
+  el["refresh-model-catalog"].disabled = false;
+  el["save-model-settings"].textContent = hosted && !catalog.length ? "Salvar e carregar modelos" : "Salvar configuração";
   el["refresh-button"].classList.toggle("hidden", hosted);
   el["model-advisor"].classList.toggle("hidden", hosted);
 }
@@ -961,12 +967,31 @@ el["refresh-model-catalog"].addEventListener("click", async () => {
   }
 });
 el["model-provider"].addEventListener("change", () => {
-  el["openai-key-row"].classList.toggle("hidden", el["model-provider"].value !== "openai");
+  const hosted = el["model-provider"].value === "openai";
+  const changed = el["model-provider"].value !== appState.snapshot.modelProvider;
+  el["openai-key-row"].classList.toggle("hidden", !hosted);
+  el["refresh-model-catalog"].disabled = changed;
+  el["provider-model-picker"].disabled = true;
+  el["provider-model-picker"].replaceChildren(new Option(changed
+    ? "Salve o provedor para carregar a lista"
+    : "Atualize o catálogo para escolher", ""));
+  el["provider-catalog-status"].textContent = changed
+    ? hosted ? "Salve a chave e o provedor; o Companion carregará os modelos oficiais automaticamente." : "Salve o provedor para carregar os modelos locais."
+    : el["provider-catalog-status"].textContent;
+  el["save-model-settings"].textContent = hosted ? "Salvar e carregar modelos" : "Salvar configuração";
 });
 el["model-selection-mode"].addEventListener("change", () => {
   const custom = el["model-selection-mode"].value === "custom";
   el["provider-role-editor"].classList.toggle("read-only", !custom);
   el["provider-role-editor"].querySelectorAll("input").forEach((input) => { input.readOnly = !custom; });
+});
+el["provider-model-picker"].addEventListener("change", () => {
+  const model = el["provider-model-picker"].value;
+  if (!model) return;
+  el["model-selection-mode"].value = "custom";
+  el["provider-role-editor"].classList.remove("read-only");
+  el["provider-role-editor"].querySelectorAll("input").forEach((input) => { input.readOnly = false; });
+  el["role-executor"].value = model;
 });
 el["save-model-settings"].addEventListener("click", async () => {
   const button = el["save-model-settings"];
