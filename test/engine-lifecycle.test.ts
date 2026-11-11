@@ -155,10 +155,13 @@ test("updates wait for active work and quiesce the coordinator before safe shutd
   try {
     const session = store.createSession(reg, "Activation");
     const run = await service.dispatch(reg, "runs.start", { sessionId: session.id, key: "active", spec }, "host") as Run;
-    assert.equal((await service.dispatch(reg, "engine.shutdownIfIdle", {}, "host") as { accepted: boolean }).accepted, false);
+    const blocked = await service.dispatch(reg, "engine.shutdownIfIdle", {}, "host") as { accepted: boolean; blockers: { activeRuns: number } };
+    assert.equal(blocked.accepted, false);
+    assert.equal(blocked.blockers.activeRuns, 1);
     assert.equal(store.run(reg, run.id).state, "running");
     finish({ text: "Done" });
     await poll(async () => store.run(reg, run.id), (value) => value.state === "completed");
+    assert.equal((await service.dispatch(reg, "engine.updateStatus", {}, "host") as { ready: boolean }).ready, true);
     assert.equal((await service.dispatch(reg, "engine.shutdownIfIdle", {}, "host") as { accepted: boolean }).accepted, true);
     await assert.rejects(service.dispatch(reg, "runs.start", { sessionId: session.id, key: "race", spec }, "host"), /activating a prepared update/);
     assert.equal(store.runs(reg, session.id).length, 1);

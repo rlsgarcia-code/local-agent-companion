@@ -56,6 +56,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("localAgentCompanion.configureLiteLlm", async () => {
       await provider.openConnectionSettings();
     }),
+    vscode.commands.registerCommand("localAgentCompanion.restartEngine", async () => {
+      try {
+        await agent.restartEngine();
+        void vscode.window.showInformationMessage("Companion engine restarted.");
+      } catch (error) {
+        void vscode.window.showErrorMessage(safeErrorMessage(error));
+      }
+    }),
     vscode.commands.registerCommand("localAgentCompanion.clearLiteLlmKey", async () => {
       const provider = configuredModelProvider(vscode.workspace.getConfiguration("localAgentCompanion"));
       const secretName = modelProviderSecret(provider);

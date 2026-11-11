@@ -163,6 +163,17 @@ export type EngineEvent = {
   data: unknown;
   correlationId?: string;
 };
+export type EngineUpdateBlockers = {
+  activeRuns: number;
+  managedProcesses: number;
+  modelOperations: number;
+  desktopResources: number;
+};
+export type EngineUpdateStatus = {
+  ready: boolean;
+  quiescing: boolean;
+  blockers: EngineUpdateBlockers;
+};
 /** An atomic public view. Graph checkpoints and private model context are excluded. */
 export type SessionSnapshot = {
   schema: 1;

@@ -96,8 +96,13 @@ test("service-managed processes survive editor disconnection, require approval a
   service.disconnect("reopened");
   for(let n=0;n<100&&store.run(registration,run.id).state!=="completed";n++)await tick();
   assert.equal(store.run(registration,run.id).state,"completed");
-  assert.equal((await service.dispatch(registration,"engine.shutdownIfIdle",{},"other") as any).accepted,false,"a retained watcher prevents unsafe activation");
+  const blocked=await service.dispatch(registration,"engine.shutdownIfIdle",{},"other") as any;
+  assert.equal(blocked.accepted,false,"a retained watcher prevents unsafe activation");
+  assert.equal(blocked.blockers.managedProcesses,1);
   assert.deepEqual(await service.dispatch(registration,"host.poll",{},"other"),[]);
+  const stopped=await service.dispatch(registration,"engine.stopManagedResourcesForUpdate",{},"other") as any;
+  assert.equal(stopped.accepted,true,"an explicit update action stops retained local servers");
+  assert.equal(stopped.blockers.managedProcesses,0);
  }finally{await service.close();await rm(directory,{recursive:true,force:true});}
 });
 

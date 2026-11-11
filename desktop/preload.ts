@@ -14,6 +14,7 @@ import type {
 
 const api = {
   snapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:snapshot"),
+  restartEngine: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:restart-engine"),
   chooseWorkspace: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:choose-workspace"),
   setModel: (model: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-model", model),
   saveModelSettings: (settings: DesktopModelSettingsInput): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:save-model-settings", settings),

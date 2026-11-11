@@ -1095,6 +1095,13 @@ export class DevelopmentAgent implements vscode.Disposable {
     return "requested";
   }
 
+  public async restartEngine(): Promise<void> {
+    if (this.isRunning) throw new Error("Wait for the active run to finish before restarting the engine.");
+    const workspace = vscode.workspace.workspaceFolders?.[0];
+    if (!workspace) throw new Error("Open a workspace before restarting the Companion engine.");
+    await this.serviceRuntime.restartEngine(workspace.uri.fsPath);
+  }
+
   public async newThread(): Promise<void> {
     const collection = this.isRunning && this.activeRunCollection
       ? this.activeRunCollection

@@ -3,7 +3,7 @@ import type {
   OllamaRoleConfiguration,
 } from "./ollama";
 import { z } from "zod";
-import { modelRoles, providerSpec, type RunState } from "./index";
+import { modelRoles, providerSpec, type EngineUpdateBlockers, type RunState } from "./index";
 import type { ModelOptimizationProfile, ModelSelectionMode } from "./models";
 
 export const desktopRunSpec = z
@@ -167,6 +167,11 @@ export type DesktopContextPage = {
 };
 
 export type DesktopSnapshot = DesktopState & {
+  engine: {
+    version: string;
+    state: "ready" | "busy";
+    blockers: EngineUpdateBlockers;
+  };
   ollama: {
     connected: boolean;
     version?: string;
