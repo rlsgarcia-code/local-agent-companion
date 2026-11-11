@@ -10,7 +10,7 @@ import type {
   PullProgress,
 } from "./contracts";
 import type { OllamaDesktopRuntime as EngineRuntime } from "../packages/agent-core/src/desktop-runtime";
-import { AgentError, errors, type Run, type Session, type RunState } from "../packages/contracts/src/index";
+import { AgentError, errors, type EngineUpdateStatus, type Run, type Session, type RunState } from "../packages/contracts/src/index";
 import type { ModelCatalog, ModelJob } from "../packages/contracts/src/models";
 import type { ModelOptimizationProfile, ModelSelectionMode } from "../packages/contracts/src/models";
 import type { OllamaRoleConfiguration, OllamaRecommendationPlan } from "../packages/agent-core/src/ollama-recommendation";
@@ -64,7 +64,8 @@ export class OllamaDesktopRuntime {
   get running(): boolean {
     return this.preparing || Boolean(this.active);
   }
-  private async connect(workspace = ""): Promise<AgentClient> {
+  private async connect(workspace = "", activation: "idle" | "stop-managed" = "idle"): Promise<AgentClient> {
+    if (activation === "stop-managed") this.clients.delete(workspace);
     let pending = this.clients.get(workspace);
     if (!pending) {
       pending = ensureEngine({
@@ -74,6 +75,7 @@ export class OllamaDesktopRuntime {
         workspace,
         providers: ["ollama", "openai"],
         hostTools: [],
+        activation,
         publicKey: this.installation.development
           ? undefined
           : COMPANION_RELEASE_PUBLIC_KEY,
@@ -84,9 +86,34 @@ export class OllamaDesktopRuntime {
     this.client = await pending;
     if (!this.client.connected) {
       this.clients.delete(workspace);
-      return this.connect(workspace);
+      return this.connect(workspace, activation);
     }
     return this.client;
+  }
+  async activatePreparedUpdate(workspace = ""): Promise<void> {
+    const client = await this.connect(workspace, "stop-managed");
+    if (!client.connected) throw new Error("The updated Companion engine did not reconnect.");
+  }
+  async engineStatus(): Promise<EngineUpdateStatus & { version: string }> {
+    const client = await this.connect();
+    const [info, status] = await Promise.all([
+      client.call<{ version: string }>("engine.info"),
+      client.call<EngineUpdateStatus>("engine.updateStatus"),
+    ]);
+    return { ...status, version: info.version };
+  }
+  async restartEngine(workspace = ""): Promise<void> {
+    const client = await this.connect(workspace);
+    const status = await client.call<EngineUpdateStatus>("engine.updateStatus");
+    if (status.blockers.activeRuns || status.blockers.modelOperations || status.blockers.desktopResources)
+      throw new Error("Finalize execuções, operações de modelo e trabalhos do aplicativo antes de reiniciar o motor.");
+    const result = await client.call<{ accepted: boolean; reason?: string }>("engine.stopManagedResourcesForUpdate");
+    if (!result.accepted) throw new Error(result.reason ?? "O motor ainda possui trabalho protegido.");
+    for (let wait = 0; wait < 100 && client.connected; wait++) await new Promise((resolve) => setTimeout(resolve, 50));
+    if (client.connected) throw new Error("O motor não encerrou no tempo esperado.");
+    for (const pending of this.clients.values()) void pending.then((value) => value.close(), () => undefined);
+    this.clients.clear();
+    await this.connect(workspace);
   }
   cancel(): void {
     if (this.running) this.cancelRequested = true;

@@ -341,6 +341,14 @@ button, input, textarea { -webkit-tap-highlight-color: transparent; }
 .theme-control button.active { background: var(--surface-3); color: var(--text); }
 .refresh-environment { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 9px; cursor: pointer; }
 .refresh-environment:hover { border-color: var(--line-strong); color: var(--text); }
+.engine-strip { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.engine-strip small, .engine-strip strong, .engine-strip em { display: block; }
+.engine-strip small { color: var(--quiet); font: 8px/1.4 ui-monospace, monospace; letter-spacing: .12em; }
+.engine-strip strong { margin-top: 4px; color: var(--text); font-size: 11px; }
+.engine-strip em { margin-top: 3px; color: var(--quiet); font-size: 8px; font-style: normal; }
+.engine-strip button { padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--muted); font-size: 9px; cursor: pointer; }
+.engine-strip button:hover { border-color: var(--accent); color: var(--accent); }
+.engine-strip button:disabled { opacity: .4; cursor: default; }
 .provider-settings { padding: 17px 0; border-bottom: 1px solid var(--line); }
 .provider-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .provider-settings-heading small, .provider-settings-heading strong { display: block; }

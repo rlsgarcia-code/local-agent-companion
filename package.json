@@ -2,7 +2,7 @@
   "name": "local-agent-companion",
   "displayName": "Local Agent Companion",
   "description": "A local LangChain agent foundation for VS Code with user-configured LiteLLM and approval-gated corporate MCP connections.",
-  "version": "0.12.6",
+  "version": "0.12.7",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/rlsgarcia-code/local-agent-companion#readme",
@@ -38,6 +38,7 @@
     "onCommand:localAgentCompanion.open",
     "onCommand:localAgentCompanion.newThread",
     "onCommand:localAgentCompanion.configureLiteLlm",
+    "onCommand:localAgentCompanion.restartEngine",
     "onCommand:localAgentCompanion.openMcpConnections",
     "onCommand:localAgentCompanion.configureMcpCatalogs",
     "onCommand:localAgentCompanion.refreshMcpCatalogs",
@@ -94,6 +95,10 @@
       {
         "command": "localAgentCompanion.configureLiteLlm",
         "title": "Local Agent Companion: Configure Model Provider"
+      },
+      {
+        "command": "localAgentCompanion.restartEngine",
+        "title": "Local Agent Companion: Restart Engine"
       },
       {
         "command": "localAgentCompanion.clearLiteLlmKey",

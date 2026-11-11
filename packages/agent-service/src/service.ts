@@ -24,6 +24,7 @@ import {
   providerSpec,
   terminalStates,
   type Registration,
+  type EngineUpdateBlockers,
   type Run,
   type RunSpec,
   type SessionSnapshot,
@@ -204,6 +205,17 @@ export class AgentService {
         throw new AgentError(errors.forbidden, "Tool definition must match the installed adapter catalog.");
     }
   }
+  private engineUpdateBlockers(): EngineUpdateBlockers {
+    const row = this.store.db.prepare(
+      "SELECT COUNT(*) AS count FROM runs WHERE state NOT IN ('completed','failed','cancelled')",
+    ).get() as { count: number };
+    return {
+      activeRuns: Number(row.count) || 0,
+      managedProcesses: this.workspaceProcesses.runningCount,
+      modelOperations: this.advisors.size + this.modelTasks.size + (this.models.busy ? 1 : 0),
+      desktopResources: [...this.desktopRuntimes.values()].filter((runtime) => runtime.hasActiveResources).length,
+    };
+  }
   private readRun(reg: Registration, id: string): Run {
     const run = this.store.run(reg, id);
     if (run.state === "running" && !this.running.has(id)) {
@@ -223,7 +235,7 @@ export class AgentService {
     params: unknown,
     connection: string,
   ): Promise<unknown> {
-    if (this.quiescing && !["engine.info","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
+    if (this.quiescing && !["engine.info","engine.updateStatus","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","engine.stopManagedResourcesForUpdate","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
       throw new AgentError(errors.unavailable, "Engine is activating a prepared update. Reconnect with the updated client.");
     if(process.platform === "linux" && existsSync("/usr/share/kidos/engine-activation.json") &&
       ["runs.start","desktop.start","runs.resume","engine.resumeAfterUpdate"].includes(method))
@@ -426,14 +438,30 @@ export class AgentService {
         };
       case "engine.resumeAfterUpdate":
         z.object({}).strict().parse(p);this.quiescing=false;return {accepted:true};
+      case "engine.updateStatus": {
+        z.object({}).strict().parse(p);
+        const blockers = this.engineUpdateBlockers();
+        return { ready: Object.values(blockers).every((count) => count === 0), quiescing: this.quiescing, blockers };
+      }
+      case "engine.stopManagedResourcesForUpdate": {
+        z.object({}).strict().parse(p);
+        if (reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS updates remain under system authority.");
+        const blockers = this.engineUpdateBlockers();
+        if (blockers.activeRuns || blockers.modelOperations || blockers.desktopResources)
+          return { accepted: false, blockers, reason: "Finish active runs, model operations and desktop work before activating the update." };
+        await this.workspaceProcesses.close();
+        const remaining = this.engineUpdateBlockers();
+        this.quiescing = true;
+        return { accepted: true, blockers: remaining };
+      }
       case "engine.quiesceIfIdle":
       case "engine.shutdownIfIdle": {
         z.object({}).strict().parse(p);
-        const active = this.store.db.prepare("SELECT id FROM runs WHERE state NOT IN ('completed','failed','cancelled') LIMIT 1").get();
-        if (active || this.workspaceProcesses.busy || this.running.size || this.advisors.size || this.modelTasks.size || this.models.busy || [...this.desktopRuntimes.values()].some((runtime) => runtime.hasActiveResources))
-          return { accepted: false, reason: "Work is active. The prepared update will wait without cancelling it." };
+        const blockers = this.engineUpdateBlockers();
+        if (Object.values(blockers).some((count) => count > 0))
+          return { accepted: false, blockers, reason: "Work is active. The prepared update will wait without cancelling it." };
         this.quiescing = true;
-        return { accepted: true };
+        return { accepted: true, blockers };
       }
       case "engine.negotiate": {
         const v = z.object({ protocol: z.string() }).strict().parse(p);

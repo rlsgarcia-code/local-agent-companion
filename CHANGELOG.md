@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.7 - 2026-11-11
+
+### Added
+- Show the shared engine version and operational state in the Mac environment settings, with a confirmed restart action.
+- Add **Local Agent Companion: Restart Engine** to VS Code and report update blockers by category without exposing conversation content.
+
+### Fixed
+- Replace the unactionable prepared-update error with a native activation flow in VS Code and macOS.
+- Protect active runs and model operations while allowing the user to stop retained local servers/watchers and activate an update.
+- Migrate legacy per-user engines through exact OS service controls after explicit confirmation, without shell execution.
+
+This hotfix advances the clients to 0.12.7 and the engine and SDKs to 1.0.5.
+
 ## 0.12.6 - 2026-11-11
 
 ### Added

@@ -23,7 +23,9 @@ import {
   ENGINE_VERSION,
   PROTOCOL_VERSION,
   MAX_FRAME_BYTES,
+  AgentError,
   type ClientCredential,
+  type EngineUpdateBlockers,
   type Product,
   type ProviderSpec,
   type ToolSpec,
@@ -62,7 +64,19 @@ type BootstrapOptions = {
   stateDirectory?: string;
   development?: boolean;
   publicKey?: string;
+  activation?: "idle" | "stop-managed";
 };
+export class PreparedEngineUpdateError extends Error {
+  readonly name = "PreparedEngineUpdateError";
+  constructor(
+    readonly installedVersion: string,
+    readonly requestedVersion: string,
+    readonly reason: string,
+    readonly blockers?: EngineUpdateBlockers,
+  ) {
+    super(`Companion engine ${requestedVersion} is ready, but engine ${installedVersion} is still active. ${reason}`);
+  }
+}
 export async function verifyBundle(
   directory: string,
   publicKey?: string,
@@ -152,6 +166,37 @@ function xml(value: string): string {
       })[c]!,
   );
 }
+function execute(file: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => execFile(file, args, { windowsHide: true }, (error) => error ? reject(error) : resolve()));
+}
+async function engineIsLive(address: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const socket = createConnection(address);
+    socket.once("connect", () => { socket.destroy(); resolve(true); });
+    socket.once("error", () => resolve(false));
+    socket.setTimeout(1000, () => { socket.destroy(); resolve(false); });
+  });
+}
+async function stopLegacyEngineService(directory: string, address: string): Promise<void> {
+  if (process.platform === "darwin") {
+    await execute("/bin/launchctl", ["bootout", `gui/${process.getuid!()}/dev.localagent.engine`]);
+  } else if (process.platform === "linux") {
+    await execute("systemctl", ["--user", "stop", "companion-engine.service"]);
+  } else {
+    const runtimeFile = path.join(directory, "runtime.json"), info = await lstat(runtimeFile);
+    if (!info.isFile() || info.isSymbolicLink() || info.size > 4096 || (process.getuid && info.uid !== process.getuid()))
+      throw new Error("Unsafe engine runtime metadata; restart the operating system before activating the update.");
+    const runtime = JSON.parse(await readFile(runtimeFile, "utf8")) as { pid?: unknown };
+    if (!Number.isInteger(runtime.pid) || Number(runtime.pid) <= 1)
+      throw new Error("Invalid engine process identity; restart Windows before activating the update.");
+    await execute("taskkill", ["/PID", String(runtime.pid), "/T", "/F"]);
+  }
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (!await engineIsLive(address)) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("The previous engine did not stop. Close other Companion clients and try again.");
+}
 export async function ensureEngine(
   options: BootstrapOptions,
 ): Promise<AgentClient> {
@@ -218,18 +263,7 @@ async function ensureEngineLocked(options: BootstrapOptions, prepared: Awaited<R
     });
   }
   const address = engineAddress(directory);
-  const live = await new Promise<boolean>((resolve) => {
-    const socket = createConnection(address);
-    socket.once("connect", () => {
-      socket.destroy();
-      resolve(true);
-    });
-    socket.once("error", () => resolve(false));
-    socket.setTimeout(1000, () => {
-      socket.destroy();
-      resolve(false);
-    });
-  });
+  const live = await engineIsLive(address);
   if (!live) {
     await verifyBundle(
       prepared.directory,
@@ -328,17 +362,35 @@ async function ensureEngineLocked(options: BootstrapOptions, prepared: Awaited<R
           directory: prepared.directory, manifestSha256: prepared.manifestSha256,
           version: ENGINE_VERSION, previous: info.build, preparedAt: Date.now(),
         }), { mode: 0o600 });
-        const activation = await client.call<{ accepted: boolean }>("engine.shutdownIfIdle");
+        const activation = await client.call<{ accepted: boolean; reason?: string; blockers?: EngineUpdateBlockers }>("engine.shutdownIfIdle");
         if (activation.accepted) {
           for (let wait = 0; wait < 100 && client.connected; wait++)
             await new Promise((resolve) => setTimeout(resolve, 50));
           if (!client.connected) return ensureEngineLocked(options, prepared);
         }
-        throw new Error("The exact engine update is prepared. Finish active work and activate it before using this client; no run was cancelled.");
+        if (options.activation === "stop-managed") {
+          try {
+            const stopped = await client.call<{ accepted: boolean; reason?: string; blockers?: EngineUpdateBlockers }>("engine.stopManagedResourcesForUpdate");
+            if (!stopped.accepted)
+              throw new PreparedEngineUpdateError(info.version, ENGINE_VERSION, stopped.reason ?? "Active work is protected from interruption.", stopped.blockers);
+            for (let wait = 0; wait < 100 && client.connected; wait++)
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            if (!client.connected) return ensureEngineLocked(options, prepared);
+            throw new Error("The engine accepted the update but did not stop. Try again after closing other clients.");
+          } catch (error) {
+            if (!(error instanceof AgentError) || error.code !== -32601) throw error;
+            client.close();
+            await stopLegacyEngineService(directory, address);
+            return ensureEngineLocked(options, prepared);
+          }
+        }
+        throw new PreparedEngineUpdateError(info.version, ENGINE_VERSION,
+          activation.reason ?? "Finish active work before activating the prepared update.", activation.blockers);
       }
       return client;
     } catch (error) {
       client?.close();
+      if (error instanceof PreparedEngineUpdateError) throw error;
       failure = error;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }

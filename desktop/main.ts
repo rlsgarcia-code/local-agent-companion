@@ -20,6 +20,7 @@ import type {
 } from "./contracts";
 import { redactSensitiveText } from "../src/redaction";
 import { OllamaDesktopRuntime } from "./runtime-client";
+import { PreparedEngineUpdateError } from "../packages/client-ts/src/bootstrap";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
 import { DesktopStateStore } from "./state-store";
@@ -51,6 +52,7 @@ let activeRecommendation: OllamaRecommendationPlan | undefined;
 let recommendationController: AbortController | undefined;
 let modelRoleNotices: string[] = [];
 let cachedProviderCatalog: DesktopSnapshot["providerCatalog"] = { provider: "ollama", models: [] };
+let engineUpdateRecovery: Promise<void> | undefined;
 
 app.setName("Local Companion");
 
@@ -65,7 +67,7 @@ app.whenReady().then(async () => {
     (context) => publish({ type: "context-snapshot", snapshot: context })
   );
   registerIpc();
-  void runtime.modelConfiguration(store.snapshot().modelRoles).then(async (configuration) => {
+  void withEngineUpdateRecovery(() => runtime.modelConfiguration(store.snapshot().modelRoles)).then(async (configuration) => {
     if (configuration) await store.update({
       modelRoles: configuration.roles,
       modelProvider: configuration.provider === "openai" ? "openai" : "ollama",
@@ -178,7 +180,22 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle("companion:snapshot", async () => snapshot(true));
+  ipcMain.handle("companion:snapshot", async () => withEngineUpdateRecovery(() => snapshot(true)));
+  ipcMain.handle("companion:restart-engine", async () => {
+    const status = await runtime.engineStatus();
+    const protectedWork = status.blockers.activeRuns || status.blockers.modelOperations || status.blockers.desktopResources;
+    if (protectedWork) {
+      await dialog.showMessageBox(window!, { type: "info", title: "Motor ocupado", message: "Finalize o trabalho ativo antes de reiniciar", detail: engineBlockerLabels(status.blockers).join(", "), buttons: ["Entendi"] });
+      return snapshot();
+    }
+    const result = await dialog.showMessageBox(window!, {
+      type: "warning", title: "Reiniciar motor local", message: `Reiniciar motor ${status.version}?`,
+      detail: `${status.blockers.managedProcesses ? `Isso encerrará ${status.blockers.managedProcesses} servidor(es) local(is) gerenciado(s). ` : ""}Conversas concluídas e configurações serão preservadas.`,
+      buttons: ["Cancelar", "Encerrar recursos e reiniciar"], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    if (result.response === 1) await runtime.restartEngine(store.snapshot().workspacePath);
+    return snapshot(true);
+  });
   ipcMain.handle("companion:choose-workspace", async () => {
     const result = await dialog.showOpenDialog(window!, {
       title: "Escolha o projeto para o Local Companion",
@@ -361,6 +378,42 @@ function registerIpc(): void {
     approvals.get(id)?.resolve(approved);
     approvals.delete(id);
   });
+}
+
+async function withEngineUpdateRecovery<T>(operation: () => Promise<T>): Promise<T> {
+  try { return await operation(); }
+  catch (error) {
+    if (!(error instanceof PreparedEngineUpdateError)) throw error;
+    if (!engineUpdateRecovery) engineUpdateRecovery = promptEngineUpdate(error).finally(() => { engineUpdateRecovery = undefined; });
+    await engineUpdateRecovery;
+    return operation();
+  }
+}
+
+async function promptEngineUpdate(error: PreparedEngineUpdateError): Promise<void> {
+  const blockers = error.blockers;
+  const parts = blockers ? engineBlockerLabels(blockers) : [];
+  const result = await dialog.showMessageBox(window!, {
+    type: "warning",
+    title: "Atualização do motor pronta",
+    message: `Motor ${error.requestedVersion} pronto para ativação`,
+    detail: `O motor ${error.installedVersion} ainda está ativo. ${parts.length ? `Bloqueios: ${parts.join(", ")}.` : error.reason}\n\nFinalize trabalhos importantes antes de continuar. O Companion encerrará recursos locais gerenciados, reiniciará o motor e preservará as conversas concluídas.`,
+    buttons: ["Agora não", "Encerrar recursos e atualizar"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  if (result.response !== 1) throw error;
+  await runtime.activatePreparedUpdate(store.snapshot().workspacePath);
+}
+
+function engineBlockerLabels(blockers: import("../packages/contracts/src/index").EngineUpdateBlockers): string[] {
+  return [
+    blockers.activeRuns && `${blockers.activeRuns} execução(ões) ativa(s)`,
+    blockers.managedProcesses && `${blockers.managedProcesses} servidor(es) gerenciado(s)`,
+    blockers.modelOperations && `${blockers.modelOperations} operação(ões) de modelo`,
+    blockers.desktopResources && `${blockers.desktopResources} recurso(s) do aplicativo`,
+  ].filter((value): value is string => Boolean(value));
 }
 
 function parseModelRoles(value: unknown): OllamaRecommendationPlan["roles"] {
@@ -587,6 +640,7 @@ async function requestApproval(request: ApprovalRequest): Promise<boolean> {
 }
 
 async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
+  const engine = await runtime.engineStatus();
   if (refreshOllama || !hasCheckedOllama) {
     cachedOllama = await runtime.ollamaStatus();
     hasCheckedOllama = true;
@@ -618,6 +672,7 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
   }
   return {
     ...store.snapshot(),
+    engine: { version: engine.version, state: engine.ready ? "ready" : "busy", blockers: engine.blockers },
     openAiKeyStored: await credentialStore.hasOpenAiKey(),
     ollama: cachedOllama,
     context: contextBrowser.snapshot(),

@@ -1,6 +1,6 @@
 # Local Agent Companion
 
-Atualização de conexão: clientes **0.12.6**, motor **1.0.4**, protocolo **1.0**,
+Atualização de conexão: clientes **0.12.7**, motor **1.0.5**, protocolo **1.0**,
 Node **22.23.4** empacotado. Veja [capacidades e diagnóstico](docs/MODEL_CAPABILITIES.md).
 A validação automatizada por plataforma não substitui o teste no gateway corporativo.
 As evidências de instalação da versão anterior permanecem datadas em `docs/`.
@@ -186,6 +186,8 @@ O repositório também contém um aplicativo macOS independente do VS Code. O Co
 O aplicativo oferece conversas persistidas no diretório privado da aplicação, seleção de modelos instalados, download opcional por `ollama pull`, streaming, cancelamento, timeline de atividade e escolha independente de runtime. A resposta corrente permanece estável durante o stream; falas intermediárias anteriores a ferramentas ou novas iterações são preservadas no grupo recolhível **Etapas da execução**, evitando tanto perda de contexto quanto excesso de mensagens abertas. A conversa rola de forma independente, mantendo o compositor dentro da janela mesmo em respostas longas.
 
 A interface usa uma bancada lateral progressiva: o chat ocupa a área principal e **Execução**, **Contexto**, **Preview**, **Alterações** e **Comandos** aparecem somente quando necessários. Ao final de uma rodada, a resposta recebe atalhos compactos para seus resultados. Ações, comandos e caminhos alterados são persistidos de forma limitada e com credenciais removidas, permitindo consultar uma execução anterior sem confundi-la com a mais recente; saídas brutas de terminal não são guardadas. A bancada pode ser fechada para leitura focada, redimensionada em telas amplas e assume o espaço inteiro em janelas estreitas. A barra de conversas oferece busca, fixação e recolhimento, enquanto tema e configuração adaptativa dos modelos ficam reunidos na folha **Modelos e execução**.
+
+O estado do motor compartilhado aparece na configuração do ambiente. **Reiniciar motor** mostra bloqueios sem expor conteúdo clínico ou conversas, protege execuções e operações de modelo ativas e, após confirmação, encerra servidores/watchers gerenciados antes do reinício. Durante uma atualização, VS Code e macOS apresentam a mesma ação explícita para ativar o motor preparado; clientes antigos recebem uma migração única pelo serviço pertencente ao usuário, sem shell.
 
 Na folha **Configuração do ambiente**, **Provedor e objetivo** define Ollama/OpenAI, seleção otimizada ou personalizada e o objetivo **alta qualidade**, **equilíbrio** ou **alta velocidade**. **Atualizar modelos** consulta o catálogo do provedor ativo: os modelos locais instalados no Ollama ou `GET /v1/models` na base oficial da OpenAI. Executor, planner, evaluator, vision e embedding são papéis do mesmo contrato, reutilizável por outras interfaces como o Med-Graph.
 

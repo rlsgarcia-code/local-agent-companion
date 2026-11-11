@@ -32,7 +32,7 @@ const el = Object.fromEntries([
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "manual-pull", "theme-control",
-  "active-model-roles", "active-model-status",
+  "active-model-roles", "active-model-status", "engine-status", "engine-detail", "restart-engine",
   "model-provider", "model-selection-mode", "model-optimization-profile", "openai-key-row", "openai-key", "clear-openai-key",
   "refresh-model-catalog", "provider-catalog-status", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
@@ -551,6 +551,10 @@ function renderInspector() {
 function renderRecommendation() {
   const snapshot = appState.snapshot;
   renderModelSettings(snapshot);
+  const blockerCount = Object.values(snapshot.engine.blockers || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  el["engine-status"].textContent = `Motor ${snapshot.engine.version} · ${snapshot.engine.state === "ready" ? "pronto" : "ocupado"}`;
+  el["engine-detail"].textContent = blockerCount ? `${blockerCount} recurso(s) em uso` : "Serviço compartilhado ativo";
+  el["restart-engine"].disabled = Boolean(snapshot.running);
   const plan = snapshot.lastRecommendation;
   const activeLabels = { executor: "Executor", planner: "Planner", evaluator: "Evaluator", vision: "Vision", embedding: "Embedding" };
   el["active-model-roles"].replaceChildren(...Object.entries(snapshot.modelRoles || {}).map(([role, model]) => {
@@ -939,6 +943,12 @@ el["sidebar-collapse"].addEventListener("click", () => setSidebarCollapsed(true)
 el["sidebar-reveal"].addEventListener("click", () => setSidebarCollapsed(false));
 el["workspace-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.chooseWorkspace(); render(); });
 el["refresh-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.refreshOllama(); render(); });
+el["restart-engine"].addEventListener("click", async () => {
+  el["restart-engine"].disabled = true;
+  try { appState.snapshot = await window.companion.restartEngine(); render(); }
+  catch (error) { showError(error); }
+  finally { el["restart-engine"].disabled = Boolean(appState.snapshot?.running); }
+});
 el["refresh-model-catalog"].addEventListener("click", async () => {
   el["model-settings-status"].textContent = "Atualizando catálogo…";
   try {
