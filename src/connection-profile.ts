@@ -1,3 +1,4 @@
+import { modelCapabilityDeclaration } from "../packages/contracts/src/model-capabilities";
 import { parseRunMode } from "./autonomy";
 import {
   normalizeLiteLlmEndpoint,
@@ -46,7 +47,7 @@ const ROOT_KEYS = new Set(["kind", "version", "exportedAt", "gateway", "models",
 const GATEWAY_KEYS = new Set(["endpoint", "modelsEndpoint", "authHeader", "requiresKey", "requiresCorporateCa"]);
 const MODEL_KEYS = new Set(["chat", "embedding", "semanticMemoryEnabled", "profiles"]);
 const WORKSPACE_KEYS = new Set(["runtime", "autonomyMode"]);
-const MODEL_PROFILE_KEYS = new Set(["api", "preset", "reasoningEffort", "temperature", "topP"]);
+const MODEL_PROFILE_KEYS = new Set(["capabilities", "api", "preset", "reasoningEffort", "temperature", "topP"]);
 const SECRET_KEYS = /^(?:api[-_]?key|key|secret|token|password|credential|authorization|certificate|caCertificate|pem)$/i;
 
 export function createConnectionProfile(input: ProfileInput, now = new Date()): ConnectionProfile {
@@ -89,7 +90,7 @@ export function parseConnectionProfile(value: unknown): ConnectionProfile {
   }
   validateRawModelProfiles(models.profiles);
   const profiles = parseLiteLlmModelProfiles(models.profiles);
-  validateLiteLlmModelProfile(chat, profiles[chat] ?? {});
+  validateLiteLlmModelProfile(chat, profiles[chat] ?? {}, false, true, endpoint);
 
   if (workspace.runtime !== "standard" && workspace.runtime !== "deep") {
     throw new Error("Profile runtime must be standard or deep.");
@@ -135,7 +136,8 @@ function validateRawModelProfiles(value: unknown): void {
     }
     const profile = objectValue(raw, `Profile for ${alias} must be an object.`);
     assertAllowedKeys(profile, MODEL_PROFILE_KEYS, `model profile ${alias}`);
-    if (profile.api !== undefined && profile.api !== "chat_completions" && profile.api !== "responses") {
+    if (profile.capabilities !== undefined) modelCapabilityDeclaration.parse(profile.capabilities);
+    if (profile.api !== undefined && profile.api !== "auto" && profile.api !== "chat_completions" && profile.api !== "responses") {
       throw new Error(`Profile for ${alias} contains an unsupported model API.`);
     }
     if (profile.preset !== undefined && parseLiteLlmModelPreset(profile.preset) !== profile.preset) {

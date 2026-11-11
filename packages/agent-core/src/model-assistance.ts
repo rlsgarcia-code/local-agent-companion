@@ -24,6 +24,7 @@ export async function assistModel(request: ModelAssistance, credential: string |
     const model = models.model("executor", request.purpose === "connection", {
       timeout: request.purpose === "connection" ? 20_000 : 90_000,
       maxRetries: request.purpose === "connection" ? 0 : 1,
+      requiresTools: request.purpose === "connection",
     });
     if (request.purpose === "connection") {
       const probe = tool(() => "probe-ok", {name:"connection_probe",
@@ -33,6 +34,8 @@ export async function assistModel(request: ModelAssistance, credential: string |
       ], {signal});
       return {text:"The configured model accepted streaming and function tools"};
     }
+    const declaration = request.provider.modelProfiles?.[request.provider.roles.executor]?.capabilities ?? request.provider.profile?.capabilities;
+    if (images.length && declaration && !declaration.vision) throw new Error("Vision is not declared for the selected model alias.");
     const content = request.purpose === "catalog" ? [
       {type:"text" as const,text:request.instructions.trim() || "No text was supplied. Read the attached screenshot(s)."},
       ...images.map(image => ({type:"image_url" as const,image_url:{url:`data:${image.mime};base64,${image.data}`}})),

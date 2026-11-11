@@ -1,3 +1,5 @@
+import { modelCapabilityDeclaration } from "./model-capabilities";
+export { modelCapabilityDeclaration, modelCapabilityDeclarations, type ModelCapabilityDeclaration } from "./model-capabilities";
 import { z } from "zod";
 import versions from "./version.json";
 import { identifier } from "./schema";
@@ -41,13 +43,16 @@ export const modelRoles = z
     embedding: z.string().max(200).optional(),
   })
   .strict();
+export const modelConfigurationProfile = z.object({capabilities:modelCapabilityDeclaration.optional(),api:z.enum(["auto","chat_completions","responses"]).optional(),preset:z.enum(["auto","gpt-6-chat-tools","gpt-6-responses-tools","gpt-5.6","gpt-5-reasoning","gpt-standard","claude-modern","claude-4.6","claude-legacy","custom"]).optional(),reasoningEffort:z.enum(["none","minimal","low","medium","high","xhigh","max"]).optional(),temperature:z.number().min(0).max(2).optional(),topP:z.number().min(0).max(1).optional()}).strict();
 export const providerSpec = z
   .object({
     kind: z.enum(["ollama", "litellm", "openai", "kidos-gateway"]),
     endpoint: z.string().url(),
     roles: modelRoles,
     credentialRef: identifier.optional(),
-    profile: z.object({api:z.enum(["auto","chat_completions","responses"]).optional(),preset:z.enum(["auto","gpt-6-chat-tools","gpt-6-responses-tools","gpt-5.6","gpt-5-reasoning","gpt-standard","claude-modern","claude-4.6","claude-legacy","custom"]).optional(),reasoningEffort:z.enum(["none","minimal","low","medium","high","xhigh","max"]).optional(),temperature:z.number().min(0).max(2).optional(),topP:z.number().min(0).max(1).optional()}).strict().optional(),
+    profile: modelConfigurationProfile.optional(),
+    modelProfiles: z.record(z.string().min(1).max(200), modelConfigurationProfile)
+      .refine(value => Object.keys(value).length <= 500, "Too many model profiles.").optional(),
     corporateCa: z.array(z.string().max(65536).regex(/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----\s*$/)).max(512).optional(),
     authHeader: z
       .enum(["authorization", "api-key", "ocp-apim-subscription-key"])

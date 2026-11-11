@@ -1,5 +1,19 @@
 # Changelog
 
+
+## 0.12.5 - 2026-11-10
+
+### Fixed
+- Show the main and vision model fields for LiteLLM and OpenAI, outside Ollama-only controls.
+- Preserve Chat Completions by default; use Responses only when explicitly configured.
+- Count tokens offline after streamed output instead of fetching tokenizer ranks from a public CDN.
+
+### Added
+- Eight explicit capabilities per exact model alias, preserved by connection profiles and engine 1.0.3.
+- Correlated local connection-test logs, HTTP/failure classification and an Open test log action.
+
+No gateway credentials, conversations or user data are included. The engine and clients are released together; Game Design development is not part of this correction.
+
 ## 0.12.4
 
 - Publish run state callbacks only on transitions, preserving all public streaming deltas and event cursors.

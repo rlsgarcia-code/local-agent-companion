@@ -92,6 +92,12 @@ export async function executeGraph(
   const usage = new TokenUsageHandler();
   try {
   const hasImages = spec.messages.some((message) => Array.isArray(message.content) && message.content.some((block) => block.type === "image"));
+  if (hasImages) {
+    const alias = spec.provider.roles.vision || spec.provider.roles.executor;
+    const profile = spec.provider.modelProfiles?.[alias] ?? (alias === spec.provider.roles.executor ? spec.provider.profile : undefined);
+    if (profile?.capabilities && !profile.capabilities.vision)
+      throw new AgentError(errors.invalid, "Vision is not declared for the selected model alias.");
+  }
   const modelForRole = (role: "executor" | "planner" | "evaluator"): BaseChatModel => {
     const supplied = context.models?.[role] ?? (role === "executor" ? context.model : undefined);
     if (supplied) return supplied;
