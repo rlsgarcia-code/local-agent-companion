@@ -159,8 +159,8 @@ test("keeps recovery actions and per-thread draft persistence wired", () => {
 });
 
 test("blocks a new conversation while the shared engine still owns the workspace", () => {
-  assert.match(source, /workspaceRunStatus\(\)/);
-  assert.match(source, /workspaceRun\.busy/);
+  assert.match(source, /thread\.workspaceBlocked/);
+  assert.match(source, /Boolean\(workspaceBlocker\)/);
   assert.match(source, /Resume or cancel it before sending here/);
   assert.match(source, /preflightRun\(\{ resumeExisting: replacePending \}\)/);
 });
