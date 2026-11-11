@@ -1,4 +1,5 @@
 import type { OllamaRoleConfiguration, OllamaRecommendationOption, OllamaRecommendationPlan } from "../../contracts/src/ollama";
+import type { ModelOptimizationProfile } from "../../contracts/src/models";
 export type { OllamaRoleConfiguration, OllamaRecommendationOption, OllamaRecommendationPlan } from "../../contracts/src/ollama";
 import * as os from "node:os";
 import { statfs } from "node:fs/promises";
@@ -151,15 +152,17 @@ export class OllamaRecommendationEngine {
     advisorModel?: string;
     invokeAdvisor?: (prompt: string) => Promise<string>;
     installedDockerImages?: readonly string[];
+    optimizationProfile?: ModelOptimizationProfile;
   }): Promise<OllamaRecommendationPlan> {
-    const eligible = eligibleCandidates(options.machine, options.candidates, options.supportedRoles);
+    const profile = options.optimizationProfile ?? "balanced";
+    const eligible = eligibleCandidates(options.machine, options.candidates, options.supportedRoles, profile);
     const dockerCandidates = dockerImageRecommendationCandidates(options.machine.architecture);
-    const baseline = baselineRecommendation(options.machine, eligible, options.supportedRoles, dockerCandidates, options.installedDockerImages ?? []);
+    const baseline = baselineRecommendation(options.machine, eligible, options.supportedRoles, dockerCandidates, options.installedDockerImages ?? [], profile);
     if (!options.advisorModel || !options.invokeAdvisor || !eligible.some((candidate) => candidate.installed && sameAlias(candidate.alias, options.advisorModel!))) {
       return baseline;
     }
     try {
-      const response = await options.invokeAdvisor(advisorPrompt(options.machine, eligible, options.supportedRoles, dockerCandidates, options.installedDockerImages ?? []));
+      const response = await options.invokeAdvisor(advisorPrompt(options.machine, eligible, options.supportedRoles, dockerCandidates, options.installedDockerImages ?? [], profile));
       const parsed = recommendationResponseSchema.parse(JSON.parse(extractJson(response)) as unknown);
       validateIdealCatalogBreadth(parsed, eligible, options.supportedRoles);
       return validateAdvisorPlan(parsed, options.machine, eligible, options.supportedRoles, options.advisorModel, dockerCandidates, options.installedDockerImages ?? []);
@@ -172,13 +175,13 @@ export class OllamaRecommendationEngine {
   }
 }
 
-function baselineRecommendation(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[], dockerCandidates: readonly DockerImageCandidate[], installedDockerImages: readonly string[]): OllamaRecommendationPlan {
+function baselineRecommendation(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[], dockerCandidates: readonly DockerImageCandidate[], installedDockerImages: readonly string[], profile: ModelOptimizationProfile): OllamaRecommendationPlan {
   const roles: Partial<Record<OllamaRole, string>> = {};
   const rationale: Partial<Record<OllamaRole, string>> = {};
   const installedRoles: Partial<Record<OllamaRole, string>> = {};
   const installedRationale: Partial<Record<OllamaRole, string>> = {};
   for (const role of supportedRoles) {
-    const preferredAliases = baselinePreferences(role);
+    const preferredAliases = baselinePreferences(role, profile);
     const chosen = preferredAliases
       .map((alias) => candidates.find((candidate) => candidate.roles.includes(role) && sameAlias(candidate.alias, alias)))
       .find(Boolean)
@@ -320,15 +323,21 @@ function consideredByRole(roles: OllamaRoleConfiguration, candidates: readonly O
   return consideredCandidates;
 }
 
-function eligibleCandidates(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[]): OllamaModelCandidate[] {
-  const maxBytes = machine.totalMemoryGb * 1024 ** 3 * 0.72;
+function eligibleCandidates(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[], profile: ModelOptimizationProfile): OllamaModelCandidate[] {
+  const memoryRatio = profile === "quality" ? 0.78 : profile === "speed" ? 0.42 : 0.64;
+  const maxBytes = machine.totalMemoryGb * 1024 ** 3 * memoryRatio;
   return candidates.filter((candidate) => candidate.roles.some((role) => supportedRoles.includes(role))
     && (candidate.roles.includes("embedding") || candidate.sizeBytes <= maxBytes || candidate.sizeBytes === 0));
 }
 
-function advisorPrompt(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[], dockerCandidates: readonly DockerImageCandidate[], installedDockerImages: readonly string[]): string {
+function advisorPrompt(machine: MachineProfile, candidates: readonly OllamaModelCandidate[], supportedRoles: readonly OllamaRole[], dockerCandidates: readonly DockerImageCandidate[], installedDockerImages: readonly string[], profile: ModelOptimizationProfile): string {
   return [
-    "Recommend two balanced local Ollama model compositions for a coding agent.",
+    `Recommend two local Ollama model compositions for a coding agent using the ${profile} optimization profile.`,
+    profile === "quality"
+      ? "Prioritize capability, reasoning quality and context within safe machine limits."
+      : profile === "speed"
+        ? "Prioritize low latency and smaller models while retaining the minimum capability required by each role."
+        : "Balance capability, latency, memory pressure and download size.",
     "Choose aliases only from candidates. Do not invent facts or aliases.",
     "For roles, choose the best-quality composition that fits the detected machine, regardless of whether models are installed. Downloads are allowed in this ideal composition.",
     "For installedRoles, choose the best composition using only candidates whose installed field is true. This alternative must require zero downloads.",
@@ -364,7 +373,17 @@ function validateIdealCatalogBreadth(
   }
 }
 
-function baselinePreferences(role: OllamaRole): readonly string[] {
+function baselinePreferences(role: OllamaRole, profile: ModelOptimizationProfile): readonly string[] {
+  if (profile === "speed") {
+    const speed: Record<OllamaRole, readonly string[]> = {
+      executor: ["qwen2.5-coder:7b", OLLAMA_RECOMMENDED_SETUP.executor],
+      planner: ["deepseek-r1:14b", "gpt-oss:20b", "qwen2.5-coder:7b"],
+      evaluator: ["deepseek-r1:14b", "gpt-oss:20b"],
+      vision: ["qwen3-vl:8b", "qwen3-vl:32b"],
+      embedding: [OLLAMA_RECOMMENDED_SETUP.embedding]
+    };
+    return speed[role];
+  }
   const preferences: Record<OllamaRole, readonly string[]> = {
     executor: [OLLAMA_RECOMMENDED_SETUP.executor, "qwen2.5-coder:7b"],
     planner: [OLLAMA_RECOMMENDED_SETUP.planner, "deepseek-r1:14b", "gpt-oss:20b", "qwen3:30b"],

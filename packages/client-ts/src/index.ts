@@ -10,6 +10,9 @@ import {
   type ClientCredential,
   type ModelAssistance,
   type ModelAssistanceResult,
+  type ModelCatalog,
+  type ModelConfiguration,
+  type ProviderSpec,
   type EngineEvent,
   type RpcResponse,
   type Run,
@@ -130,6 +133,15 @@ export class AgentClient {
       ? {transferId:(await this.upload(`model-assistance:${randomUUID()}`,bytes,"application/json")).id}
       : request;
     return this.call<ModelAssistanceResult>("models.assist",params,100_000);
+  }
+  modelConfiguration(): Promise<ModelConfiguration | null> {
+    return this.call("models.configuration");
+  }
+  configureModels(configuration: ModelConfiguration): Promise<ModelConfiguration> {
+    return this.call("models.configure", configuration);
+  }
+  modelCatalog(provider: ProviderSpec): Promise<ModelCatalog> {
+    return this.call("models.catalog", { provider });
   }
   private receive(chunk: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, chunk]);

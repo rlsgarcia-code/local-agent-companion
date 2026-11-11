@@ -13,6 +13,7 @@ import type {
   DesktopMessage,
   DesktopRunMode,
   DesktopSnapshot,
+  DesktopModelSettingsInput,
   PullProgress,
   SendRequest,
   OllamaModel
@@ -22,6 +23,7 @@ import { OllamaDesktopRuntime } from "./runtime-client";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
 import { DesktopStateStore } from "./state-store";
+import { DesktopCredentialStore } from "./credential-store";
 import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "../src/ollama-public-catalog";
 import {
   type OllamaRecommendationPlan
@@ -29,6 +31,8 @@ import {
 
 let window: BrowserWindow | undefined;
 let store: DesktopStateStore;
+let credentialStore: DesktopCredentialStore;
+const OPENAI_CREDENTIAL_REFERENCE = "openai-platform";
 const runtime = new OllamaDesktopRuntime({
   bundleDirectory: app.isPackaged ? path.join(process.resourcesPath, "companion-engine") : path.join(__dirname, "..", "engine-dist"),
   development: !app.isPackaged,
@@ -46,11 +50,14 @@ let publicOllamaCatalog: PublicOllamaCatalog | undefined;
 let activeRecommendation: OllamaRecommendationPlan | undefined;
 let recommendationController: AbortController | undefined;
 let modelRoleNotices: string[] = [];
+let cachedProviderCatalog: DesktopSnapshot["providerCatalog"] = { provider: "ollama", models: [] };
 
 app.setName("Local Companion");
 
 app.whenReady().then(async () => {
   store = await DesktopStateStore.open(path.join(app.getPath("userData"), "desktop-state.json"));
+  credentialStore = new DesktopCredentialStore(path.join(app.getPath("userData"), "provider-credentials.json"));
+  await store.update({ openAiKeyStored: await credentialStore.hasOpenAiKey() });
   if (dockerSandboxInstallParameter()) await store.update({ dockerSandboxEnabled: true });
   createWindow();
   contextBrowser = new DesktopContextBrowser(
@@ -58,8 +65,13 @@ app.whenReady().then(async () => {
     (context) => publish({ type: "context-snapshot", snapshot: context })
   );
   registerIpc();
-  void runtime.modelRoles(store.snapshot().modelRoles).then(async (roles) => {
-    if (roles) await store.update({ modelRoles: roles });
+  void runtime.modelConfiguration(store.snapshot().modelRoles).then(async (configuration) => {
+    if (configuration) await store.update({
+      modelRoles: configuration.roles,
+      modelProvider: configuration.provider === "openai" ? "openai" : "ollama",
+      modelSelectionMode: configuration.selectionMode,
+      modelOptimizationProfile: configuration.optimizationProfile,
+    });
   }).catch((error) => dialog.showErrorBox("Motor local", String(error)));
   void runtime.recoverModelJobs(
     (progress) => window?.webContents.send("companion:pull-progress", progress),
@@ -181,6 +193,47 @@ function registerIpc(): void {
     const roles = { ...store.snapshot().modelRoles, executor: model.trim() };
     await runtime.configureModelRoles(roles);
     await store.update({ modelRoles: roles });
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:save-model-settings", async (_event, input: DesktopModelSettingsInput) => {
+    if (!input || (input.provider !== "ollama" && input.provider !== "openai")) throw new Error("Escolha Ollama ou OpenAI.");
+    let roles = parseModelRoles(input.roles);
+    const selectionMode = input.selectionMode === "custom" ? "custom" : "optimized";
+    const optimizationProfile = input.optimizationProfile === "quality" || input.optimizationProfile === "speed"
+      ? input.optimizationProfile : "balanced";
+    if (input.provider === "openai") {
+      if (typeof input.openAiKey === "string" && input.openAiKey.trim()) await credentialStore.saveOpenAiKey(input.openAiKey);
+      if (!await credentialStore.hasOpenAiKey()) throw new Error("Salve uma chave OpenAI no Keychain antes de ativar este provedor.");
+      cachedProviderCatalog = await loadProviderCatalog("openai", roles);
+      if (selectionMode === "optimized") roles = recommendHostedRoles(cachedProviderCatalog.models, optimizationProfile, roles);
+    }
+    await runtime.configureModels({
+      provider: input.provider,
+      endpoint: input.provider === "openai" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1",
+      ...(input.provider === "openai" ? { credentialRef: OPENAI_CREDENTIAL_REFERENCE } : {}),
+      selectionMode, optimizationProfile, roles,
+    });
+    await store.update({ modelProvider: input.provider, modelSelectionMode: selectionMode,
+      modelOptimizationProfile: optimizationProfile, modelRoles: roles,
+      openAiKeyStored: await credentialStore.hasOpenAiKey() });
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:clear-openai-key", async () => {
+    await credentialStore.clearOpenAiKey();
+    await store.update({ openAiKeyStored: false });
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:refresh-model-catalog", async () => {
+    const state = store.snapshot();
+    cachedProviderCatalog = await loadProviderCatalog(state.modelProvider, state.modelRoles);
+    if (state.modelProvider === "openai" && state.modelSelectionMode === "optimized") {
+      const roles = recommendHostedRoles(cachedProviderCatalog.models, state.modelOptimizationProfile, state.modelRoles);
+      await runtime.configureModels({
+        provider: "openai", endpoint: "https://api.openai.com/v1", credentialRef: OPENAI_CREDENTIAL_REFERENCE,
+        selectionMode: state.modelSelectionMode, optimizationProfile: state.modelOptimizationProfile, roles,
+      });
+      await store.update({ modelRoles: roles });
+    }
     return publishSnapshot();
   });
   ipcMain.handle("companion:set-mode", async (_event, mode: unknown) => {
@@ -338,9 +391,19 @@ async function send(request: SendRequest): Promise<void> {
   await snapshot(true);
   const state = store.snapshot();
   if (!state.workspacePath) throw new Error("Choose a workspace before starting.");
-  if (!state.modelRoles.executor) throw new Error("Choose an installed Ollama executor model.");
-  if (!cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())) {
+  if (!state.modelRoles.executor) throw new Error("Escolha o modelo executor.");
+  if (state.modelProvider === "ollama" && !cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())) {
     throw new Error(`O executor ${state.modelRoles.executor} não está instalado. Abra Modelos e execução para baixar o modelo ou aplicar a configuração instalada.`);
+  }
+  const provider = state.modelProvider === "openai"
+    ? { kind: "openai" as const, endpoint: "https://api.openai.com/v1", roles: state.modelRoles,
+        credentialRef: OPENAI_CREDENTIAL_REFERENCE, authHeader: "authorization" as const }
+    : { kind: "ollama" as const, endpoint: "http://127.0.0.1:11434/v1", roles: state.modelRoles,
+        authHeader: "authorization" as const };
+  if (state.modelProvider === "openai") {
+    const key = await credentialStore.openAiKey();
+    if (!key) throw new Error("A chave OpenAI não está disponível no Keychain.");
+    await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key, state.workspacePath);
   }
   const priorThread = structuredClone(store.thread(request.threadId));
   const userMessage: DesktopMessage = { id: randomUUID(), role: "user", text, createdAt: Date.now(), status: "complete" };
@@ -386,6 +449,7 @@ async function send(request: SendRequest): Promise<void> {
       request: text,
       workspacePath: state.workspacePath,
       modelRoles: state.modelRoles,
+      provider,
       dockerSandboxEnabled: state.dockerSandboxEnabled,
       mode: state.mode,
       agentRuntime: state.agentRuntime,
@@ -493,6 +557,7 @@ async function recommendModels(): Promise<DesktopSnapshot> {
   activeRecommendation = await runtime.recommendModels({
     advisorModel: advisor,
     installedDockerImages: docker.images.map((image) => image.alias),
+    optimizationProfile: state.modelOptimizationProfile,
     ...(state.ollamaPublicCatalogEnabled && publicOllamaCatalog ? { publicCatalog: publicOllamaCatalog } : {})
   }, controller.signal);
   if (publicCatalogWarning) {
@@ -526,7 +591,7 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
     cachedOllama = await runtime.ollamaStatus();
     hasCheckedOllama = true;
   }
-  if (cachedOllama.connected) {
+  if (cachedOllama.connected && store.snapshot().modelProvider === "ollama") {
     let state = store.snapshot();
     if (state.lastRecommendation) {
       const installed = new Set(cachedOllama.models.map((model) => model.name.toLowerCase()));
@@ -553,12 +618,62 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
   }
   return {
     ...store.snapshot(),
+    openAiKeyStored: await credentialStore.hasOpenAiKey(),
     ollama: cachedOllama,
     context: contextBrowser.snapshot(),
     ollamaPublicCatalogLoaded: Boolean(publicOllamaCatalog),
     modelRoleNotices,
+    providerCatalog: store.snapshot().modelProvider === "ollama"
+      ? { provider: "ollama", models: cachedOllama.models.map((model) => model.name), loadedAt: Date.now() }
+      : cachedProviderCatalog.provider === "openai" ? cachedProviderCatalog : { provider: "openai", models: [] },
     running: runtime.running,
     runState: runtime.state
+  };
+}
+
+async function loadProviderCatalog(provider: "ollama" | "openai", roles: OllamaRecommendationPlan["roles"]): Promise<DesktopSnapshot["providerCatalog"]> {
+  if (provider === "ollama") {
+    cachedOllama = await runtime.ollamaStatus();
+    hasCheckedOllama = true;
+    if (!cachedOllama.connected) throw new Error(cachedOllama.error || "Inicie o Ollama antes de atualizar os modelos.");
+    return { provider, models: cachedOllama.models.map((model) => model.name), loadedAt: Date.now() };
+  }
+  const key = await credentialStore.openAiKey();
+  if (!key) throw new Error("Salve uma chave OpenAI no Keychain antes de atualizar os modelos.");
+  await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key);
+  try {
+    const catalog = await runtime.modelCatalog({ kind: "openai", endpoint: "https://api.openai.com/v1", roles,
+      credentialRef: OPENAI_CREDENTIAL_REFERENCE, authHeader: "authorization" });
+    return { provider: "openai", models: catalog.models, loadedAt: catalog.loadedAt };
+  } catch (error) {
+    throw new Error(`Não foi possível carregar os modelos da OpenAI: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function recommendHostedRoles(models: readonly string[], profile: "quality" | "balanced" | "speed", current: OllamaRecommendationPlan["roles"]): OllamaRecommendationPlan["roles"] {
+  const chat = models.filter((model) => !/(embedding|audio|realtime|transcribe|tts|search|image)/i.test(model));
+  const embedding = models.find((model) => /embedding/i.test(model));
+  const score = (model: string, role: "executor" | "planner" | "evaluator" | "vision"): number => {
+    let value = 0;
+    if (/gpt/i.test(model)) value += 10;
+    if (/codex|code/i.test(model)) value += role === "executor" ? 18 : 3;
+    if (/\bo\d|reason/i.test(model)) value += role === "planner" || role === "evaluator" ? 15 : 2;
+    if (/vision|4o/i.test(model)) value += role === "vision" ? 12 : 0;
+    if (/preview|latest/i.test(model)) value += 2;
+    if (/mini/i.test(model)) value += profile === "balanced" ? 9 : profile === "speed" ? 14 : -4;
+    if (/nano/i.test(model)) value += profile === "speed" ? 18 : profile === "balanced" ? 2 : -10;
+    if (profile === "quality" && !/(mini|nano)/i.test(model)) value += 12;
+    return value;
+  };
+  const choose = (role: "executor" | "planner" | "evaluator" | "vision") => [...chat]
+    .sort((left, right) => score(right, role) - score(left, role) || right.localeCompare(left))[0];
+  const executor = choose("executor") ?? current.executor;
+  return {
+    executor,
+    ...(choose("planner") ? { planner: choose("planner") } : current.planner ? { planner: current.planner } : {}),
+    ...(choose("evaluator") ? { evaluator: choose("evaluator") } : current.evaluator ? { evaluator: current.evaluator } : {}),
+    ...(choose("vision") ? { vision: choose("vision") } : current.vision ? { vision: current.vision } : {}),
+    ...(embedding ? { embedding } : current.embedding ? { embedding: current.embedding } : {})
   };
 }
 

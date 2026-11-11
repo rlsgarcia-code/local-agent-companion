@@ -74,3 +74,27 @@ test("model recovery preserves jobs and settings without reissuing a pull or all
     assert.equal(models.pull(reg, { key: "completed", model: "fixture" }).state, "interrupted");
   } finally { await models.close(); store.close(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test("Mac model configuration can switch between local Ollama and fixed OpenAI without persisting a secret", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "engine-model-provider-"));
+  const store = new Store(path.join(directory, "metadata.sqlite"));
+  const mac: Registration = { ...reg, providers: ["ollama", "openai"] };
+  const models = new Models(store, directory);
+  try {
+    const local = models.configure(mac, { revision: 0, roles: { executor: "qwen3:latest" } });
+    assert.equal(local.provider, "ollama");
+    assert.equal(local.selectionMode, "custom");
+    const hosted = models.configure(mac, {
+      ...local,
+      provider: "openai",
+      endpoint: "https://api.openai.com/v1",
+      credentialRef: "openai-platform",
+      selectionMode: "optimized",
+      optimizationProfile: "quality",
+      roles: { executor: "gpt-5.1", planner: "o3" }
+    });
+    assert.equal(hosted.provider, "openai");
+    assert.equal(hosted.optimizationProfile, "quality");
+    assert.equal(JSON.stringify(hosted).includes("sk-"), false);
+  } finally { await models.close(); store.close(); await rm(directory, { recursive: true, force: true }); }
+});

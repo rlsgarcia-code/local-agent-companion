@@ -11,6 +11,7 @@ import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { executePreparedGraph } from "./graph-executor";
 import { operationMiddleware, type OperationExecutor } from "./operations";
 import { OllamaModels, MODEL_NAME } from "./ollama-models";
+import { ProviderModels } from "./provider-models";
 export { pullOllamaModel } from "./ollama-models";
 import { CompositeBackend, StateBackend } from "deepagents";
 import {
@@ -48,6 +49,7 @@ import type {
   OllamaModel,
   PullProgress,
 } from "../../contracts/src/desktop";
+import type { ProviderSpec } from "../../contracts/src/index";
 import type { OllamaRoleConfiguration } from "../../contracts/src/ollama";
 import {
   readWorkspaceFile,
@@ -127,6 +129,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
     request: string;
     workspacePath: string;
     modelRoles: OllamaRoleConfiguration;
+    provider?: ProviderSpec;
+    credential?: string;
     dockerSandboxEnabled: boolean;
     mode: DesktopRunMode;
     agentRuntime: DesktopAgentRuntime;
@@ -144,12 +148,19 @@ export class OllamaDesktopRuntime extends OllamaModels {
     };
   }): Promise<{ message: DesktopMessage; changes: DesktopChange[] }> {
     if (this.running) throw new Error("A run or configuration is already active.");
-    if (!MODEL_NAME.test(options.modelRoles.executor))
+    if ((!options.provider || options.provider.kind === "ollama") && !MODEL_NAME.test(options.modelRoles.executor))
       throw new Error("Choose a valid local Ollama executor model.");
     this.controller = new AbortController();
     const signal = options.execution
       ? AbortSignal.any([options.execution.signal, this.controller.signal])
       : this.controller.signal;
+    const provider = options.provider ?? {
+      kind: "ollama" as const,
+      endpoint: "http://127.0.0.1:11434/v1",
+      roles: options.modelRoles,
+      authHeader: "authorization" as const,
+    };
+    const providerModels = new ProviderModels(provider, options.credential, signal);
     const tracker = new ChangeTracker(options.workspacePath);
     let observedRead = false;
     let approvalDenied = false;
@@ -173,11 +184,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
       options.callbacks.step(options.assistantMessageId, step);
     };
     try {
-      const model = this.createModel(options.modelRoles.executor, true);
-      const evaluatorModel = this.createModel(
-        options.modelRoles.evaluator || options.modelRoles.executor,
-        false,
-      );
+      const model = providerModels.model("executor", true);
+      const evaluatorModel = providerModels.model("evaluator", false);
       const publishActivity = (value: DesktopActivity): void => {
         if (!countedActivityIds.has(value.id)) {
           countedActivityIds.add(value.id);
@@ -306,7 +314,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
           options.modelRoles.planner,
           "active",
         );
-        const planner = this.createModel(options.modelRoles.planner, false);
+        const planner = providerModels.model("planner", false);
         const planned = await planner.invoke(
           [
             new SystemMessage(
@@ -364,7 +372,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
                   kind: "file",
                   title: `Ler arquivo sensível ${filePath}`,
                   detail:
-                    "Este caminho pode conter credenciais ou configuração privada. O conteúdo será enviado somente ao modelo Ollama local selecionado.",
+                    `Este caminho pode conter credenciais ou configuração privada. O conteúdo será enviado somente ao provedor ${provider.kind} selecionado.`,
                   confirmLabel: "Permitir leitura",
                 }),
               () => undefined,
@@ -492,6 +500,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
         changes,
       };
     } finally {
+      await providerModels.close();
       this.controller = undefined;
     }
   }

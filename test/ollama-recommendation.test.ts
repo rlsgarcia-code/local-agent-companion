@@ -64,6 +64,18 @@ test("recommendation uses a declared baseline when no local advisor is usable", 
   assert.ok(plan.warnings.some((warning) => warning.includes("Estimativa")));
 });
 
+test("speed profile selects smaller role models while quality preserves the stronger baseline", async () => {
+  const candidates = mergeOllamaCandidates({ bundled: OLLAMA_CATALOG });
+  const engine = new OllamaRecommendationEngine();
+  const speed = await engine.recommend({ machine, candidates, supportedRoles: ["executor", "planner", "vision"], optimizationProfile: "speed" });
+  const quality = await engine.recommend({ machine, candidates, supportedRoles: ["executor", "planner", "vision"], optimizationProfile: "quality" });
+  assert.equal(speed.roles.executor, "qwen2.5-coder:7b");
+  assert.equal(speed.roles.planner, "deepseek-r1:14b");
+  assert.equal(speed.roles.vision, "qwen3-vl:8b");
+  assert.equal(quality.roles.executor, "qwen3-coder:30b");
+  assert.equal(quality.roles.planner, "deepseek-r1:32b");
+});
+
 test("baseline separates the best catalog setup from the zero-download installed setup", async () => {
   const candidates = mergeOllamaCandidates({
     bundled: OLLAMA_CATALOG,

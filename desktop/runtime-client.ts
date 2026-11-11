@@ -11,7 +11,8 @@ import type {
 } from "./contracts";
 import type { OllamaDesktopRuntime as EngineRuntime } from "../packages/agent-core/src/desktop-runtime";
 import { AgentError, errors, type Run, type Session, type RunState } from "../packages/contracts/src/index";
-import type { ModelJob } from "../packages/contracts/src/models";
+import type { ModelCatalog, ModelJob } from "../packages/contracts/src/models";
+import type { ModelOptimizationProfile, ModelSelectionMode } from "../packages/contracts/src/models";
 import type { OllamaRoleConfiguration, OllamaRecommendationPlan } from "../packages/agent-core/src/ollama-recommendation";
 
 type RuntimeOptions = Parameters<EngineRuntime["run"]>[0];
@@ -26,6 +27,15 @@ export type DesktopRecoveryHandler = {
   callbacks: RuntimeOptions["callbacks"];
   openPreview: RuntimeOptions["openPreview"];
   complete: (result: { message: DesktopMessage; changes: DesktopChange[] }) => Promise<void>;
+};
+export type DesktopModelConfiguration = {
+  revision: number;
+  provider: "ollama" | "openai";
+  endpoint: string;
+  credentialRef?: string;
+  selectionMode: ModelSelectionMode;
+  optimizationProfile: ModelOptimizationProfile;
+  roles: OllamaRoleConfiguration;
 };
 
 export class OllamaDesktopRuntime {
@@ -62,7 +72,7 @@ export class OllamaDesktopRuntime {
         product: "companion-mac",
         profile: "default",
         workspace,
-        providers: ["ollama"],
+        providers: ["ollama", "openai"],
         hostTools: [],
         publicKey: this.installation.development
           ? undefined
@@ -98,17 +108,37 @@ export class OllamaDesktopRuntime {
     return (await this.connect()).call("models.list");
   }
   async modelRoles(initial?: OllamaRoleConfiguration): Promise<OllamaRoleConfiguration | undefined> {
-    const client = await this.connect();
-    const saved = await client.call<{ revision: number; roles: OllamaRoleConfiguration } | null>("models.configuration");
-    if (saved) return saved.roles;
-    if (initial?.executor) return (await client.call<{ roles: OllamaRoleConfiguration }>("models.configure", { revision: 0, roles: initial })).roles;
+    return (await this.modelConfiguration(initial))?.roles;
   }
   async configureModelRoles(roles: OllamaRoleConfiguration): Promise<void> {
     const client = await this.connect();
-    const previous = await client.call<{ revision: number } | null>("models.configuration");
-    await client.call("models.configure", { revision: previous?.revision ?? 0, roles });
+    const previous = await client.call<DesktopModelConfiguration | null>("models.configuration");
+    await client.call("models.configure", previous
+      ? { ...previous, roles }
+      : { revision: 0, provider: "ollama", endpoint: "http://127.0.0.1:11434/v1", selectionMode: "custom", optimizationProfile: "balanced", roles });
   }
-  async recommendModels(input: { advisorModel?: string; publicCatalog?: unknown; installedDockerImages: string[] }, signal: AbortSignal): Promise<OllamaRecommendationPlan> {
+  async modelConfiguration(initial?: OllamaRoleConfiguration): Promise<DesktopModelConfiguration | undefined> {
+    const client = await this.connect();
+    const saved = await client.call<DesktopModelConfiguration | null>("models.configuration");
+    if (saved) return saved;
+    if (!initial?.executor) return undefined;
+    return client.call<DesktopModelConfiguration>("models.configure", {
+      revision: 0, provider: "ollama", endpoint: "http://127.0.0.1:11434/v1",
+      selectionMode: "custom", optimizationProfile: "balanced", roles: initial,
+    });
+  }
+  async configureModels(input: Omit<DesktopModelConfiguration, "revision">): Promise<DesktopModelConfiguration> {
+    const client = await this.connect();
+    const previous = await client.call<DesktopModelConfiguration | null>("models.configuration");
+    return client.call("models.configure", { ...input, revision: previous?.revision ?? 0 });
+  }
+  async leaseCredential(reference: string, value: string, workspace = ""): Promise<void> {
+    await (await this.connect(workspace)).call("credentials.lease", { reference, value });
+  }
+  async modelCatalog(provider: { kind: "ollama" | "openai"; endpoint: string; roles: OllamaRoleConfiguration; credentialRef?: string; authHeader: "authorization" }): Promise<ModelCatalog> {
+    return (await this.connect()).modelCatalog(provider);
+  }
+  async recommendModels(input: { advisorModel?: string; publicCatalog?: unknown; installedDockerImages: string[]; optimizationProfile?: ModelOptimizationProfile }, signal: AbortSignal): Promise<OllamaRecommendationPlan> {
     signal.throwIfAborted(); const client = await this.connect();
     const job = await client.call<ModelJob>("models.recommend", { ...input, key: crypto.randomUUID() });
     this.recommendationJob = job.id;
