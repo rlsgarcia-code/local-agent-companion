@@ -2770,12 +2770,12 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   private async threadPayload() {
-    const [snapshot, externalRunActive, workspaceRun, goals] = await Promise.all([
+    const [snapshot, externalRunActive, goals] = await Promise.all([
       this.agent.threadSnapshot(),
       this.agent.externalRunActive(),
-      this.agent.workspaceRunStatus(),
       this.agent.listGoals()
     ]);
+    const workspaceBlocker = snapshot.threads.find((thread) => thread.workspaceBlocked);
     const validThreadIds = new Set(snapshot.threads.map((thread) => thread.id));
     const drafts = this.drafts();
     let pruned = false;
@@ -2793,11 +2793,11 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       autonomyMode: this.autonomyMode(),
       responseLanguage: parseResponseLanguage(vscode.workspace.getConfiguration("localAgentCompanion").get("responseLanguage")),
       recovery: snapshot.recovery,
-      remoteRunActive: this.agent.running || workspaceRun.busy || externalRunActive || (
+      remoteRunActive: this.agent.running || Boolean(workspaceBlocker) || externalRunActive || (
         !this.agent.running && snapshot.threads.some((thread) => thread.recoveryStatus === "running")
       ),
-      workspaceRunMessage: workspaceRun.busy
-        ? `Another conversation has an unfinished workspace run${workspaceRun.state ? ` (${workspaceRun.state})` : ""}. Resume or cancel it before sending here.`
+      workspaceRunMessage: workspaceBlocker
+        ? `Another conversation has an unfinished workspace run${workspaceBlocker.engineState ? ` (${workspaceBlocker.engineState})` : ""}. Resume or cancel it before sending here.`
         : undefined,
       goals
     };

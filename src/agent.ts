@@ -1279,12 +1279,6 @@ export class DevelopmentAgent implements vscode.Disposable {
     return Boolean(owner && owner.sessionId !== this.sessionId);
   }
 
-  public async workspaceRunStatus(): Promise<{ busy: boolean; runId?: string; state?: string }> {
-    const workspace = vscode.workspace.workspaceFolders?.[0];
-    if (!workspace) return { busy: false };
-    return this.serviceRuntime.workspaceStatus(await realpath(workspace.uri.fsPath));
-  }
-
   public async migrateLegacyHistory(value: unknown): Promise<void> {
     if (!Array.isArray(value) || !value.length) return;
     const { collection, thread } = await this.activeConversation();

@@ -63,6 +63,8 @@ export type ThreadSummary = {
   pinned: boolean;
   unread?: boolean;
   recoveryStatus?: ThreadRunRecovery["status"];
+  workspaceBlocked?: boolean;
+  engineState?: string;
 };
 
 export type ThreadSnapshot = {
@@ -126,7 +128,12 @@ export function summarizeThreads(collection: ThreadCollection): ThreadSummary[] 
       messageCount: thread.messages.length,
       pinned: Boolean(thread.pinned),
       ...(thread.unread ? { unread: true } : {}),
-      ...(thread.recovery ? { recoveryStatus: thread.recovery.status } : {})
+      ...(thread.recovery ? { recoveryStatus: thread.recovery.status } : {}),
+      ...(thread.recovery?.engineRunId
+        && thread.recovery.engineState
+        && !["completed", "failed", "cancelled"].includes(thread.recovery.engineState)
+        ? { workspaceBlocked: true, engineState: thread.recovery.engineState }
+        : {})
     }));
 }
 
