@@ -102,6 +102,9 @@ export class OllamaDesktopRuntime {
     ]);
     return { ...status, version: info.version };
   }
+  async workspaceStatus(workspace = ""): Promise<{ busy: boolean; runId?: string; state?: RunState }> {
+    return (await this.connect(workspace)).call("workspace.status");
+  }
   async restartEngine(workspace = ""): Promise<void> {
     const client = await this.connect(workspace);
     const status = await client.call<EngineUpdateStatus>("engine.updateStatus");

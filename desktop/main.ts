@@ -444,6 +444,8 @@ async function send(request: SendRequest): Promise<void> {
   await snapshot(true);
   const state = store.snapshot();
   if (!state.workspacePath) throw new Error("Choose a workspace before starting.");
+  const workspaceRun = await runtime.workspaceStatus(state.workspacePath);
+  if (workspaceRun.busy) throw new Error(`Outra conversa possui uma execução não finalizada${workspaceRun.state ? ` (${workspaceRun.state})` : ""}. Retome ou cancele essa execução antes de enviar uma nova solicitação.`);
   if (!state.modelRoles.executor) throw new Error("Escolha o modelo executor.");
   if (state.modelProvider === "ollama" && !cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())) {
     throw new Error(`O executor ${state.modelRoles.executor} não está instalado. Abra Modelos e execução para baixar o modelo ou aplicar a configuração instalada.`);
@@ -555,7 +557,12 @@ async function send(request: SendRequest): Promise<void> {
     await store.appendMessage(request.threadId, completedMessage);
     publish({ type: "assistant-complete", threadId: request.threadId, message: completedMessage, changes: result.changes });
   } catch (error) {
-    const message = cancellationRequested ? "A execução foi interrompida." : error instanceof Error ? error.message : "A execução falhou.";
+    const rawMessage = error instanceof Error ? error.message : "A execução falhou.";
+    const message = cancellationRequested
+      ? "A execução foi interrompida."
+      : /Workspace is in use by another run/i.test(rawMessage)
+      ? "Outra conversa possui uma execução não finalizada. Retome ou cancele essa execução antes de enviar uma nova solicitação."
+      : rawMessage;
     const failedMessage: DesktopMessage = {
       id: assistantMessageId,
       role: "assistant",
@@ -670,9 +677,12 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
   } else {
     modelRoleNotices = [];
   }
+  const current = store.snapshot();
+  const workspaceRun = await runtime.workspaceStatus(current.workspacePath);
   return {
-    ...store.snapshot(),
+    ...current,
     engine: { version: engine.version, state: engine.ready ? "ready" : "busy", blockers: engine.blockers },
+    workspaceRun: { busy: workspaceRun.busy, ...(workspaceRun.state ? { state: workspaceRun.state } : {}) },
     openAiKeyStored: await credentialStore.hasOpenAiKey(),
     ollama: cachedOllama,
     context: contextBrowser.snapshot(),

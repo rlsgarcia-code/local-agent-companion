@@ -12,11 +12,16 @@ test("checks local run prerequisites before accepting or persisting a request", 
   assert.match(agent, /validateModelConnection/);
   assert.match(agent, /validateLiteLlmModelProfile/);
   assert.match(agent, /await this\.certificateAuthorities\(workspace\.uri\.fsPath\)/);
-  assert.match(webview, /preflight = await this\.agent\.preflightRun\(\)/);
+  assert.match(webview, /preflight = await this\.agent\.preflightRun\(\{ resumeExisting: replacePending \}\)/);
   assert.ok(
-    webview.indexOf("preflight = await this.agent.preflightRun()") <
+    webview.indexOf("preflight = await this.agent.preflightRun({ resumeExisting: replacePending })") <
       webview.indexOf('this.post({ type: "busy", value: true })')
   );
+});
+
+test("translates a workspace lease race into conversation recovery guidance", () => {
+  assert.match(agent, /Workspace is in use by another run/);
+  assert.match(agent, /resume or cancel it before sending a new request/);
 });
 
 test("keeps the draft and opens the relevant local remediation surface", () => {

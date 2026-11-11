@@ -235,7 +235,7 @@ export class AgentService {
     params: unknown,
     connection: string,
   ): Promise<unknown> {
-    if (this.quiescing && !["engine.info","engine.updateStatus","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","engine.stopManagedResourcesForUpdate","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
+    if (this.quiescing && !["engine.info","engine.updateStatus","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","engine.stopManagedResourcesForUpdate","workspace.status","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
       throw new AgentError(errors.unavailable, "Engine is activating a prepared update. Reconnect with the updated client.");
     if(process.platform === "linux" && existsSync("/usr/share/kidos/engine-activation.json") &&
       ["runs.start","desktop.start","runs.resume","engine.resumeAfterUpdate"].includes(method))
@@ -438,6 +438,8 @@ export class AgentService {
         };
       case "engine.resumeAfterUpdate":
         z.object({}).strict().parse(p);this.quiescing=false;return {accepted:true};
+      case "workspace.status":
+        z.object({}).strict().parse(p);return this.store.workspaceStatus(reg.workspace);
       case "engine.updateStatus": {
         z.object({}).strict().parse(p);
         const blockers = this.engineUpdateBlockers();

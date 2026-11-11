@@ -227,6 +227,18 @@ export class Store {
         .all(namespace(reg), sessionId) as { value: string }[]
     ).map((row) => JSON.parse(row.value) as Run);
   }
+  workspaceStatus(workspace: string): { busy: boolean; runId?: string; state?: RunState } {
+    if (!workspace) return { busy: false };
+    const row = this.db.prepare(
+      "SELECT runs.id AS runId,runs.state AS state FROM leases JOIN runs ON runs.id=leases.run WHERE leases.workspace=?",
+    ).get(workspace) as { runId: string; state: RunState } | undefined;
+    if (!row) return { busy: false };
+    if (terminalStates.has(row.state)) {
+      this.db.prepare("DELETE FROM leases WHERE workspace=?").run(workspace);
+      return { busy: false };
+    }
+    return { busy: true, runId: row.runId, state: row.state };
+  }
   snapshot(
     reg: Registration,
     sessionId: string,
