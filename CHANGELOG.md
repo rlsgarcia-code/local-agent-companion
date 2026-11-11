@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.6 - 2026-11-11
+
+### Added
+- Share one service-owned model configuration across authorized clients, with Ollama or OpenAI, optimized or custom selection, quality/balanced/speed objectives and role-specific models.
+- Discover models from the active provider without exposing credentials to consuming interfaces.
+
+### Fixed
+- Ship the pending LiteLLM and Windows connection hardening on the current engine baseline.
+- Preserve exact model aliases, improve correlated connection diagnostics and keep token counting available offline.
+
+This candidate advances the clients to 0.12.6 and the engine and SDKs to 1.0.4. It remains provider/runtime-generic and contains no MedGraph-specific code.
+
 
 ## 0.12.5 - 2026-11-10
 

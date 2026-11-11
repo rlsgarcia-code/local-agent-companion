@@ -1,6 +1,6 @@
 # Local Agent Companion
 
-Atualização de conexão: clientes **0.12.5**, motor **1.0.3**, protocolo **1.0**,
+Atualização de conexão: clientes **0.12.6**, motor **1.0.4**, protocolo **1.0**,
 Node **22.23.4** empacotado. Veja [capacidades e diagnóstico](docs/MODEL_CAPABILITIES.md).
 A validação automatizada por plataforma não substitui o teste no gateway corporativo.
 As evidências de instalação da versão anterior permanecem datadas em `docs/`.
