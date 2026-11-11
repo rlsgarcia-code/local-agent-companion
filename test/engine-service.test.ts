@@ -254,7 +254,7 @@ test("revocation survives registration refresh; recovery never repeats an unknow
   const f = await fixture();
   try {
     const credential = await createClientCredential(f.dir, registration);
-    assert.throws(()=>f.store.register({...credential,registration:{...registration,providers:["openai"]}}),/only Ollama/);
+    assert.throws(()=>f.store.register({...credential,registration:{...registration,providers:["litellm"]}}),/only Ollama and the fixed OpenAI provider/);
     assert.throws(()=>f.store.register({...credential,registration:{...registration,product:"kidos",providers:["kidos-gateway"],hostTools:["shell"]}}),/Core adapter/);
     f.store.register(credential);
     assert.equal(

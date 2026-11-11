@@ -81,5 +81,24 @@ export class ProviderModels {
       ...(this.credential && this.provider.authHeader !== "authorization" ? { defaultHeaders: { [this.provider.authHeader]: this.credential } } : {}),
       fetch: gatewayFetch(embeddingsUrl(connection, model, Boolean(endpoint)), this.provider.authHeader !== "authorization", this.dispatcher, this.signal) };
   }
+  async listModels(): Promise<string[]> {
+    if (this.provider.kind === "kidos-gateway")
+      throw new AgentError(errors.forbidden, "The protected KidOS catalog is managed by its system authority.");
+    const url = `${this.provider.endpoint.replace(/\/$/, "")}/models`;
+    const request = gatewayFetch(url, false, this.dispatcher, this.signal, undefined, ["GET"]);
+    const headers = new Headers({ accept: "application/json", "cache-control": "no-cache" });
+    if (this.credential) {
+      const header = this.provider.authHeader ?? "authorization";
+      headers.set(header, header === "authorization" ? `Bearer ${this.credential}` : this.credential);
+    }
+    const response = await request(url, { method: "GET", headers });
+    if (!response.ok) throw new Error(`Model catalog request failed with HTTP ${response.status}.`);
+    const body = await response.json() as { data?: { id?: unknown }[]; models?: { name?: unknown; model?: unknown }[] };
+    const aliases = Array.isArray(body.data)
+      ? body.data.map((item) => item?.id)
+      : Array.isArray(body.models) ? body.models.map((item) => item?.name ?? item?.model) : [];
+    return [...new Set(aliases.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim()))].sort((left, right) => left.localeCompare(right));
+  }
   async close(){await this.dispatcher?.close();}
 }

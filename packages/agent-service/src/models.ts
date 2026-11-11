@@ -7,6 +7,7 @@ import { AgentError, errors, type Registration } from "../../contracts/src/index
 import { contentHash } from "../../contracts/src/identity";
 import { modelConfiguration, modelDownload, modelRecommendation, type ModelJob } from "../../contracts/src/models";
 import { publicOllamaCatalogSchema } from "../../agent-core/src/ollama-recommendation";
+import { validateProvider } from "../../agent-core/src/provider-models";
 import { namespace } from "./security";
 import type { Store } from "./store";
 
@@ -32,17 +33,25 @@ export class Models {
   }
   get busy(): boolean { return this.tasks.size > 0; }
   private authorize(reg: Registration): void {
-    if (reg.product === "kidos" || !reg.providers.includes("ollama"))
-      throw new AgentError(errors.forbidden, "This client cannot manage Ollama models. KidOS model selection belongs to its system authority.");
+    if (reg.product === "kidos")
+      throw new AgentError(errors.forbidden, "KidOS model selection belongs to its system authority.");
   }
-  async status(reg: Registration) { this.authorize(reg); return this.adapter.ollamaStatus(); }
+  private authorizeOllama(reg: Registration): void {
+    this.authorize(reg);
+    if (!reg.providers.includes("ollama"))
+      throw new AgentError(errors.forbidden, "This client cannot manage Ollama models.");
+  }
+  async status(reg: Registration) { this.authorizeOllama(reg); return this.adapter.ollamaStatus(); }
   configuration(reg: Registration): z.infer<typeof modelConfiguration> | null {
     this.authorize(reg);
     const row = this.store.db.prepare("SELECT value FROM model_configurations WHERE namespace=?").get(namespace(reg)) as { value: string } | undefined;
-    return row ? JSON.parse(row.value) : null;
+    return row ? modelConfiguration.parse(JSON.parse(row.value)) : null;
   }
   configure(reg: Registration, input: unknown) {
     this.authorize(reg); const value = modelConfiguration.parse(input);
+    if (!reg.providers.includes(value.provider)) throw new AgentError(errors.forbidden, "This client is not authorized for the selected provider.");
+    if (value.provider !== "ollama" && !value.credentialRef) throw new AgentError(errors.invalid, "Hosted providers require a host credential reference.");
+    validateProvider(reg, { kind: value.provider, endpoint: value.endpoint, roles: value.roles, authHeader: "authorization", ...(value.credentialRef ? { credentialRef: value.credentialRef } : {}) });
     if (value.revision !== (this.configuration(reg)?.revision ?? 0)) throw new AgentError(errors.conflict, "Refresh model settings before changing them.");
     const next = { ...value, revision: value.revision + 1 };
     this.store.db.prepare("INSERT INTO model_configurations VALUES(?,?) ON CONFLICT(namespace) DO UPDATE SET value=excluded.value").run(namespace(reg), JSON.stringify(next));
@@ -84,6 +93,7 @@ export class Models {
     return this.get(reg, job.id);
   }
   pull(reg: Registration, input: unknown): ModelJob {
+    this.authorizeOllama(reg);
     const value = modelDownload.parse(input);
     return this.start(reg, value.key, "download", { model: value.model }, async (job, signal) => {
       signal.throwIfAborted();
@@ -95,6 +105,7 @@ export class Models {
     });
   }
   recommend(reg: Registration, input: unknown): ModelJob {
+    this.authorizeOllama(reg);
     const value = modelRecommendation.parse(input);
     const catalog = value.publicCatalog === undefined ? undefined : publicOllamaCatalogSchema.parse(value.publicCatalog);
     return this.start(reg, value.key, "recommendation", value, async (_job, signal) => {
@@ -105,6 +116,7 @@ export class Models {
       const machine = await detectMachineProfile(this.directory, status.version);
       return new OllamaRecommendationEngine().recommend({ machine, candidates,
         supportedRoles: ["executor", "planner", "evaluator", "vision", "embedding"],
+        optimizationProfile: value.optimizationProfile,
         installedDockerImages: value.installedDockerImages, advisorModel: value.advisorModel,
         ...(value.advisorModel ? { invokeAdvisor: (prompt: string) => this.adapter.invokeAdvisor(value.advisorModel!, prompt, signal) } : {}),
       });

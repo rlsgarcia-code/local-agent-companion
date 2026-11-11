@@ -31,8 +31,10 @@ const el = Object.fromEntries([
   "context-external-toggle", "context-tabs", "context-back", "context-forward", "context-reload",
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
-  "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "theme-control",
+  "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "manual-pull", "theme-control",
   "active-model-roles", "active-model-status",
+  "model-provider", "model-selection-mode", "model-optimization-profile", "openai-key-row", "openai-key", "clear-openai-key",
+  "refresh-model-catalog", "provider-catalog-status", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
   "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
@@ -159,7 +161,7 @@ function render(conversationEffect = null) {
   el["ollama-label"].textContent = snapshot.ollama.connected
     ? `Ollama ${snapshot.ollama.version || "conectado"}`
     : "Ollama desconectado";
-  el["model-label"].textContent = snapshot.modelRoles?.executor || "Escolher modelo";
+  el["model-label"].textContent = `${snapshot.modelProvider === "openai" ? "OpenAI" : "Ollama"} · ${snapshot.modelRoles?.executor || "Escolher modelo"}`;
   el["runtime-label"].textContent = snapshot.agentRuntime === "deep" ? "Deep Agent" : "Agente padrão";
   el["thread-title"].textContent = active?.title || "Nova conversa";
   renderThreadList(snapshot.threads, active?.id);
@@ -429,14 +431,19 @@ function applyConversationEffect(effect) {
 }
 
 function renderModels() {
-  const { models } = appState.snapshot.ollama;
+  const snapshot = appState.snapshot;
+  const hosted = snapshot.modelProvider === "openai";
+  const models = hosted
+    ? (snapshot.providerCatalog?.models || []).map((name) => ({ name, size: 0 }))
+    : snapshot.ollama.models;
+  el["manual-pull"].classList.toggle("hidden", hosted);
   el["model-list"].replaceChildren(...(models.length ? models.map((model) => {
     const button = document.createElement("button");
     button.className = `model-option${model.name === appState.snapshot.modelRoles?.executor ? " active" : ""}`;
     const text = document.createElement("span");
     text.textContent = model.name;
     const size = document.createElement("small");
-    size.textContent = formatBytes(model.size);
+    size.textContent = hosted ? "servidor" : formatBytes(model.size);
     button.append(text, size);
     button.addEventListener("click", async () => {
       appState.snapshot = await window.companion.setModel(model.name);
@@ -444,7 +451,7 @@ function renderModels() {
       render();
     });
     return button;
-  }) : [paragraph("Nenhum modelo instalado.", "empty-copy")]));
+  }) : [paragraph(hosted ? "Atualize o catálogo para ver os modelos disponíveis." : "Nenhum modelo instalado.", "empty-copy")]));
 }
 
 function renderInspector() {
@@ -458,17 +465,25 @@ function renderInspector() {
     ? (selected.commands || [])
     : activities.filter((activity) => activity.kind === "command");
   const hasWorkspace = Boolean(snapshot.workspacePath);
-  const selectedInstalled = snapshot.ollama.models.some((model) => model.name === snapshot.modelRoles?.executor);
-  el["setup-panel"].classList.toggle("hidden", hasWorkspace && snapshot.ollama.connected && selectedInstalled);
-  if (!snapshot.ollama.connected) {
+  const providerReady = snapshot.modelProvider === "openai"
+    ? snapshot.openAiKeyStored && Boolean(snapshot.modelRoles?.executor)
+    : snapshot.ollama.connected && snapshot.ollama.models.some((model) => model.name === snapshot.modelRoles?.executor);
+  el["setup-panel"].classList.toggle("hidden", hasWorkspace && providerReady);
+  if (snapshot.modelProvider === "openai" && !snapshot.openAiKeyStored) {
+    el["setup-copy"].textContent = "Salve a chave OpenAI no Keychain para usar o provedor hospedado.";
+    el["setup-action"].textContent = "Configurar provedor";
+  } else if (snapshot.modelProvider === "ollama" && !snapshot.ollama.connected) {
     el["setup-copy"].textContent = "Inicie o Ollama neste Mac. O Companion acessa apenas o endpoint local 127.0.0.1.";
     el["setup-action"].textContent = "Verificar novamente";
   } else if (!hasWorkspace) {
     el["setup-copy"].textContent = "Escolha a pasta do projeto que o agente poderá ler e alterar.";
     el["setup-action"].textContent = "Escolher workspace";
-  } else {
+  } else if (snapshot.modelProvider === "ollama") {
     el["setup-copy"].textContent = `O modelo ${snapshot.modelRoles?.executor} ainda não está instalado localmente.`;
     el["setup-action"].textContent = "Baixar modelo recomendado";
+  } else {
+    el["setup-copy"].textContent = "Escolha um modelo executor para continuar.";
+    el["setup-action"].textContent = "Configurar provedor";
   }
   const activityCount = selected?.activityCount ?? activities.length;
   el["activity-count"].textContent = `${activityCount} evento${activityCount === 1 ? "" : "s"}`;
@@ -535,6 +550,7 @@ function renderInspector() {
 
 function renderRecommendation() {
   const snapshot = appState.snapshot;
+  renderModelSettings(snapshot);
   const plan = snapshot.lastRecommendation;
   const activeLabels = { executor: "Executor", planner: "Planner", evaluator: "Evaluator", vision: "Vision", embedding: "Embedding" };
   el["active-model-roles"].replaceChildren(...Object.entries(snapshot.modelRoles || {}).map(([role, model]) => {
@@ -624,6 +640,34 @@ function renderRecommendation() {
       : "Aplicar escolhe os papéis imediatamente; nenhum download adicional é necessário.";
     setRecommendationNotice(nextStep, "neutral", false);
   }
+}
+
+function renderModelSettings(snapshot) {
+  el["model-provider"].value = snapshot.modelProvider || "ollama";
+  el["model-selection-mode"].value = snapshot.modelSelectionMode || "custom";
+  el["model-optimization-profile"].value = snapshot.modelOptimizationProfile || "balanced";
+  const hosted = snapshot.modelProvider === "openai";
+  const custom = snapshot.modelSelectionMode === "custom";
+  el["openai-key-row"].classList.toggle("hidden", !hosted);
+  el["clear-openai-key"].disabled = !snapshot.openAiKeyStored;
+  el["clear-openai-key"].textContent = snapshot.openAiKeyStored ? "Remover" : "Não salva";
+  el["provider-role-editor"].classList.toggle("read-only", !custom);
+  for (const role of ["executor", "planner", "evaluator", "vision", "embedding"]) {
+    const input = el[`role-${role}`];
+    if (document.activeElement !== input) input.value = snapshot.modelRoles?.[role] || "";
+    input.readOnly = !custom;
+  }
+  const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  el["provider-model-options"].replaceChildren(...catalog.map((model) => {
+    const option = document.createElement("option"); option.value = model; return option;
+  }));
+  const loaded = snapshot.providerCatalog?.loadedAt
+    ? new Date(snapshot.providerCatalog.loadedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  el["provider-catalog-status"].textContent = hosted
+    ? `${snapshot.openAiKeyStored ? "Chave protegida no Keychain" : "Chave ainda não configurada"}${catalog.length ? ` · ${catalog.length} modelos do servidor · ${loaded}` : " · atualize para consultar o servidor"}`
+    : `${snapshot.ollama.connected ? `${catalog.length} modelos instalados` : "Ollama desconectado"}${loaded ? ` · ${loaded}` : ""}`;
+  el["refresh-button"].classList.toggle("hidden", hosted);
+  el["model-advisor"].classList.toggle("hidden", hosted);
 }
 
 function setRecommendationNotice(text, kind = "neutral", remember = true) {
@@ -895,6 +939,56 @@ el["sidebar-collapse"].addEventListener("click", () => setSidebarCollapsed(true)
 el["sidebar-reveal"].addEventListener("click", () => setSidebarCollapsed(false));
 el["workspace-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.chooseWorkspace(); render(); });
 el["refresh-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.refreshOllama(); render(); });
+el["refresh-model-catalog"].addEventListener("click", async () => {
+  el["model-settings-status"].textContent = "Atualizando catálogo…";
+  try {
+    appState.snapshot = await window.companion.refreshModelCatalog();
+    render();
+    el["model-settings-status"].textContent = "Catálogo atualizado.";
+  } catch (error) {
+    el["model-settings-status"].textContent = error?.message || String(error);
+    showError(error);
+  }
+});
+el["model-provider"].addEventListener("change", () => {
+  el["openai-key-row"].classList.toggle("hidden", el["model-provider"].value !== "openai");
+});
+el["model-selection-mode"].addEventListener("change", () => {
+  const custom = el["model-selection-mode"].value === "custom";
+  el["provider-role-editor"].classList.toggle("read-only", !custom);
+  el["provider-role-editor"].querySelectorAll("input").forEach((input) => { input.readOnly = !custom; });
+});
+el["save-model-settings"].addEventListener("click", async () => {
+  const button = el["save-model-settings"];
+  button.disabled = true;
+  el["model-settings-status"].textContent = "Salvando…";
+  try {
+    const roles = Object.fromEntries(["executor", "planner", "evaluator", "vision", "embedding"]
+      .map((role) => [role, el[`role-${role}`].value.trim()]).filter(([, value]) => value));
+    appState.snapshot = await window.companion.saveModelSettings({
+      provider: el["model-provider"].value,
+      selectionMode: el["model-selection-mode"].value,
+      optimizationProfile: el["model-optimization-profile"].value,
+      roles,
+      ...(el["openai-key"].value.trim() ? { openAiKey: el["openai-key"].value.trim() } : {})
+    });
+    el["openai-key"].value = "";
+    render();
+    el["model-settings-status"].textContent = "Configuração ativa e compartilhável.";
+  } catch (error) {
+    el["model-settings-status"].textContent = error?.message || String(error);
+    showError(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+el["clear-openai-key"].addEventListener("click", async () => {
+  try {
+    appState.snapshot = await window.companion.clearOpenAiKey();
+    render();
+    el["model-settings-status"].textContent = "Chave removida do Keychain.";
+  } catch (error) { showError(error); }
+});
 el["context-button"].addEventListener("click", () => {
   if (appState.inspectorOpen) {
     appState.inspectorOpen = false;
@@ -1020,9 +1114,13 @@ el["pull-recommended"].addEventListener("click", async () => {
   }
 });
 el["setup-action"].addEventListener("click", async () => {
-  if (!appState.snapshot.ollama.connected) appState.snapshot = await window.companion.refreshOllama();
+  if (appState.snapshot.modelProvider === "openai" && (!appState.snapshot.openAiKeyStored || !appState.snapshot.modelRoles?.executor)) {
+    setSettingsSheetOpen(true);
+    return;
+  }
+  if (appState.snapshot.modelProvider === "ollama" && !appState.snapshot.ollama.connected) appState.snapshot = await window.companion.refreshOllama();
   else if (!appState.snapshot.workspacePath) appState.snapshot = await window.companion.chooseWorkspace();
-  else appState.snapshot = await window.companion.pullModel(appState.snapshot.modelRoles?.executor || "qwen3-coder:30b");
+  else if (appState.snapshot.modelProvider === "ollama") appState.snapshot = await window.companion.pullModel(appState.snapshot.modelRoles?.executor || "qwen3-coder:30b");
   render();
 });
 el["mode-control"].addEventListener("click", async (event) => {

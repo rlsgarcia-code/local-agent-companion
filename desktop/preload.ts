@@ -7,6 +7,7 @@ import type {
   DesktopEvent,
   DesktopRunMode,
   DesktopSnapshot,
+  DesktopModelSettingsInput,
   PullProgress,
   SendRequest
 } from "./contracts";
@@ -15,6 +16,9 @@ const api = {
   snapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:snapshot"),
   chooseWorkspace: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:choose-workspace"),
   setModel: (model: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-model", model),
+  saveModelSettings: (settings: DesktopModelSettingsInput): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:save-model-settings", settings),
+  clearOpenAiKey: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:clear-openai-key"),
+  refreshModelCatalog: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:refresh-model-catalog"),
   setMode: (mode: DesktopRunMode): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-mode", mode),
   setAgentRuntime: (runtime: DesktopAgentRuntime): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-agent-runtime", runtime),
   selectThread: (threadId: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:select-thread", threadId),

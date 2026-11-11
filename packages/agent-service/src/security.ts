@@ -158,11 +158,11 @@ export function validateProductRegistration(registration: Registration): void {
   }
   if (
     registration.product === "companion-mac" &&
-    registration.providers.some((p) => p !== "ollama")
+    registration.providers.some((p) => p !== "ollama" && p !== "openai")
   )
     throw new AgentError(
       errors.forbidden,
-      "The Mac product permits only Ollama.",
+      "The Mac product permits only Ollama and the fixed OpenAI provider.",
     );
   if (
     registration.product === "kidos" &&

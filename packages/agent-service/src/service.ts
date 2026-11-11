@@ -21,6 +21,7 @@ import {
   negotiate,
   runSpec,
   modelAssistance,
+  providerSpec,
   terminalStates,
   type Registration,
   type Run,
@@ -192,6 +193,7 @@ export class AgentService {
     if ("profile" in spec) {
       if (reg.product !== "companion-mac" || spec.spec.workspacePath !== reg.workspace)
         throw new AgentError(errors.forbidden, "Desktop profile does not match this installed client.");
+      if (spec.spec.provider) validateProvider(reg, spec.spec.provider);
       return;
     }
     validateProvider(reg, spec.provider);
@@ -274,6 +276,23 @@ export class AgentService {
           const answer=await models.model("vision",false).invoke(messages,{signal});
           return this.protect(reg,answer.text);
         } finally {await models.close();}
+      }
+      case "models.catalog": {
+        if (reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS model discovery belongs to its system authority.");
+        const v = z.object({ provider: providerSpec }).strict().parse(p);
+        validateProvider(reg, v.provider);
+        const operation = randomUUID();
+        const credential = v.provider.credentialRef ? this.credentials.acquire(reg, v.provider.credentialRef, operation) : undefined;
+        if (v.provider.credentialRef && !credential) throw new AgentError(errors.unavailable, "Reconnect the credential host before refreshing models.");
+        const controller = new AbortController();
+        const models = new ProviderModels(v.provider, credential, AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]));
+        try {
+          const aliases = await models.listModels();
+          return { provider: v.provider.kind, models: aliases, loadedAt: Date.now() };
+        } finally {
+          await models.close();
+          this.credentials.release(operation);
+        }
       }
       case "models.list":
       case "models.testConnection":
@@ -507,7 +526,7 @@ export class AgentService {
           schema: 1, product: reg.product, profile: reg.profile, workspace: reg.workspace,
           goals: this.goals.list(reg).filter((goal) => goal.threadId === id),
           memory: this.memory.list(reg).map((entry) => this.memory.get(reg, entry.key)),
-          modelConfiguration: reg.product !== "kidos" && reg.providers.includes("ollama") ? this.models.configuration(reg) : null,
+          modelConfiguration: reg.product !== "kidos" ? this.models.configuration(reg) : null,
           operations: receipts.map(({ value, ...receipt }) => ({ ...receipt, result: JSON.parse(value), historicalOnly: true })),
         };
         return this.persistTransfer(reg, `export:${id}`, this.protect(reg, { ...(domain as object), productState }));
@@ -806,7 +825,7 @@ export class AgentService {
     this.launch(reg, run, spec);
   }
   private launch(reg: Registration, run: Run, spec: DurableSpec): void {
-    const provider = "profile" in spec ? undefined : spec.provider;
+    const provider = "profile" in spec ? spec.spec.provider : spec.provider;
     const credential = provider?.credentialRef
       ? this.credentials.acquire(reg, provider.credentialRef, run.id)
       : undefined;
@@ -827,6 +846,7 @@ export class AgentService {
     try { execute = "profile" in spec
       ? this.desktop(reg).run({
           ...spec.spec,
+          ...(provider ? { provider, credential } : {}),
           execution: {
             threadId: run.id,
             signal: controller.signal,

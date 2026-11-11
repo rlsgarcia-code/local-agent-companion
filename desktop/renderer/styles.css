@@ -341,6 +341,27 @@ button, input, textarea { -webkit-tap-highlight-color: transparent; }
 .theme-control button.active { background: var(--surface-3); color: var(--text); }
 .refresh-environment { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 9px; cursor: pointer; }
 .refresh-environment:hover { border-color: var(--line-strong); color: var(--text); }
+.provider-settings { padding: 17px 0; border-bottom: 1px solid var(--line); }
+.provider-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.provider-settings-heading small, .provider-settings-heading strong { display: block; }
+.provider-settings-heading small { color: var(--quiet); font: 8px/1.4 ui-monospace, monospace; letter-spacing: .12em; }
+.provider-settings-heading strong { margin-top: 4px; color: var(--text); font-size: 11px; }
+.provider-settings-heading button, .provider-key button, .provider-settings-actions button { border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--muted); padding: 7px 9px; font-size: 9px; cursor: pointer; }
+.provider-settings-heading button:hover, .provider-key button:hover, .provider-settings-actions button:hover { border-color: var(--accent); color: var(--accent); }
+.provider-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px; margin-top: 14px; }
+.provider-settings-grid .provider-profile { grid-column: 1 / -1; }
+.provider-settings label span, .provider-role-editor label span { display: block; margin-bottom: 5px; color: var(--quiet); font-size: 8px; }
+.provider-settings select, .provider-settings input { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--text); padding: 8px; font: 9px ui-monospace, monospace; outline: 0; }
+.provider-settings select:focus, .provider-settings input:focus { border-color: var(--accent); }
+.provider-key { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; margin-top: 11px; }
+.provider-catalog-status { margin: 9px 0 0; color: var(--quiet); font-size: 8px; line-height: 1.45; }
+.provider-role-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-top: 12px; }
+.provider-role-editor label:first-child { grid-column: 1 / -1; }
+.provider-role-editor.read-only input { border-color: transparent; background: var(--control-fill); color: var(--muted); cursor: default; }
+.provider-settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.provider-settings-actions p { min-height: 14px; margin: 0; color: var(--quiet); font-size: 8px; line-height: 1.4; }
+.provider-settings-actions button { flex: 0 0 auto; border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.provider-settings button:disabled { opacity: .4; cursor: default; }
 .active-model-config { padding: 15px 0; border-bottom: 1px solid var(--line); }
 .active-model-config > div:first-child strong { display: block; margin-top: 4px; color: var(--text); font-size: 11px; }
 .active-model-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 14px; margin-top: 11px; }

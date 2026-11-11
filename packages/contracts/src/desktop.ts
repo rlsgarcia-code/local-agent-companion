@@ -3,7 +3,8 @@ import type {
   OllamaRoleConfiguration,
 } from "./ollama";
 import { z } from "zod";
-import { modelRoles, type RunState } from "./index";
+import { modelRoles, providerSpec, type RunState } from "./index";
+import type { ModelOptimizationProfile, ModelSelectionMode } from "./models";
 
 export const desktopRunSpec = z
   .object({
@@ -30,6 +31,7 @@ export const desktopRunSpec = z
     request: z.string().min(1).max(1_000_000),
     workspacePath: z.string().max(4096),
     modelRoles,
+    provider: providerSpec.optional(),
     dockerSandboxEnabled: z.boolean(),
     mode: z.enum(["review", "execute", "plan"]),
     agentRuntime: z.enum(["standard", "deep"]),
@@ -111,6 +113,10 @@ export type DesktopThread = {
 export type DesktopState = {
   workspacePath: string;
   modelRoles: OllamaRoleConfiguration;
+  modelProvider: "ollama" | "openai";
+  modelSelectionMode: ModelSelectionMode;
+  modelOptimizationProfile: ModelOptimizationProfile;
+  openAiKeyStored: boolean;
   ollamaPublicCatalogEnabled: boolean;
   dockerSandboxEnabled: boolean;
   lastRecommendation?: OllamaRecommendationPlan;
@@ -170,6 +176,12 @@ export type DesktopSnapshot = DesktopState & {
   context: DesktopContextSnapshot;
   ollamaPublicCatalogLoaded: boolean;
   modelRoleNotices: string[];
+  providerCatalog: {
+    provider: "ollama" | "openai";
+    models: string[];
+    loadedAt?: number;
+    error?: string;
+  };
   running: boolean;
   runState?: RunState;
 };
@@ -240,6 +252,14 @@ export type ApprovalRequest = {
 export type SendRequest = {
   text: string;
   threadId: string;
+};
+
+export type DesktopModelSettingsInput = {
+  provider: "ollama" | "openai";
+  selectionMode: ModelSelectionMode;
+  optimizationProfile: ModelOptimizationProfile;
+  roles: OllamaRoleConfiguration;
+  openAiKey?: string;
 };
 
 export type PullProgress = {
