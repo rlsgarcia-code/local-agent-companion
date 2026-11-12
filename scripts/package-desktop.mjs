@@ -38,10 +38,14 @@ try {
       electronVersion: lock.packages["node_modules/electron"].version,
       directories: { output: path.resolve("release/desktop") },
       afterPack: async (context) => {
-        const target = path.join(context.appOutDir, "Local Companion.app/Contents/Resources/companion-engine");
+        const application = path.join(context.appOutDir, "Local Companion.app");
+        const target = path.join(application, "Contents/Resources/companion-engine");
         // extraResources applies npm file exclusions. Copy the immutable bundle
         // verbatim after packing, before Apple sealing, including its licenses.
         await cp(bundle, target, { recursive: true, dereference: false });
+        // Finder/provenance xattrs introduced by local extraction invalidate
+        // ad-hoc and release signing even though they are not application data.
+        execFileSync("/usr/bin/xattr", ["-cr", application], { stdio: "inherit" });
         await verifyBundle(target, publicKey, false, `darwin-${architecture}`);
       },
       afterSign: async (context) => {
