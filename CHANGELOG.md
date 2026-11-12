@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.10 - 2026-11-12
+
+### Added
+- Expose the shared provider/model configuration through a private authenticated loopback broker so separate local interfaces can use the same Companion settings.
+- Allow the trusted Mac credential host to delegate a short-lived OpenAI grant to an explicitly registered interface in the same Companion namespace without exposing the key.
+
+### Fixed
+- Keep provider credentials isolated per registered interface while allowing Med-Graph and other approved clients to execute through the shared engine.
+- Reject credential delegation across products, namespaces, revoked clients, or clients without OpenAI authority.
+
+This hotfix advances the engine and SDKs to 1.0.7. Provider keys remain in the original Keychain and are never returned by the interface broker.
+
 ## 0.12.9 - 2026-11-12
 
 ### Fixed

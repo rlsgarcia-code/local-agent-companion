@@ -16,7 +16,7 @@ export type InterfaceModelConfiguration = {
 type InterfaceBrokerOptions = {
   configuration: () => Promise<InterfaceModelConfiguration>;
   configure: (input: InterfaceModelConfiguration) => Promise<InterfaceModelConfiguration>;
-  leaseOpenAi: () => Promise<void>;
+  leaseOpenAi: (targetClientId?: string) => Promise<void>;
   openSettings: () => void;
   descriptorPath?: string;
 };
@@ -66,7 +66,11 @@ export async function startInterfaceBroker(options: InterfaceBrokerOptions): Pro
         return respond(response, 200, await options.configure(input));
       }
       if (request.method === "POST" && url.pathname === "/v1/credentials/openai/lease") {
-        await options.leaseOpenAi();
+        const input = await body(request) as { targetClientId?: unknown };
+        const targetClientId = input.targetClientId;
+        if (targetClientId !== undefined && (typeof targetClientId !== "string" || !/^[a-zA-Z0-9_.:-]{1,128}$/.test(targetClientId)))
+          throw Object.assign(new Error("Invalid credential delegation target."), { status: 422 });
+        await options.leaseOpenAi(targetClientId);
         return respond(response, 202, { accepted: true, expiresInSeconds: 300 });
       }
       if (request.method === "POST" && url.pathname === "/v1/settings/open") {

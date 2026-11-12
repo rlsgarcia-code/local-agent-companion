@@ -496,10 +496,11 @@ async function configureInterfaceModels(input: InterfaceModelConfiguration): Pro
   return interfaceModelConfiguration();
 }
 
-async function leaseSharedOpenAiCredential(): Promise<void> {
+async function leaseSharedOpenAiCredential(targetClientId?: string): Promise<void> {
   const key = await credentialStore.openAiKey();
   if (!key) throw new Error("A chave OpenAI não está disponível no Keychain.");
-  await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key);
+  if (targetClientId) await runtime.delegateCredential(targetClientId, OPENAI_CREDENTIAL_REFERENCE, key);
+  else await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key);
 }
 
 async function send(request: SendRequest): Promise<void> {

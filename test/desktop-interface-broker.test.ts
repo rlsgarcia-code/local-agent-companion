@@ -8,6 +8,7 @@ import { startInterfaceBroker } from "../desktop/interface-broker";
 test("the interface broker shares settings and leases without exposing credentials", async () => {
   const descriptorPath = path.join(tmpdir(), `companion-interface-broker-${process.pid}.json`);
   let leased = 0;
+  let delegatedTarget = "";
   let settings = {
     provider: "ollama" as const,
     selectionMode: "optimized" as const,
@@ -22,7 +23,7 @@ test("the interface broker shares settings and leases without exposing credentia
       settings = { ...settings, ...input } as typeof settings;
       return settings;
     },
-    leaseOpenAi: async () => { leased += 1; },
+    leaseOpenAi: async (targetClientId) => { leased += 1; delegatedTarget = targetClientId ?? ""; },
     openSettings: () => undefined,
   });
   try {
@@ -31,9 +32,12 @@ test("the interface broker shares settings and leases without exposing credentia
     const configuration = await fetch(`${descriptor.baseUrl}/v1/model-configuration`, { headers });
     assert.equal(configuration.status, 200);
     assert.equal((await configuration.json() as { provider: string }).provider, "ollama");
-    const lease = await fetch(`${descriptor.baseUrl}/v1/credentials/openai/lease`, { method: "POST", headers });
+    const lease = await fetch(`${descriptor.baseUrl}/v1/credentials/openai/lease`, {
+      method: "POST", headers, body: JSON.stringify({ targetClientId: "medgraph-interface" }),
+    });
     assert.equal(lease.status, 202);
     assert.equal(leased, 1);
+    assert.equal(delegatedTarget, "medgraph-interface");
     assert.equal(JSON.stringify(await lease.json()).includes("key"), false);
     const denied = await fetch(`${descriptor.baseUrl}/v1/model-configuration`);
     assert.equal(denied.status, 401);

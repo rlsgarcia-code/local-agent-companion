@@ -186,6 +186,9 @@ export class OllamaDesktopRuntime {
   async leaseCredential(reference: string, value: string, workspace = ""): Promise<void> {
     await (await this.connect(workspace)).call("credentials.lease", { reference, value });
   }
+  async delegateCredential(targetClientId: string, reference: string, value: string, workspace = ""): Promise<void> {
+    await (await this.connect(workspace)).call("credentials.delegate", { targetClientId, reference, value });
+  }
   async modelCatalog(provider: { kind: "ollama" | "openai"; endpoint: string; roles: OllamaRoleConfiguration; credentialRef?: string; authHeader: "authorization" }): Promise<ModelCatalog> {
     return (await this.connect()).modelCatalog(provider);
   }

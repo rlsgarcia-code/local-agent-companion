@@ -500,6 +500,46 @@ test("the official SQLite serializer removes leased credentials from graph check
   } finally { service.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test("the Mac credential host can delegate an ephemeral grant only to an authorized interface in the same namespace", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "engine-credential-delegation-"));
+  const store = new Store(path.join(directory, "metadata.sqlite"));
+  const host: Registration = { ...registration, id: "mac-credential-host", providers: ["ollama", "openai"] };
+  const target: Registration = { ...host, id: "medgraph-interface", hostTools: ["medgraph_read"], toolCatalog: [{
+    name: "medgraph_read", description: "Read bounded clinical context", schema: { type: "object" }, effect: "read",
+  }] };
+  const outside: Registration = { ...target, id: "outside-interface", profile: "other" };
+  for (const value of [host, target, outside]) store.register({ registration: value, token: `token-${value.id}`.padEnd(40, "x") });
+  let observed = "";
+  const service = new AgentService(store, directory, async (_spec, context) => {
+    observed = context.credential ?? "";
+    return { text: "ok" };
+  });
+  try {
+    await service.dispatch(host, "credentials.delegate", {
+      targetClientId: target.id, reference: "openai-platform", value: "delegated-secret-fixture",
+    }, "mac-host");
+    const session = store.createSession(target, "Delegated credential");
+    const run = await service.dispatch(target, "runs.start", { sessionId: session.id, key: "delegated-run", spec: {
+      ...spec,
+      provider: { kind: "openai", endpoint: "https://api.openai.com/v1", roles: { executor: "fixture" },
+        credentialRef: "openai-platform", authHeader: "authorization" },
+    } }, "medgraph") as Run;
+    for (let attempt = 0; attempt < 100 && store.run(target, run.id).state === "running"; attempt += 1)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(store.run(target, run.id).state, "completed");
+    assert.equal(observed, "delegated-secret-fixture");
+    await assert.rejects(service.dispatch(host, "credentials.delegate", {
+      targetClientId: outside.id, reference: "openai-platform", value: "must-not-cross-scope",
+    }, "mac-host"), /not an authorized interface/);
+    await assert.rejects(service.dispatch({ ...host, id: "not-mac", product: "companion-vscode" }, "credentials.delegate", {
+      targetClientId: target.id, reference: "openai-platform", value: "must-not-delegate",
+    }, "vscode"), /trusted Mac credential host/);
+  } finally {
+    await service.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("leased provider credentials cannot enter approval receipts or tool arguments, including object keys", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "engine-tool-secret-"));
   const store = new Store(path.join(directory, "metadata.sqlite"));
