@@ -566,9 +566,20 @@ function renderRecommendation() {
     row.append(label, value);
     return row;
   }));
+  const activeCatalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const activeCatalogModels = new Set(activeCatalog.map((model) => model.toLowerCase()));
+  const incompatibleActiveRoles = snapshot.modelProvider === "openai" && activeCatalog.length
+    ? Object.entries(snapshot.modelRoles || {}).filter(([role, model]) => model && (
+      !activeCatalogModels.has(model.toLowerCase()) || (role === "embedding" ? !/embedding/i.test(model) : /(embedding|audio|realtime|transcribe|tts|search|image)/i.test(model))
+    ))
+    : [];
   el["active-model-status"].textContent = snapshot.modelRoleNotices?.length
     ? snapshot.modelRoleNotices.join(" ")
-    : "Somente modelos instalados entram na configuração ativa.";
+    : incompatibleActiveRoles.length
+      ? "Há modelos de outro provedor na configuração ativa. As sugestões OpenAI já foram preparadas; salve para ativá-las."
+      : snapshot.modelProvider === "openai"
+        ? "Modelos validados contra o catálogo da OpenAI."
+        : "Somente modelos instalados entram na configuração ativa.";
   el["docker-sandbox-toggle"].checked = Boolean(snapshot.dockerSandboxEnabled);
   el["docker-sandbox-status"].textContent = snapshot.dockerSandboxEnabled
     ? "Ativo: comandos usam somente Docker; não existe fallback nativo."
@@ -652,16 +663,21 @@ function renderModelSettings(snapshot) {
   el["model-optimization-profile"].value = snapshot.modelOptimizationProfile || "balanced";
   const hosted = snapshot.modelProvider === "openai";
   const custom = snapshot.modelSelectionMode === "custom";
+  const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const catalogModels = new Set(catalog.map((model) => model.toLowerCase()));
   el["openai-key-row"].classList.toggle("hidden", !hosted);
   el["clear-openai-key"].disabled = !snapshot.openAiKeyStored;
   el["clear-openai-key"].textContent = snapshot.openAiKeyStored ? "Remover" : "Não salva";
   el["provider-role-editor"].classList.toggle("read-only", !custom);
   for (const role of ["executor", "planner", "evaluator", "vision", "embedding"]) {
     const input = el[`role-${role}`];
-    if (document.activeElement !== input) input.value = snapshot.modelRoles?.[role] || "";
+    const activeModel = snapshot.modelRoles?.[role] || "";
+    const compatible = !hosted || !catalog.length || (catalogModels.has(activeModel.toLowerCase())
+      && (role === "embedding" ? /embedding/i.test(activeModel) : !/(embedding|audio|realtime|transcribe|tts|search|image)/i.test(activeModel)));
+    const displayedModel = compatible ? activeModel : snapshot.providerRecommendation?.[role] || "";
+    if (document.activeElement !== input) input.value = displayedModel;
     input.readOnly = !custom;
   }
-  const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
   const pickerOptions = [new Option(catalog.length ? `Escolha entre ${catalog.length} modelos` : "Atualize o catálogo para escolher", "")]
     .concat(catalog.map((model) => new Option(model, model)));
   el["provider-model-picker"].replaceChildren(...pickerOptions);
@@ -672,7 +688,7 @@ function renderModelSettings(snapshot) {
   const loaded = snapshot.providerCatalog?.loadedAt
     ? new Date(snapshot.providerCatalog.loadedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
   el["provider-catalog-status"].textContent = hosted
-    ? `${snapshot.openAiKeyStored ? "Chave protegida no Keychain" : "Chave ainda não configurada"}${catalog.length ? ` · ${catalog.length} modelos do servidor · ${loaded}` : " · atualize para consultar o servidor"}`
+    ? `${snapshot.openAiKeyStored ? "Chave protegida no Keychain" : "Chave ainda não configurada"}${catalog.length ? ` · ${catalog.length} modelos compatíveis com Chat Completions · ${loaded}` : " · atualize para consultar o servidor"}`
     : `${snapshot.ollama.connected ? `${catalog.length} modelos instalados` : "Ollama desconectado"}${loaded ? ` · ${loaded}` : ""}`;
   el["refresh-model-catalog"].disabled = false;
   el["save-model-settings"].textContent = hosted && !catalog.length ? "Salvar e carregar modelos" : "Salvar configuração";

@@ -16,6 +16,7 @@ import {
 } from "../desktop/runtime";
 import { resolveDockerExecutable } from "../desktop/local-executable";
 import { resolveInstalledModelRoles } from "../desktop/model-roles";
+import { directOpenAiDesktopCatalog, reconcileHostedRoles } from "../desktop/provider-models";
 import { formatDesktopIncompleteResult, formatDesktopRunFailure } from "../desktop/run-failure";
 import { DesktopStateStore } from "../desktop/state-store";
 import { LocalProcessManager } from "../src/process-manager";
@@ -148,6 +149,51 @@ test("desktop keeps uninstalled ideal roles pending and resolves an installed ac
   assert.equal(resolution.notices.length, 2);
 });
 
+test("desktop replaces Ollama assignments when OpenAI is selected in custom mode", () => {
+  const catalog = ["gpt-5.3-codex", "gpt-4.1", "gpt-4.1-mini", "gpt-4o-mini", "text-embedding-3-large"];
+  const roles = reconcileHostedRoles(catalog, "balanced", {
+    executor: "qwen3.5:latest",
+    planner: "gpt-oss:20b",
+    evaluator: "granite4.2:8b",
+    vision: "qwen3.5:latest",
+    embedding: "nomic-embed-text:latest"
+  });
+  const available = new Set(catalog);
+  assert.ok(available.has(roles.executor));
+  assert.ok(roles.planner && available.has(roles.planner));
+  assert.ok(roles.evaluator && available.has(roles.evaluator));
+  assert.ok(roles.vision && available.has(roles.vision));
+  assert.equal(roles.embedding, "text-embedding-3-large");
+  assert.ok(Object.values(roles).every((model) => !model || !/:latest|:20b|:8b/.test(model)));
+});
+
+test("desktop preserves compatible custom OpenAI assignments", () => {
+  const roles = reconcileHostedRoles(["gpt-4.1", "gpt-4.1-mini", "gpt-4o", "text-embedding-3-large"], "quality", {
+    executor: "gpt-4.1-mini",
+    planner: "gpt-4.1",
+    evaluator: "gpt-4.1",
+    vision: "gpt-4o",
+    embedding: "text-embedding-3-large"
+  });
+  assert.deepEqual(roles, {
+    executor: "gpt-4.1-mini",
+    planner: "gpt-4.1",
+    evaluator: "gpt-4.1",
+    vision: "gpt-4o",
+    embedding: "text-embedding-3-large"
+  });
+});
+
+test("desktop excludes Responses-only OpenAI aliases from the Chat Completions catalog", () => {
+  const catalog = directOpenAiDesktopCatalog([
+    "gpt-5.3-codex", "gpt-5.4-mini-2026-03-17", "o3", "gpt-4.1", "gpt-4.1-mini-2025-04-14",
+    "gpt-4o-mini-2024-07-18", "text-embedding-3-large", "whisper-1"
+  ]);
+  assert.deepEqual(catalog, [
+    "gpt-4.1", "gpt-4.1-mini-2025-04-14", "gpt-4o-mini-2024-07-18", "text-embedding-3-large"
+  ]);
+});
+
 test("desktop resolves Docker outside the Finder PATH without invoking a shell", () => {
   const checked: string[] = [];
   const resolved = resolveDockerExecutable({
@@ -258,6 +304,9 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.match(renderer, /setRecommendationBusy\(true/);
   assert.match(renderer, /A configuração ideal está pendente/);
   assert.match(renderer, /Somente modelos instalados entram na configuração ativa/);
+  assert.match(renderer, /Há modelos de outro provedor na configuração ativa/);
+  assert.match(main, /reconcileHostedRoles/);
+  assert.match(main, /state\.modelSelectionMode === "optimized"[\s\S]+reconcileHostedRoles/);
   assert.match(renderer, /Boolean\(plan\.requiredPulls\.length\)/);
   assert.match(renderer, /Downloads concluídos\. A configuração ideal está pronta para uso/);
   assert.match(renderer, /aria-busy/);

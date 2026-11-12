@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.9 - 2026-11-12
+
+### Fixed
+- Reconcile custom role assignments with the selected provider catalog instead of retaining Ollama aliases after switching to OpenAI.
+- Preserve valid custom OpenAI choices while replacing incompatible executor, planner, evaluator, vision and embedding models with provider recommendations.
+- Show the prepared OpenAI assignments in the Mac settings before activation and distinguish provider validation from Ollama installation checks.
+- Filter the OpenAI server catalog to aliases supported by the signed engine's direct Chat Completions transport, preventing Responses-only Codex and reasoning models from being selected automatically.
+
+This client-only hotfix advances the clients to 0.12.9 and keeps the signed engine and SDKs at 1.0.6.
+
 ## 0.12.8 - 2026-11-11
 
 ### Fixed
