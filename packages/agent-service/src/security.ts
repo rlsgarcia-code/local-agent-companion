@@ -13,6 +13,7 @@ import * as path from "node:path";
 import {
   AgentError,
   errors,
+  products,
   toolSpec,
   type ClientCredential,
   type Registration,
@@ -128,9 +129,7 @@ export function namespace(registration: Registration): string {
 export function validateProductRegistration(registration: Registration): void {
   if (
     !registration ||
-    !["companion-mac", "companion-vscode", "kidos"].includes(
-      registration.product,
-    ) ||
+    !products.includes(registration.product) ||
     typeof registration.id !== "string" ||
     !/^[a-zA-Z0-9_.:-]{1,128}$/.test(registration.id) ||
     typeof registration.profile !== "string" ||
@@ -181,6 +180,14 @@ export function validateProductRegistration(registration: Registration): void {
     throw new AgentError(
       errors.forbidden,
       "A VSIX cannot enable both optional providers.",
+    );
+  if (
+    registration.product === "companion-app" &&
+    registration.providers.includes("kidos-gateway")
+  )
+    throw new AgentError(
+      errors.forbidden,
+      "Application adapters cannot use the protected KidOS gateway.",
     );
 }
 

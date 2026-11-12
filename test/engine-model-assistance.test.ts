@@ -51,6 +51,11 @@ async function fixture() {
 test("model helpers use the service and exact inference routes without executing probe tools",async()=>{
   const f=await fixture();
   try {
+    const engine = await f.client.engineInfo();
+    assert.equal(engine.protocol, "1.0");
+    assert.equal(engine.product, "companion-vscode");
+    assert.ok(engine.capabilities.includes("sessions"));
+    assert.ok(engine.capabilities.includes("public-session-snapshots"));
     assert.equal((await f.client.assistModel({purpose:"advisor",provider:f.provider,prompt:"Return JSON"})).text,"ASSISTANCE_OK");
     const image=await f.client.upload("catalog-image",Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aP9sAAAAASUVORK5CYII=","base64"),"image/png");
     assert.equal((await f.client.assistModel({purpose:"catalog",provider:f.provider,instructions:"Documented MCP",images:[image.id]})).text,'{"mcpServers":{}}');

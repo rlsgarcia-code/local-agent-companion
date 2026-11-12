@@ -14,6 +14,7 @@ import {
 import {
   AgentError,
   ENGINE_VERSION,
+  engineCapabilities,
   errors,
   identifier,
   NODE_VERSION,
@@ -421,20 +422,7 @@ export class AgentService {
           product: reg.product,
           quiescing:this.quiescing,
           build: this.buildInfo,
-          capabilities: [
-            "sessions",
-            "runs",
-            "events",
-            "approvals",
-            "goals",
-            "sqlite-checkpoints",
-            "chunked-transfers",
-            "durable-approvals",
-            "bound-tool-receipts",
-            "ollama-model-jobs",
-            "model-assistance",
-            "public-session-snapshots",
-          ],
+          capabilities: [...engineCapabilities],
         };
       case "engine.resumeAfterUpdate":
         z.object({}).strict().parse(p);this.quiescing=false;return {accepted:true};
@@ -597,8 +585,12 @@ export class AgentService {
         if (reg.product !== "companion-mac")
           throw new AgentError(errors.forbidden, "Only the trusted Mac credential host can delegate provider access.");
         const target = this.store.clientRegistration(v.targetClientId);
-        if (!target || target.product !== "companion-mac" || namespace(target) !== namespace(reg))
-          throw new AgentError(errors.forbidden, "Credential delegation target is not an authorized interface in this namespace.");
+        const authorizedTarget = target && (
+          target.product === "companion-app" ||
+          target.product === "companion-mac" && namespace(target) === namespace(reg)
+        );
+        if (!authorizedTarget)
+          throw new AgentError(errors.forbidden, "Credential delegation target is not an authorized Companion interface.");
         if (!target.providers.includes("openai"))
           throw new AgentError(errors.forbidden, "Credential delegation target is not authorized for OpenAI.");
         this.credentials.grant(target, v.reference, v.value);

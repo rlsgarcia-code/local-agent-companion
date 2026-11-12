@@ -14,8 +14,33 @@ export * from "./ollama";
 export const PROTOCOL_VERSION = versions.protocol;
 export const ENGINE_VERSION = versions.engine;
 export const NODE_VERSION = versions.node;
-export const products = ["companion-mac", "companion-vscode", "kidos"] as const;
+export const products = ["companion-mac", "companion-vscode", "companion-app", "kidos"] as const;
 export type Product = (typeof products)[number];
+export const engineCapabilities = [
+  "sessions",
+  "runs",
+  "events",
+  "approvals",
+  "goals",
+  "sqlite-checkpoints",
+  "chunked-transfers",
+  "durable-approvals",
+  "bound-tool-receipts",
+  "ollama-model-jobs",
+  "model-assistance",
+  "public-session-snapshots",
+] as const;
+export type EngineCapability = (typeof engineCapabilities)[number];
+export type EngineInfo = {
+  version: string;
+  protocol: string;
+  node: string;
+  requiredNode: string;
+  product: Product;
+  quiescing: boolean;
+  build?: Record<string, unknown>;
+  capabilities: EngineCapability[];
+};
 export const runStates = [
   "running",
   "cancelling",

@@ -1,6 +1,6 @@
 # Local Agent Companion
 
-Atualização de conexão: clientes **0.12.9**, motor **1.0.6**, protocolo **1.0**,
+Atualização de conexão: clientes **0.12.11**, motor **1.0.8**, protocolo **1.0**,
 Node **22.23.4** empacotado. Veja [capacidades e diagnóstico](docs/MODEL_CAPABILITIES.md).
 A validação automatizada por plataforma não substitui o teste no gateway corporativo.
 As evidências de instalação da versão anterior permanecem datadas em `docs/`.
@@ -68,6 +68,8 @@ rejected in tool arguments before approval or effect admission; persisted approv
 payloads are also redacted.
 
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
+
+Aplicações externas integram o motor pelo SDK publicado e por um adaptador mantido no próprio repositório consumidor. O contrato canônico, o exemplo executável e o checklist de conformidade estão em [Integração de novas aplicações](docs/APPLICATION_ADAPTERS.md). O Companion não recebe código de domínio da aplicação e a aplicação não copia o runtime, planner, memória ou loop de ferramentas do Companion.
 
 Uma extensão de Visual Studio Code com dois runtimes de agente construídos exclusivamente sobre primitivas do **LangChain**, executados localmente. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
 
