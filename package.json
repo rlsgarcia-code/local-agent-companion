@@ -2,7 +2,7 @@
   "name": "local-agent-companion",
   "displayName": "Local Agent Companion",
   "description": "A local LangChain agent foundation for VS Code with user-configured LiteLLM and approval-gated corporate MCP connections.",
-  "version": "0.12.8",
+  "version": "0.12.10",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/rlsgarcia-code/local-agent-companion#readme",
@@ -532,12 +532,12 @@
     "better-sqlite3": "12.10.0",
     "chromadb": "^3.5.0",
     "deepagents": "^1.15.0",
+    "js-tiktoken": "1.0.21",
     "langchain": "^1.5.16",
     "playwright-core": "^1.58.2",
     "reflect-metadata": "0.2.2",
     "undici": "6.29.1",
-    "zod": "^4.6.7",
-    "js-tiktoken": "1.0.21"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "7.6.13",

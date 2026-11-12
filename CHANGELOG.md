@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.12.10 - 2026-11-12
+
+### Added
+- Expose the shared provider/model configuration through a private authenticated loopback broker so separate local interfaces can use the same Companion settings.
+- Allow the trusted Mac credential host to delegate a short-lived OpenAI grant to an explicitly registered interface in the same Companion namespace without exposing the key.
+
+### Fixed
+- Keep provider credentials isolated per registered interface while allowing Med-Graph and other approved clients to execute through the shared engine.
+- Reject credential delegation across products, namespaces, revoked clients, or clients without OpenAI authority.
+
+This hotfix advances the engine and SDKs to 1.0.7. Provider keys remain in the original Keychain and are never returned by the interface broker.
+
+## 0.12.9 - 2026-11-12
+
+### Fixed
+- Reconcile custom role assignments with the selected provider catalog instead of retaining Ollama aliases after switching to OpenAI.
+- Preserve valid custom OpenAI choices while replacing incompatible executor, planner, evaluator, vision and embedding models with provider recommendations.
+- Show the prepared OpenAI assignments in the Mac settings before activation and distinguish provider validation from Ollama installation checks.
+- Filter the OpenAI server catalog to aliases supported by the signed engine's direct Chat Completions transport, preventing Responses-only Codex and reasoning models from being selected automatically.
+
+This client-only hotfix advances the clients to 0.12.9 and keeps the signed engine and SDKs at 1.0.6.
+
 ## 0.12.8 - 2026-11-11
 
 ### Fixed

@@ -588,6 +588,22 @@ export class AgentService {
         this.credentials.grant(reg, v.reference, v.value);
         return { accepted: true };
       }
+      case "credentials.delegate": {
+        const v = z.object({
+          targetClientId: identifier,
+          reference: identifier,
+          value: z.string().min(1).max(16384),
+        }).strict().parse(p);
+        if (reg.product !== "companion-mac")
+          throw new AgentError(errors.forbidden, "Only the trusted Mac credential host can delegate provider access.");
+        const target = this.store.clientRegistration(v.targetClientId);
+        if (!target || target.product !== "companion-mac" || namespace(target) !== namespace(reg))
+          throw new AgentError(errors.forbidden, "Credential delegation target is not an authorized interface in this namespace.");
+        if (!target.providers.includes("openai"))
+          throw new AgentError(errors.forbidden, "Credential delegation target is not authorized for OpenAI.");
+        this.credentials.grant(target, v.reference, v.value);
+        return { accepted: true, targetClientId: target.id };
+      }
       case "runs.start": {
         const v = z
           .object({ sessionId: identifier, key: identifier, spec: runSpec.optional(), specTransferId: identifier.optional() })

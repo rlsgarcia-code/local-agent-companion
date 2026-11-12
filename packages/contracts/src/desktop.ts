@@ -191,6 +191,7 @@ export type DesktopSnapshot = DesktopState & {
     loadedAt?: number;
     error?: string;
   };
+  providerRecommendation?: OllamaRoleConfiguration;
   running: boolean;
   runState?: RunState;
 };

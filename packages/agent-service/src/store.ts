@@ -87,6 +87,16 @@ export class Store {
     enforceSystemProvisioning(registration);
     return registration;
   }
+  clientRegistration(id: string): Registration | undefined {
+    const row = this.db
+      .prepare("SELECT registration FROM clients WHERE id=? AND revoked=0")
+      .get(id) as { registration: string } | undefined;
+    if (!row) return undefined;
+    const registration = JSON.parse(row.registration) as Registration;
+    validateProductRegistration(registration);
+    enforceSystemProvisioning(registration);
+    return registration;
+  }
   revoke(id: string): void {
     this.db.prepare("UPDATE clients SET revoked=1 WHERE id=?").run(id);
   }

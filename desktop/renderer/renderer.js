@@ -34,7 +34,7 @@ const el = Object.fromEntries([
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "manual-pull", "theme-control",
   "active-model-roles", "active-model-status", "engine-status", "engine-detail", "restart-engine",
   "model-provider", "model-selection-mode", "model-optimization-profile", "openai-key-row", "openai-key", "clear-openai-key",
-  "refresh-model-catalog", "provider-catalog-status", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
+  "refresh-model-catalog", "provider-catalog-status", "provider-model-picker", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
   "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
@@ -566,9 +566,20 @@ function renderRecommendation() {
     row.append(label, value);
     return row;
   }));
+  const activeCatalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const activeCatalogModels = new Set(activeCatalog.map((model) => model.toLowerCase()));
+  const incompatibleActiveRoles = snapshot.modelProvider === "openai" && activeCatalog.length
+    ? Object.entries(snapshot.modelRoles || {}).filter(([role, model]) => model && (
+      !activeCatalogModels.has(model.toLowerCase()) || (role === "embedding" ? !/embedding/i.test(model) : /(embedding|audio|realtime|transcribe|tts|search|image)/i.test(model))
+    ))
+    : [];
   el["active-model-status"].textContent = snapshot.modelRoleNotices?.length
     ? snapshot.modelRoleNotices.join(" ")
-    : "Somente modelos instalados entram na configuração ativa.";
+    : incompatibleActiveRoles.length
+      ? "Há modelos de outro provedor na configuração ativa. As sugestões OpenAI já foram preparadas; salve para ativá-las."
+      : snapshot.modelProvider === "openai"
+        ? "Modelos validados contra o catálogo da OpenAI."
+        : "Somente modelos instalados entram na configuração ativa.";
   el["docker-sandbox-toggle"].checked = Boolean(snapshot.dockerSandboxEnabled);
   el["docker-sandbox-status"].textContent = snapshot.dockerSandboxEnabled
     ? "Ativo: comandos usam somente Docker; não existe fallback nativo."
@@ -652,24 +663,35 @@ function renderModelSettings(snapshot) {
   el["model-optimization-profile"].value = snapshot.modelOptimizationProfile || "balanced";
   const hosted = snapshot.modelProvider === "openai";
   const custom = snapshot.modelSelectionMode === "custom";
+  const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const catalogModels = new Set(catalog.map((model) => model.toLowerCase()));
   el["openai-key-row"].classList.toggle("hidden", !hosted);
   el["clear-openai-key"].disabled = !snapshot.openAiKeyStored;
   el["clear-openai-key"].textContent = snapshot.openAiKeyStored ? "Remover" : "Não salva";
   el["provider-role-editor"].classList.toggle("read-only", !custom);
   for (const role of ["executor", "planner", "evaluator", "vision", "embedding"]) {
     const input = el[`role-${role}`];
-    if (document.activeElement !== input) input.value = snapshot.modelRoles?.[role] || "";
+    const activeModel = snapshot.modelRoles?.[role] || "";
+    const compatible = !hosted || !catalog.length || (catalogModels.has(activeModel.toLowerCase())
+      && (role === "embedding" ? /embedding/i.test(activeModel) : !/(embedding|audio|realtime|transcribe|tts|search|image)/i.test(activeModel)));
+    const displayedModel = compatible ? activeModel : snapshot.providerRecommendation?.[role] || "";
+    if (document.activeElement !== input) input.value = displayedModel;
     input.readOnly = !custom;
   }
-  const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const pickerOptions = [new Option(catalog.length ? `Escolha entre ${catalog.length} modelos` : "Atualize o catálogo para escolher", "")]
+    .concat(catalog.map((model) => new Option(model, model)));
+  el["provider-model-picker"].replaceChildren(...pickerOptions);
+  el["provider-model-picker"].disabled = !catalog.length;
   el["provider-model-options"].replaceChildren(...catalog.map((model) => {
     const option = document.createElement("option"); option.value = model; return option;
   }));
   const loaded = snapshot.providerCatalog?.loadedAt
     ? new Date(snapshot.providerCatalog.loadedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
   el["provider-catalog-status"].textContent = hosted
-    ? `${snapshot.openAiKeyStored ? "Chave protegida no Keychain" : "Chave ainda não configurada"}${catalog.length ? ` · ${catalog.length} modelos do servidor · ${loaded}` : " · atualize para consultar o servidor"}`
+    ? `${snapshot.openAiKeyStored ? "Chave protegida no Keychain" : "Chave ainda não configurada"}${catalog.length ? ` · ${catalog.length} modelos compatíveis com Chat Completions · ${loaded}` : " · atualize para consultar o servidor"}`
     : `${snapshot.ollama.connected ? `${catalog.length} modelos instalados` : "Ollama desconectado"}${loaded ? ` · ${loaded}` : ""}`;
+  el["refresh-model-catalog"].disabled = false;
+  el["save-model-settings"].textContent = hosted && !catalog.length ? "Salvar e carregar modelos" : "Salvar configuração";
   el["refresh-button"].classList.toggle("hidden", hosted);
   el["model-advisor"].classList.toggle("hidden", hosted);
 }
@@ -961,12 +983,31 @@ el["refresh-model-catalog"].addEventListener("click", async () => {
   }
 });
 el["model-provider"].addEventListener("change", () => {
-  el["openai-key-row"].classList.toggle("hidden", el["model-provider"].value !== "openai");
+  const hosted = el["model-provider"].value === "openai";
+  const changed = el["model-provider"].value !== appState.snapshot.modelProvider;
+  el["openai-key-row"].classList.toggle("hidden", !hosted);
+  el["refresh-model-catalog"].disabled = changed;
+  el["provider-model-picker"].disabled = true;
+  el["provider-model-picker"].replaceChildren(new Option(changed
+    ? "Salve o provedor para carregar a lista"
+    : "Atualize o catálogo para escolher", ""));
+  el["provider-catalog-status"].textContent = changed
+    ? hosted ? "Salve a chave e o provedor; o Companion carregará os modelos oficiais automaticamente." : "Salve o provedor para carregar os modelos locais."
+    : el["provider-catalog-status"].textContent;
+  el["save-model-settings"].textContent = hosted ? "Salvar e carregar modelos" : "Salvar configuração";
 });
 el["model-selection-mode"].addEventListener("change", () => {
   const custom = el["model-selection-mode"].value === "custom";
   el["provider-role-editor"].classList.toggle("read-only", !custom);
   el["provider-role-editor"].querySelectorAll("input").forEach((input) => { input.readOnly = !custom; });
+});
+el["provider-model-picker"].addEventListener("change", () => {
+  const model = el["provider-model-picker"].value;
+  if (!model) return;
+  el["model-selection-mode"].value = "custom";
+  el["provider-role-editor"].classList.remove("read-only");
+  el["provider-role-editor"].querySelectorAll("input").forEach((input) => { input.readOnly = false; });
+  el["role-executor"].value = model;
 });
 el["save-model-settings"].addEventListener("click", async () => {
   const button = el["save-model-settings"];

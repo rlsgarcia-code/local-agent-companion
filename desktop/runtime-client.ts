@@ -44,6 +44,7 @@ export class OllamaDesktopRuntime {
       bundleDirectory: string;
       development: boolean;
       onRunState?: (state: RunState | undefined) => void;
+      ensureClient?: typeof ensureEngine;
     },
   ) {}
   private client?: AgentClient;
@@ -68,18 +69,7 @@ export class OllamaDesktopRuntime {
     if (activation === "stop-managed") this.clients.delete(workspace);
     let pending = this.clients.get(workspace);
     if (!pending) {
-      pending = ensureEngine({
-        ...this.installation,
-        product: "companion-mac",
-        profile: "default",
-        workspace,
-        providers: ["ollama", "openai"],
-        hostTools: [],
-        activation,
-        publicKey: this.installation.development
-          ? undefined
-          : COMPANION_RELEASE_PUBLIC_KEY,
-      });
+      pending = this.connectRegisteredClient(workspace, activation);
       this.clients.set(workspace, pending);
       pending.catch(() => this.clients.delete(workspace));
     }
@@ -89,6 +79,37 @@ export class OllamaDesktopRuntime {
       return this.connect(workspace, activation);
     }
     return this.client;
+  }
+  private async connectRegisteredClient(workspace: string, activation: "idle" | "stop-managed"): Promise<AgentClient> {
+    try {
+      return await this.provision(workspace, activation, ["ollama", "openai"]);
+    } catch (error) {
+      if (!(error instanceof AgentError) || error.code !== errors.forbidden) throw error;
+      // Engines predating hosted-provider support cannot authenticate the new
+      // Mac registration, so they cannot report or activate their prepared
+      // update. A previously enrolled Ollama-only Mac identity may perform
+      // that lifecycle transition, but it never gains OpenAI authority.
+      const compatibilityClient = await this.provision(workspace, activation, ["ollama"]);
+      compatibilityClient.close();
+      return this.provision(workspace, activation, ["ollama", "openai"]);
+    }
+  }
+  private provision(
+    workspace: string,
+    activation: "idle" | "stop-managed",
+    providers: Array<"ollama" | "openai">,
+  ): Promise<AgentClient> {
+    const { ensureClient, ...installation } = this.installation;
+    return (ensureClient ?? ensureEngine)({
+      ...installation,
+      product: "companion-mac",
+      profile: "default",
+      workspace,
+      providers,
+      hostTools: [],
+      activation,
+      publicKey: installation.development ? undefined : COMPANION_RELEASE_PUBLIC_KEY,
+    });
   }
   async activatePreparedUpdate(workspace = ""): Promise<void> {
     const client = await this.connect(workspace, "stop-managed");
@@ -164,6 +185,9 @@ export class OllamaDesktopRuntime {
   }
   async leaseCredential(reference: string, value: string, workspace = ""): Promise<void> {
     await (await this.connect(workspace)).call("credentials.lease", { reference, value });
+  }
+  async delegateCredential(targetClientId: string, reference: string, value: string, workspace = ""): Promise<void> {
+    await (await this.connect(workspace)).call("credentials.delegate", { targetClientId, reference, value });
   }
   async modelCatalog(provider: { kind: "ollama" | "openai"; endpoint: string; roles: OllamaRoleConfiguration; credentialRef?: string; authHeader: "authorization" }): Promise<ModelCatalog> {
     return (await this.connect()).modelCatalog(provider);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { OllamaDesktopRuntime } from "../desktop/runtime-client";
 import type { AgentClient } from "../packages/client-ts/src/index";
+import { AgentError, errors } from "../packages/contracts/src/index";
 const session = { id: "session", importedFrom: "desktop:thread" };
 const run = { id: "run", sessionId: session.id, state: "running", createdAt: 1, updatedAt: 1 };
 function fixture(overrides: Record<string, unknown> = {}) {
@@ -60,4 +61,32 @@ test("a lost admission acknowledgement retries the same key and specification", 
   await runtime.run(options);
   assert.deepEqual(keys, [options.assistantMessageId, options.assistantMessageId]);
   assert.deepEqual(specs[0], specs[1]);
+});
+
+test("a Mac provider-policy upgrade uses the enrolled Ollama identity only to activate the new engine", async () => {
+  const providers: string[][] = [];
+  let compatibilityClosed = false;
+  let universalAttempts = 0;
+  const runtime = new OllamaDesktopRuntime({
+    bundleDirectory: "unused-fixture",
+    development: true,
+    ensureClient: async (options) => {
+      providers.push([...options.providers]);
+      if (options.providers.length === 2 && universalAttempts++ === 0) {
+        throw new AgentError(errors.forbidden, "Client is not registered or was revoked.");
+      }
+      const compatibility = options.providers.length === 1;
+      return {
+        connected: true,
+        close: () => { if (compatibility) compatibilityClosed = true; },
+        call: async (method: string) => method === "engine.info"
+          ? { version: "1.0.6" }
+          : { ready: true, blockers: { activeRuns: 0, managedProcesses: 0, modelOperations: 0, desktopResources: 0 } },
+      } as unknown as AgentClient;
+    },
+  });
+
+  assert.equal((await runtime.engineStatus()).version, "1.0.6");
+  assert.deepEqual(providers, [["ollama", "openai"], ["ollama"], ["ollama", "openai"]]);
+  assert.equal(compatibilityClosed, true);
 });

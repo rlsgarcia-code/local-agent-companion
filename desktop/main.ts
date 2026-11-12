@@ -23,8 +23,10 @@ import { OllamaDesktopRuntime } from "./runtime-client";
 import { PreparedEngineUpdateError } from "../packages/client-ts/src/bootstrap";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
+import { directOpenAiDesktopCatalog, recommendHostedRoles, reconcileHostedRoles } from "./provider-models";
 import { DesktopStateStore } from "./state-store";
 import { DesktopCredentialStore } from "./credential-store";
+import { startInterfaceBroker, type InterfaceModelConfiguration } from "./interface-broker";
 import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "../src/ollama-public-catalog";
 import {
   type OllamaRecommendationPlan
@@ -53,6 +55,7 @@ let recommendationController: AbortController | undefined;
 let modelRoleNotices: string[] = [];
 let cachedProviderCatalog: DesktopSnapshot["providerCatalog"] = { provider: "ollama", models: [] };
 let engineUpdateRecovery: Promise<void> | undefined;
+let closeInterfaceBroker: (() => Promise<void>) | undefined;
 
 app.setName("Local Companion");
 
@@ -67,6 +70,18 @@ app.whenReady().then(async () => {
     (context) => publish({ type: "context-snapshot", snapshot: context })
   );
   registerIpc();
+  const broker = await startInterfaceBroker({
+    configuration: interfaceModelConfiguration,
+    configure: configureInterfaceModels,
+    leaseOpenAi: leaseSharedOpenAiCredential,
+    openSettings: () => {
+      if (!window) createWindow();
+      window?.show();
+      window?.focus();
+      window?.webContents.send("companion:open-model-settings");
+    },
+  });
+  closeInterfaceBroker = broker.close;
   void withEngineUpdateRecovery(() => runtime.modelConfiguration(store.snapshot().modelRoles)).then(async (configuration) => {
     if (configuration) await store.update({
       modelRoles: configuration.roles,
@@ -140,6 +155,7 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   runtime.dispose();
+  void closeInterfaceBroker?.();
   contextBrowser?.close();
   // Pending approvals remain with the service when this interface closes.
   approvals.clear();
@@ -213,26 +229,7 @@ function registerIpc(): void {
     return publishSnapshot();
   });
   ipcMain.handle("companion:save-model-settings", async (_event, input: DesktopModelSettingsInput) => {
-    if (!input || (input.provider !== "ollama" && input.provider !== "openai")) throw new Error("Escolha Ollama ou OpenAI.");
-    let roles = parseModelRoles(input.roles);
-    const selectionMode = input.selectionMode === "custom" ? "custom" : "optimized";
-    const optimizationProfile = input.optimizationProfile === "quality" || input.optimizationProfile === "speed"
-      ? input.optimizationProfile : "balanced";
-    if (input.provider === "openai") {
-      if (typeof input.openAiKey === "string" && input.openAiKey.trim()) await credentialStore.saveOpenAiKey(input.openAiKey);
-      if (!await credentialStore.hasOpenAiKey()) throw new Error("Salve uma chave OpenAI no Keychain antes de ativar este provedor.");
-      cachedProviderCatalog = await loadProviderCatalog("openai", roles);
-      if (selectionMode === "optimized") roles = recommendHostedRoles(cachedProviderCatalog.models, optimizationProfile, roles);
-    }
-    await runtime.configureModels({
-      provider: input.provider,
-      endpoint: input.provider === "openai" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1",
-      ...(input.provider === "openai" ? { credentialRef: OPENAI_CREDENTIAL_REFERENCE } : {}),
-      selectionMode, optimizationProfile, roles,
-    });
-    await store.update({ modelProvider: input.provider, modelSelectionMode: selectionMode,
-      modelOptimizationProfile: optimizationProfile, modelRoles: roles,
-      openAiKeyStored: await credentialStore.hasOpenAiKey() });
+    await saveModelSettings(input);
     return publishSnapshot();
   });
   ipcMain.handle("companion:clear-openai-key", async () => {
@@ -243,13 +240,17 @@ function registerIpc(): void {
   ipcMain.handle("companion:refresh-model-catalog", async () => {
     const state = store.snapshot();
     cachedProviderCatalog = await loadProviderCatalog(state.modelProvider, state.modelRoles);
-    if (state.modelProvider === "openai" && state.modelSelectionMode === "optimized") {
-      const roles = recommendHostedRoles(cachedProviderCatalog.models, state.modelOptimizationProfile, state.modelRoles);
-      await runtime.configureModels({
-        provider: "openai", endpoint: "https://api.openai.com/v1", credentialRef: OPENAI_CREDENTIAL_REFERENCE,
-        selectionMode: state.modelSelectionMode, optimizationProfile: state.modelOptimizationProfile, roles,
-      });
-      await store.update({ modelRoles: roles });
+    if (state.modelProvider === "openai") {
+      const roles = state.modelSelectionMode === "optimized"
+        ? recommendHostedRoles(cachedProviderCatalog.models, state.modelOptimizationProfile, state.modelRoles)
+        : reconcileHostedRoles(cachedProviderCatalog.models, state.modelOptimizationProfile, state.modelRoles);
+      if (!sameModelRoles(state.modelRoles, roles)) {
+        await runtime.configureModels({
+          provider: "openai", endpoint: "https://api.openai.com/v1", credentialRef: OPENAI_CREDENTIAL_REFERENCE,
+          selectionMode: state.modelSelectionMode, optimizationProfile: state.modelOptimizationProfile, roles,
+        });
+        await store.update({ modelRoles: roles });
+      }
     }
     return publishSnapshot();
   });
@@ -435,6 +436,71 @@ function parseModelRoles(value: unknown): OllamaRecommendationPlan["roles"] {
     ...(parse("vision") ? { vision: parse("vision") } : {}),
     ...(parse("embedding") ? { embedding: parse("embedding") } : {})
   };
+}
+
+async function saveModelSettings(input: DesktopModelSettingsInput): Promise<void> {
+  if (!input || (input.provider !== "ollama" && input.provider !== "openai")) throw new Error("Escolha Ollama ou OpenAI.");
+  let roles = parseModelRoles(input.roles);
+  const selectionMode = input.selectionMode === "custom" ? "custom" : "optimized";
+  const optimizationProfile = input.optimizationProfile === "quality" || input.optimizationProfile === "speed"
+    ? input.optimizationProfile : "balanced";
+  if (input.provider === "openai") {
+    if (typeof input.openAiKey === "string" && input.openAiKey.trim()) await credentialStore.saveOpenAiKey(input.openAiKey);
+    if (!await credentialStore.hasOpenAiKey()) throw new Error("Salve uma chave OpenAI no Keychain antes de ativar este provedor.");
+    cachedProviderCatalog = await loadProviderCatalog("openai", roles);
+    roles = selectionMode === "optimized"
+      ? recommendHostedRoles(cachedProviderCatalog.models, optimizationProfile, roles)
+      : reconcileHostedRoles(cachedProviderCatalog.models, optimizationProfile, roles);
+  } else {
+    cachedOllama = await runtime.ollamaStatus();
+    hasCheckedOllama = true;
+    if (!cachedOllama.connected) throw new Error(cachedOllama.error || "Inicie o Ollama antes de ativar este provedor.");
+    const installed = new Map(cachedOllama.models.map((model) => [model.name.toLowerCase(), model.name]));
+    const executor = installed.get(roles.executor.toLowerCase())
+      ?? cachedOllama.models.find((model) => !/embed/i.test(model.name))?.name;
+    if (!executor) throw new Error("Instale ao menos um modelo de conversa no Ollama antes de ativar este provedor.");
+    const resolution = resolveInstalledModelRoles({ ...roles, executor }, cachedOllama.models, store.snapshot().lastRecommendation);
+    if (!resolution.ready) throw new Error(resolution.notices[0] || "Nenhuma configuração Ollama instalada está pronta.");
+    roles = resolution.roles;
+  }
+  await runtime.configureModels({
+    provider: input.provider,
+    endpoint: input.provider === "openai" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1",
+    ...(input.provider === "openai" ? { credentialRef: OPENAI_CREDENTIAL_REFERENCE } : {}),
+    selectionMode, optimizationProfile, roles,
+  });
+  await store.update({ modelProvider: input.provider, modelSelectionMode: selectionMode,
+    modelOptimizationProfile: optimizationProfile, modelRoles: roles,
+    openAiKeyStored: await credentialStore.hasOpenAiKey() });
+}
+
+async function interfaceModelConfiguration(): Promise<InterfaceModelConfiguration> {
+  const state = store.snapshot();
+  return {
+    provider: state.modelProvider,
+    selectionMode: state.modelSelectionMode,
+    optimizationProfile: state.modelOptimizationProfile,
+    assignments: state.modelRoles,
+    hasApiKey: await credentialStore.hasOpenAiKey(),
+  };
+}
+
+async function configureInterfaceModels(input: InterfaceModelConfiguration): Promise<InterfaceModelConfiguration> {
+  const state = store.snapshot();
+  await saveModelSettings({
+    provider: input.provider,
+    selectionMode: input.selectionMode,
+    optimizationProfile: input.optimizationProfile,
+    roles: { ...state.modelRoles, ...(input.assignments ?? {}) },
+  });
+  return interfaceModelConfiguration();
+}
+
+async function leaseSharedOpenAiCredential(targetClientId?: string): Promise<void> {
+  const key = await credentialStore.openAiKey();
+  if (!key) throw new Error("A chave OpenAI não está disponível no Keychain.");
+  if (targetClientId) await runtime.delegateCredential(targetClientId, OPENAI_CREDENTIAL_REFERENCE, key);
+  else await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key);
 }
 
 async function send(request: SendRequest): Promise<void> {
@@ -679,6 +745,12 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
   }
   const current = store.snapshot();
   const workspaceRun = await runtime.workspaceStatus(current.workspacePath);
+  const providerCatalog: DesktopSnapshot["providerCatalog"] = current.modelProvider === "ollama"
+    ? { provider: "ollama", models: cachedOllama.models.map((model) => model.name), loadedAt: Date.now() }
+    : cachedProviderCatalog.provider === "openai" ? cachedProviderCatalog : { provider: "openai", models: [] };
+  const providerRecommendation = current.modelProvider === "openai" && providerCatalog.models.length
+    ? recommendHostedRoles(providerCatalog.models, current.modelOptimizationProfile, current.modelRoles)
+    : undefined;
   return {
     ...current,
     engine: { version: engine.version, state: engine.ready ? "ready" : "busy", blockers: engine.blockers },
@@ -688,9 +760,8 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
     context: contextBrowser.snapshot(),
     ollamaPublicCatalogLoaded: Boolean(publicOllamaCatalog),
     modelRoleNotices,
-    providerCatalog: store.snapshot().modelProvider === "ollama"
-      ? { provider: "ollama", models: cachedOllama.models.map((model) => model.name), loadedAt: Date.now() }
-      : cachedProviderCatalog.provider === "openai" ? cachedProviderCatalog : { provider: "openai", models: [] },
+    providerCatalog,
+    ...(providerRecommendation ? { providerRecommendation } : {}),
     running: runtime.running,
     runState: runtime.state
   };
@@ -709,37 +780,14 @@ async function loadProviderCatalog(provider: "ollama" | "openai", roles: OllamaR
   try {
     const catalog = await runtime.modelCatalog({ kind: "openai", endpoint: "https://api.openai.com/v1", roles,
       credentialRef: OPENAI_CREDENTIAL_REFERENCE, authHeader: "authorization" });
-    return { provider: "openai", models: catalog.models, loadedAt: catalog.loadedAt };
+    const models = directOpenAiDesktopCatalog(catalog.models);
+    if (!models.some((model) => !/embedding/i.test(model))) {
+      throw new Error("A conta não retornou modelos compatíveis com Chat Completions e function calling.");
+    }
+    return { provider: "openai", models, loadedAt: catalog.loadedAt };
   } catch (error) {
     throw new Error(`Não foi possível carregar os modelos da OpenAI: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-function recommendHostedRoles(models: readonly string[], profile: "quality" | "balanced" | "speed", current: OllamaRecommendationPlan["roles"]): OllamaRecommendationPlan["roles"] {
-  const chat = models.filter((model) => !/(embedding|audio|realtime|transcribe|tts|search|image)/i.test(model));
-  const embedding = models.find((model) => /embedding/i.test(model));
-  const score = (model: string, role: "executor" | "planner" | "evaluator" | "vision"): number => {
-    let value = 0;
-    if (/gpt/i.test(model)) value += 10;
-    if (/codex|code/i.test(model)) value += role === "executor" ? 18 : 3;
-    if (/\bo\d|reason/i.test(model)) value += role === "planner" || role === "evaluator" ? 15 : 2;
-    if (/vision|4o/i.test(model)) value += role === "vision" ? 12 : 0;
-    if (/preview|latest/i.test(model)) value += 2;
-    if (/mini/i.test(model)) value += profile === "balanced" ? 9 : profile === "speed" ? 14 : -4;
-    if (/nano/i.test(model)) value += profile === "speed" ? 18 : profile === "balanced" ? 2 : -10;
-    if (profile === "quality" && !/(mini|nano)/i.test(model)) value += 12;
-    return value;
-  };
-  const choose = (role: "executor" | "planner" | "evaluator" | "vision") => [...chat]
-    .sort((left, right) => score(right, role) - score(left, role) || right.localeCompare(left))[0];
-  const executor = choose("executor") ?? current.executor;
-  return {
-    executor,
-    ...(choose("planner") ? { planner: choose("planner") } : current.planner ? { planner: current.planner } : {}),
-    ...(choose("evaluator") ? { evaluator: choose("evaluator") } : current.evaluator ? { evaluator: current.evaluator } : {}),
-    ...(choose("vision") ? { vision: choose("vision") } : current.vision ? { vision: current.vision } : {}),
-    ...(embedding ? { embedding } : current.embedding ? { embedding: current.embedding } : {})
-  };
 }
 
 async function publishSnapshot(refreshOllama = false): Promise<DesktopSnapshot> {
