@@ -79,6 +79,9 @@ jobs:
         run: node scripts/build-sdks.mjs
         env:
           COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
+      - name: Validate the Mac adapter against the packaged public SDK
+        if: matrix.target == 'linux-x64'
+        run: node scripts/smoke-mac-sdk.mjs
       - name: Package Mac client with its exact signed native engine
         if: startsWith(matrix.target, 'darwin-')
         run: npm run desktop:package -- --arch=${{ matrix.target == 'darwin-arm64' && 'arm64' || 'x64' }}

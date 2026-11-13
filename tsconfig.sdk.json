@@ -6,5 +6,5 @@
     "declaration": true,
     "emitDeclarationOnly": true
   },
-  "include": ["packages/client-ts/src/*.ts", "packages/contracts/src/index.ts"]
+  "include": ["packages/client-ts/src/*.ts", "packages/contracts/src/index.ts", "packages/contracts/src/desktop.ts"]
 }

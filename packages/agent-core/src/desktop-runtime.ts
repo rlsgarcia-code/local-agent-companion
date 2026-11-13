@@ -9,7 +9,7 @@ import {
 } from "@langchain/core/messages";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { executePreparedGraph } from "./graph-executor";
-import { operationMiddleware, type OperationExecutor } from "./operations";
+import { operationMiddleware } from "./operations";
 import { OllamaModels, MODEL_NAME } from "./ollama-models";
 import { ProviderModels } from "./provider-models";
 export { pullOllamaModel } from "./ollama-models";
@@ -45,6 +45,8 @@ import type {
   DesktopExecutionStep,
   DesktopMessage,
   DesktopRunMode,
+  DesktopRuntimeRunOptions,
+  DesktopRuntimeRunResult,
   DesktopThread,
   OllamaModel,
   PullProgress,
@@ -72,14 +74,6 @@ const SHELL_EXECUTABLES = new Set([
   "cmd",
   "cmd.exe",
 ]);
-
-type RuntimeCallbacks = {
-  approval: (request: ApprovalRequest) => Promise<boolean>;
-  activity: (activity: DesktopActivity) => void;
-  delta: (messageId: string, delta: string) => void;
-  step: (messageId: string, step: DesktopExecutionStep) => void;
-  reset: (messageId: string) => void;
-};
 
 export class OllamaDesktopRuntime extends OllamaModels {
   public constructor(private readonly checkpointer: BaseCheckpointSaver) { super(); }
@@ -124,29 +118,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
     try { await this.configuration; } finally { this.configuration = undefined; }
   }
 
-  public async run(options: {
-    thread: DesktopThread;
-    request: string;
-    workspacePath: string;
-    modelRoles: OllamaRoleConfiguration;
-    provider?: ProviderSpec;
-    credential?: string;
-    dockerSandboxEnabled: boolean;
-    mode: DesktopRunMode;
-    agentRuntime: DesktopAgentRuntime;
-    assistantMessageId: string;
-    userMessageId?: string;
-    contextPages: DesktopContextPage[];
-    openPreview: (url: string) => Promise<void>;
-    callbacks: RuntimeCallbacks;
-    execution?: {
-      threadId: string;
-      signal: AbortSignal;
-      operation: OperationExecutor;
-      reconciliations: Record<string, unknown>;
-      requireCheckpoint?: boolean;
-    };
-  }): Promise<{ message: DesktopMessage; changes: DesktopChange[] }> {
+  public async run(options: DesktopRuntimeRunOptions): Promise<DesktopRuntimeRunResult> {
     if (this.running) throw new Error("A run or configuration is already active.");
     if ((!options.provider || options.provider.kind === "ollama") && !MODEL_NAME.test(options.modelRoles.executor))
       throw new Error("Choose a valid local Ollama executor model.");

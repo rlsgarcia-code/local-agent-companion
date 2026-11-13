@@ -5,7 +5,21 @@ import test from "node:test";
 const json = async (file) => JSON.parse(await readFile(file, "utf8"));
 
 test("application adapter contract stays aligned with versions, capabilities and both SDKs", async () => {
-  const [contract, versions, contracts, guide, readme, contributing, tsClient, brokerClient, pythonClient, example, sdkBuild] = await Promise.all([
+  const [
+    contract,
+    versions,
+    contracts,
+    guide,
+    readme,
+    contributing,
+    tsClient,
+    brokerClient,
+    pythonClient,
+    pythonManifest,
+    example,
+    sdkBuild,
+    ...workspacePackages
+  ] = await Promise.all([
     json("docs/application-adapter-contract.json"),
     json("packages/contracts/src/version.json"),
     readFile("packages/contracts/src/index.ts", "utf8"),
@@ -15,13 +29,24 @@ test("application adapter contract stays aligned with versions, capabilities and
     readFile("packages/client-ts/src/index.ts", "utf8"),
     readFile("packages/client-ts/src/interface-broker.ts", "utf8"),
     readFile("packages/client-python/companion_client/__init__.py", "utf8"),
+    readFile("packages/client-python/pyproject.toml", "utf8"),
     readFile("examples/application-adapter/adapter.mjs", "utf8"),
     readFile("scripts/build-sdks.mjs", "utf8"),
+    json("packages/adapter-workspace/package.json"),
+    json("packages/agent-core/package.json"),
+    json("packages/agent-service/package.json"),
+    json("packages/client-ts/package.json"),
+    json("packages/contracts/package.json"),
   ]);
 
   assert.equal(contract.engine, versions.engine);
   assert.equal(contract.protocol, versions.protocol);
   assert.equal(contract.sdkArtifact, `companion-sdks-${versions.engine}.tar.gz`);
+  assert.match(pythonManifest, new RegExp(`version = "${versions.python.replaceAll(".", "\\.")}"`));
+  assert.deepEqual(contract.publicSdkExports, [".", "./bootstrap", "./contracts", "./desktop"]);
+  assert.ok(contract.referenceConsumers.includes("companion-mac"));
+  for (const packageManifest of workspacePackages)
+    assert.equal(packageManifest.version, versions.engine, `${packageManifest.name} must match the engine version`);
   assert.match(contracts, /"companion-app"/);
   assert.equal(contract.applicationProduct, "companion-app");
 
@@ -43,6 +68,9 @@ test("application adapter contract stays aligned with versions, capabilities and
   assert.match(contributing, /APPLICATION_ADAPTERS\.md/);
   assert.match(sdkBuild, /application-adapter-contract\.json/);
   assert.match(sdkBuild, /examples\/application-adapter/);
+  for (const sdkExport of contract.publicSdkExports)
+    assert.match(sdkBuild, new RegExp(`"${sdkExport.replace(".", "\\.")}"`), `SDK build must publish ${sdkExport}`);
   assert.match(guide, /não copi[ae] o runtime/i);
   assert.match(guide, /feature gating/i);
+  assert.match(guide, /aplicativo Mac como cliente de referência/i);
 });

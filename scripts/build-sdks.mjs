@@ -18,6 +18,7 @@ await esbuild
       "packages/client-ts/src/index.ts",
       "packages/client-ts/src/bootstrap.ts",
       "packages/contracts/src/index.ts",
+      "packages/contracts/src/desktop.ts",
     ],
     outdir: path.join(output, "typescript"),
     outbase: "packages",
@@ -94,6 +95,10 @@ await writeFile(
         "./contracts": {
           types: "./typescript/contracts/src/index.d.ts",
           require: "./typescript/contracts/src/index.cjs",
+        },
+        "./desktop": {
+          types: "./typescript/contracts/src/desktop.d.ts",
+          require: "./typescript/contracts/src/desktop.cjs",
         },
       },
     },

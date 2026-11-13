@@ -1,21 +1,35 @@
 import * as path from "node:path";
-import { AgentClient, type HostResponses } from "../packages/client-ts/src/index";
-import { COMPANION_RELEASE_PUBLIC_KEY } from "../packages/client-ts/src/release-key";
-import { ensureEngine } from "../packages/client-ts/src/bootstrap";
+import type { AgentClient, HostResponses } from "@companion/client-sdk";
+import { COMPANION_RELEASE_PUBLIC_KEY, ensureEngine } from "@companion/client-sdk/bootstrap";
+import {
+  AgentError,
+  engineCapabilities,
+  errors,
+  type EngineInfo,
+  type EngineUpdateStatus,
+  type ModelCatalog,
+  type ModelJob,
+  type ModelOptimizationProfile,
+  type ModelSelectionMode,
+  type OllamaRecommendationPlan,
+  type OllamaRoleConfiguration,
+  type Run,
+  type RunState,
+  type Session,
+} from "@companion/client-sdk/contracts";
 import type {
   DesktopActivity,
   DesktopMessage,
   DesktopChange,
+  DesktopDockerStatus,
   DesktopExecutionStep,
+  DesktopOllamaStatus,
+  DesktopRuntimeRunOptions,
+  DesktopRuntimeRunResult,
   PullProgress,
 } from "./contracts";
-import type { OllamaDesktopRuntime as EngineRuntime } from "../packages/agent-core/src/desktop-runtime";
-import { AgentError, errors, type EngineUpdateStatus, type Run, type Session, type RunState } from "../packages/contracts/src/index";
-import type { ModelCatalog, ModelJob } from "../packages/contracts/src/models";
-import type { ModelOptimizationProfile, ModelSelectionMode } from "../packages/contracts/src/models";
-import type { OllamaRoleConfiguration, OllamaRecommendationPlan } from "../packages/agent-core/src/ollama-recommendation";
 
-type RuntimeOptions = Parameters<EngineRuntime["run"]>[0];
+type RuntimeOptions = DesktopRuntimeRunOptions;
 export type RecoverableDesktopRun = {
   run: Run;
   profile: "desktop";
@@ -82,7 +96,9 @@ export class OllamaDesktopRuntime {
   }
   private async connectRegisteredClient(workspace: string, activation: "idle" | "stop-managed"): Promise<AgentClient> {
     try {
-      return await this.provision(workspace, activation, ["ollama", "openai"]);
+      const client = await this.provision(workspace, activation, ["ollama", "openai"]);
+      await this.assertSdkCompatibility(client);
+      return client;
     } catch (error) {
       if (!(error instanceof AgentError) || error.code !== errors.forbidden) throw error;
       // Engines predating hosted-provider support cannot authenticate the new
@@ -91,8 +107,19 @@ export class OllamaDesktopRuntime {
       // that lifecycle transition, but it never gains OpenAI authority.
       const compatibilityClient = await this.provision(workspace, activation, ["ollama"]);
       compatibilityClient.close();
-      return this.provision(workspace, activation, ["ollama", "openai"]);
+      const client = await this.provision(workspace, activation, ["ollama", "openai"]);
+      await this.assertSdkCompatibility(client);
+      return client;
     }
+  }
+  private async assertSdkCompatibility(client: AgentClient): Promise<EngineInfo> {
+    const info = await client.engineInfo();
+    const missing = engineCapabilities.filter((capability) => !info.capabilities.includes(capability));
+    if (missing.length) {
+      client.close();
+      throw new Error(`O aplicativo Mac requer uma atualização do Companion (${missing.join(", ")}).`);
+    }
+    return info;
   }
   private provision(
     workspace: string,
@@ -118,7 +145,7 @@ export class OllamaDesktopRuntime {
   async engineStatus(): Promise<EngineUpdateStatus & { version: string }> {
     const client = await this.connect();
     const [info, status] = await Promise.all([
-      client.call<{ version: string }>("engine.info"),
+      client.engineInfo(),
       client.call<EngineUpdateStatus>("engine.updateStatus"),
     ]);
     return { ...status, version: info.version };
@@ -155,7 +182,7 @@ export class OllamaDesktopRuntime {
       void client.then((c) => c.close());
     this.clients.clear();
   }
-  async ollamaStatus(): ReturnType<EngineRuntime["ollamaStatus"]> {
+  async ollamaStatus(): Promise<DesktopOllamaStatus> {
     return (await this.connect()).call("models.list");
   }
   async modelRoles(initial?: OllamaRoleConfiguration): Promise<OllamaRoleConfiguration | undefined> {
@@ -234,7 +261,7 @@ export class OllamaDesktopRuntime {
     }
     throw new Error("Interface closed; the model job remains with the engine.");
   }
-  async dockerStatus(): ReturnType<EngineRuntime["dockerStatus"]> {
+  async dockerStatus(): Promise<DesktopDockerStatus> {
     return (await this.connect()).call("desktop.dockerStatus");
   }
   async configureDockerSandbox(enabled: boolean): Promise<void> {
@@ -268,9 +295,7 @@ export class OllamaDesktopRuntime {
     try { await this.observeModelJob(job.id, onProgress); }
     finally { this.downloadJob = undefined; }
   }
-  async run(
-    options: Parameters<EngineRuntime["run"]>[0],
-  ): ReturnType<EngineRuntime["run"]> {
+  async run(options: DesktopRuntimeRunOptions): Promise<DesktopRuntimeRunResult> {
     if (this.running) throw new Error("A run is already active.");
     this.preparing = true;
     this.cancelRequested = false;

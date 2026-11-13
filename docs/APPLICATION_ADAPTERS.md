@@ -65,7 +65,7 @@ const missing = [...required].filter((name) => !info.capabilities.includes(name)
 if (missing.length) throw new Error(`Atualize o Companion: ${missing.join(", ")}`);
 ```
 
-O baseline 1.0.8 inclui:
+O baseline 1.0.9 inclui:
 
 - `sessions`: conversas duráveis por namespace;
 - `runs`: execução idempotente e estados terminais explícitos;
@@ -134,6 +134,12 @@ Chaves permanecem no Keychain, Secret Storage ou gateway protegido. O Mac pode d
 O namespace é derivado de usuário, produto, profile e workspace. Sessões, goals, memória, checkpoints, transferências e recibos não atravessam namespaces. Dados de domínio permanecem na aplicação de origem e entram no modelo somente como contexto transitório ou resultado de ferramenta autorizado.
 
 O Companion fornece conteúdo e estados, não a aparência da aplicação. O adaptador deve renderizar composer, streaming, atividade, aprovação, cancelamento e recuperação no design system do produto consumidor. Esse limite permite que o Med-Graph preserve o Scribe e que outras aplicações tenham experiências próprias sem bifurcar o engine.
+
+### Aplicativo Mac como cliente de referência
+
+O aplicativo Mac do próprio Companion consome os mesmos imports públicos documentados para aplicações externas: `@companion/client-sdk`, `@companion/client-sdk/bootstrap`, `@companion/client-sdk/contracts` e `@companion/client-sdk/desktop`. Ele negocia todas as capacidades declaradas pelo engine antes de habilitar a interface. Um gate de repositório rejeita imports diretos do app para `client-ts/src`, `contracts/src` ou o runtime agêntico; por isso, a interface Mac funciona como prova contínua de que o SDK publicado é suficiente para um cliente completo.
+
+O Mac continua tendo uma responsabilidade adicional de host: guardar a chave OpenAI no Keychain e operar o broker local autenticado. Essa responsabilidade não lhe concede um runtime alternativo nem uma API privada de execução.
 
 ## Checklist de conformidade
 
