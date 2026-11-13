@@ -12,6 +12,7 @@ import { executePreparedGraph } from "./graph-executor";
 import { operationMiddleware } from "./operations";
 import { OllamaModels, MODEL_NAME } from "./ollama-models";
 import { ProviderModels } from "./provider-models";
+import { createWebResearchTools } from "./web-research";
 export { pullOllamaModel } from "./ollama-models";
 import { CompositeBackend, StateBackend } from "deepagents";
 import {
@@ -51,8 +52,6 @@ import type {
   OllamaModel,
   PullProgress,
 } from "../../contracts/src/desktop";
-import type { ProviderSpec } from "../../contracts/src/index";
-import type { OllamaRoleConfiguration } from "../../contracts/src/ollama";
 import {
   readWorkspaceFile,
   resolveWritablePath,
@@ -156,7 +155,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
       options.callbacks.step(options.assistantMessageId, step);
     };
     try {
-      const model = providerModels.model("executor", true);
+      const model = providerModels.model("executor", true, { webSearch: options.webResearch?.enabled && provider.kind === "openai" });
       const evaluatorModel = providerModels.model("evaluator", false);
       const publishActivity = (value: DesktopActivity): void => {
         if (!countedActivityIds.has(value.id)) {
@@ -226,6 +225,12 @@ export class OllamaDesktopRuntime extends OllamaModels {
         dockerSandboxEnabled: options.dockerSandboxEnabled,
         openPreview: options.openPreview,
         recordExecutionEvidence: (evidence) => executionEvidence.push(evidence),
+      });
+      const webResearchTools = createWebResearchTools({
+        provider: provider.kind,
+        settings: options.webResearch,
+        signal,
+        onActivity: (title, detail) => activity("search", title, detail),
       });
       const completionGate = createTaskCompletionMiddleware({
         model: evaluatorModel,
@@ -392,10 +397,10 @@ export class OllamaDesktopRuntime extends OllamaModels {
       const durable = options.execution ? [operationMiddleware(options.execution.operation)] : [];
       const graph = {
         model,
-        tools: options.agentRuntime === "deep" && workspaceBackend
+        tools: [...(options.agentRuntime === "deep" && workspaceBackend
           ? tools.filter((candidate) => ["list_sandbox_images", "run_sandbox_command", "start_sandbox_application",
               "inspect_sandbox_application", "wait_for_sandbox_application", "open_sandbox_preview", "stop_sandbox_application"].includes(candidate.name))
-          : tools,
+          : tools), ...webResearchTools],
         systemPrompt,
         ...(options.agentRuntime === "deep" && workspaceBackend ? {
           backend: new CompositeBackend(new StateBackend(), { "/workspace/": workspaceBackend }), permissions,

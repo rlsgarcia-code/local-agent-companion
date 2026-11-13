@@ -9,6 +9,7 @@ export type InterfaceModelConfiguration = {
   provider: "ollama" | "openai";
   selectionMode: "optimized" | "custom";
   optimizationProfile: "quality" | "balanced" | "speed";
+  webResearch: DesktopModelSettingsInput["webResearch"];
   assignments: DesktopModelSettingsInput["roles"];
   hasApiKey: boolean;
 };

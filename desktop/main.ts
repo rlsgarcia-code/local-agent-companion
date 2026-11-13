@@ -27,7 +27,9 @@ import { directOpenAiDesktopCatalog, recommendHostedRoles, reconcileHostedRoles 
 import { DesktopStateStore } from "./state-store";
 import { DesktopCredentialStore } from "./credential-store";
 import { startInterfaceBroker, type InterfaceModelConfiguration } from "./interface-broker";
+import { configureManagedSearxng } from "./searxng-service";
 import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "../src/ollama-public-catalog";
+import { DEFAULT_WEB_RESEARCH_CONFIGURATION, webResearchConfiguration } from "@companion/client-sdk/contracts";
 import {
   type OllamaRecommendationPlan
 } from "../src/ollama-recommendation";
@@ -88,6 +90,7 @@ app.whenReady().then(async () => {
       modelProvider: configuration.provider === "openai" ? "openai" : "ollama",
       modelSelectionMode: configuration.selectionMode,
       modelOptimizationProfile: configuration.optimizationProfile,
+      webResearch: configuration.webResearch,
     });
   }).catch((error) => dialog.showErrorBox("Motor local", String(error)));
   void runtime.recoverModelJobs(
@@ -247,7 +250,8 @@ function registerIpc(): void {
       if (!sameModelRoles(state.modelRoles, roles)) {
         await runtime.configureModels({
           provider: "openai", endpoint: "https://api.openai.com/v1", credentialRef: OPENAI_CREDENTIAL_REFERENCE,
-          selectionMode: state.modelSelectionMode, optimizationProfile: state.modelOptimizationProfile, roles,
+          selectionMode: state.modelSelectionMode, optimizationProfile: state.modelOptimizationProfile,
+          webResearch: state.webResearch, roles,
         });
         await store.update({ modelRoles: roles });
       }
@@ -440,6 +444,14 @@ function parseModelRoles(value: unknown): OllamaRecommendationPlan["roles"] {
 
 async function saveModelSettings(input: DesktopModelSettingsInput): Promise<void> {
   if (!input || (input.provider !== "ollama" && input.provider !== "openai")) throw new Error("Escolha Ollama ou OpenAI.");
+  const webResearch = webResearchConfiguration.catch(DEFAULT_WEB_RESEARCH_CONFIGURATION).parse(input.webResearch);
+  if (input.provider === "ollama" && webResearch.enabled) {
+    await configureManagedSearxng({
+      enabled: true,
+      composeFile: path.join(__dirname, "ops", "searxng", "compose.yaml"),
+      endpoint: webResearch.searxngEndpoint,
+    });
+  }
   let roles = parseModelRoles(input.roles);
   const selectionMode = input.selectionMode === "custom" ? "custom" : "optimized";
   const optimizationProfile = input.optimizationProfile === "quality" || input.optimizationProfile === "speed"
@@ -468,9 +480,11 @@ async function saveModelSettings(input: DesktopModelSettingsInput): Promise<void
     endpoint: input.provider === "openai" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1",
     ...(input.provider === "openai" ? { credentialRef: OPENAI_CREDENTIAL_REFERENCE } : {}),
     selectionMode, optimizationProfile, roles,
+    webResearch,
   });
   await store.update({ modelProvider: input.provider, modelSelectionMode: selectionMode,
     modelOptimizationProfile: optimizationProfile, modelRoles: roles,
+    webResearch,
     openAiKeyStored: await credentialStore.hasOpenAiKey() });
 }
 
@@ -480,6 +494,7 @@ async function interfaceModelConfiguration(): Promise<InterfaceModelConfiguratio
     provider: state.modelProvider,
     selectionMode: state.modelSelectionMode,
     optimizationProfile: state.modelOptimizationProfile,
+    webResearch: state.webResearch,
     assignments: state.modelRoles,
     hasApiKey: await credentialStore.hasOpenAiKey(),
   };
@@ -491,6 +506,7 @@ async function configureInterfaceModels(input: InterfaceModelConfiguration): Pro
     provider: input.provider,
     selectionMode: input.selectionMode,
     optimizationProfile: input.optimizationProfile,
+    webResearch: input.webResearch,
     roles: { ...state.modelRoles, ...(input.assignments ?? {}) },
   });
   return interfaceModelConfiguration();
@@ -571,6 +587,7 @@ async function send(request: SendRequest): Promise<void> {
       workspacePath: state.workspacePath,
       modelRoles: state.modelRoles,
       provider,
+      webResearch: state.webResearch,
       dockerSandboxEnabled: state.dockerSandboxEnabled,
       mode: state.mode,
       agentRuntime: state.agentRuntime,

@@ -1,6 +1,6 @@
 import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { StructuredToolInterface } from "@langchain/core/tools";
+import type { ClientTool, ServerTool } from "@langchain/core/tools";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { createDeepAgent, type AnyBackendProtocol, type FilesystemPermission, type SubAgent } from "deepagents";
 import { createAgent, type AnyAgentMiddleware } from "langchain";
@@ -8,7 +8,7 @@ import type { StreamedAssistantMessage } from "./assistant-stream";
 
 export type ProductGraphOptions = {
   model: BaseChatModel;
-  tools: StructuredToolInterface[];
+  tools: Array<ClientTool | ServerTool>;
   systemPrompt: string;
   checkpointer: BaseCheckpointSaver;
   middleware?: AnyAgentMiddleware[];

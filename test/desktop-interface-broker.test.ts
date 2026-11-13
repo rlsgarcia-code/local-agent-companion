@@ -14,6 +14,10 @@ test("the interface broker shares settings and leases without exposing credentia
     provider: "ollama" as const,
     selectionMode: "optimized" as const,
     optimizationProfile: "balanced" as const,
+    webResearch: {
+      enabled: false, contextSize: "medium" as const, allowedDomains: [],
+      searxngEndpoint: "http://127.0.0.1:8080", language: "pt-BR", safeSearch: 1 as const, maxResults: 8,
+    },
     assignments: { executor: "qwen3.5:latest" },
     hasApiKey: true,
   };

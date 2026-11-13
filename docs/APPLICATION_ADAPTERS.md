@@ -114,6 +114,7 @@ await client.configureModels({
   ...(shared.provider === "openai" ? { credentialRef: "openai-platform" } : {}),
   selectionMode: shared.selectionMode,
   optimizationProfile: shared.optimizationProfile,
+  webResearch: shared.webResearch,
   roles: shared.assignments,
 });
 if (shared.provider === "openai")
@@ -121,6 +122,8 @@ if (shared.provider === "openai")
 ```
 
 O broker também oferece `configureModels()` para alterar a configuração compartilhada e `openSettings()` para levar o usuário à interface nativa. A aplicação nunca recebe a chave.
+
+`webResearch` pertence à mesma configuração canônica. O adaptador deve repassá-lo tanto em `configureModels()` quanto no `RunSpec`, sem criar cliente de busca paralelo: com Ollama, o motor expõe a ferramenta SearXNG limitada ao endpoint loopback gerenciado; com OpenAI, usa a ferramenta hospedada `web_search` somente quando o usuário ativou a opção. Desativado significa ausência da ferramenta no run. Resultados da web são evidência externa não confiável e nunca memória clínica validada automaticamente.
 
 - Ollama é loopback e não usa chave.
 - OpenAI direta usa somente o endpoint fixo autorizado pela instalação.

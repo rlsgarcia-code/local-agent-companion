@@ -68,6 +68,7 @@ await writeFile(path.join(output, "dependencies.json"), JSON.stringify({ inputs 
 await generateThirdPartyNotices({ metafile: mainBuild.metafile, outputDirectory: path.join(output, "licenses") });
 
 await cp("desktop/renderer", path.join(output, "renderer"), { recursive: true });
+await cp("ops/searxng", path.join(output, "ops", "searxng"), { recursive: true });
 await copyFile("desktop/assets/icon.png", path.join(output, "icon.png"));
 await copyFile("LICENSE", path.join(output, "LICENSE"));
 const desktopPackage = {

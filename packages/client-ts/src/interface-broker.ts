@@ -1,12 +1,13 @@
 import { lstat, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ModelConfiguration } from "../../contracts/src/index";
+import type { ModelConfiguration, WebResearchConfiguration } from "../../contracts/src/index";
 
 export type InterfaceModelConfiguration = {
   provider: "ollama" | "openai";
   selectionMode: "optimized" | "custom";
   optimizationProfile: "quality" | "balanced" | "speed";
+  webResearch: WebResearchConfiguration;
   assignments: ModelConfiguration["roles"];
   hasApiKey: boolean;
 };

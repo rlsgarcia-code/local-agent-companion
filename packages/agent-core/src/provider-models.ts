@@ -36,7 +36,7 @@ export function validateProvider(
     if (url.href.replace(/\/$/, "") !== "https://api.openai.com/v1")
       throw new AgentError(
         errors.forbidden,
-        "OpenAI variant permits only the fixed Chat Completions endpoint.",
+        "OpenAI variant permits only the fixed API endpoint.",
       );
   } else if (spec.kind === "kidos-gateway") {
     if (url.href.replace(/\/$/, "") !== "http://127.0.0.1:8788")
@@ -61,17 +61,17 @@ export class ProviderModels {
       this.dispatcher=new UndiciAgent({connect:{ca:provider.corporateCa}});
     }
   }
-  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number; requiresTools?: boolean } = {}) {
+  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number; requiresTools?: boolean; webSearch?: boolean } = {}) {
     const provider=this.provider;
     const alias=provider.roles[role]||provider.roles.executor;
     const profile=provider.modelProfiles?.[alias] ?? (alias===provider.roles.executor ? provider.profile??{} : {});
     if(provider.kind==="kidos-gateway")throw new AgentError(errors.unavailable,"Install the protected KidOS model adapter.");
-    if(provider.kind!=="litellm"&&profile.api==="responses")throw new AgentError(errors.forbidden,"This product permits only Chat Completions for this provider.");
+    if(provider.kind!=="litellm"&&profile.api==="responses"&&provider.kind!=="openai")throw new AgentError(errors.forbidden,"This product permits only Chat Completions for this provider.");
     if(provider.kind==="litellm" || profile.capabilities)validateLiteLlmModelProfile(alias,profile,true,options.requiresTools !== false,provider.endpoint);
     if(role==="vision" && profile.capabilities && !profile.capabilities.vision)
       throw new AgentError(errors.invalid,"Vision is not declared for the selected model alias.");
     const connection={endpoint:provider.endpoint,model:provider.roles[role]||provider.roles.executor,apiKey:this.credential||"ollama-local",authHeader:provider.authHeader};
-    const responses=provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile,connection.endpoint)==="responses";
+    const responses=provider.kind==="openai"&&options.webSearch===true || provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile,connection.endpoint)==="responses";
     const common={model:connection.model,apiKey:connection.apiKey,streaming,disableStreaming:!streaming,maxRetries:options.maxRetries ?? 0,...(options.timeout ? {timeout:options.timeout}:{}),
       configuration:{baseURL:responses?responsesBaseUrl(connection,connection.model):chatCompletionsBaseUrl(connection),
         ...(this.credential&&provider.authHeader!=="authorization"?{defaultHeaders:{[provider.authHeader]:this.credential}}:{}),

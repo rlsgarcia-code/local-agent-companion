@@ -4,6 +4,7 @@ import { z } from "zod";
 import versions from "./version.json";
 import { identifier } from "./schema";
 import { workspaceOptions } from "./workspace";
+import { webResearchConfiguration } from "./models";
 export { identifier } from "./schema";
 export * from "./goals";
 export * from "./memory";
@@ -125,6 +126,7 @@ export const runSpec = z
     runtime: z.enum(["standard", "deep"]),
     mode: z.enum(["plan", "review", "execute"]),
     provider: providerSpec,
+    webResearch: webResearchConfiguration.optional(),
     messages: z.array(message).max(2000),
     systemPrompt: z.string().max(200_000),
     tools: z.array(toolSpec).max(200),

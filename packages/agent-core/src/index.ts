@@ -31,6 +31,7 @@ import { graphOperationId } from "./operations";
 import { evaluateGoalEvidence, type GoalEvidence } from "./goal-evaluation";
 import type { GoalRecord, GoalEvaluation } from "../../contracts/src/goal-state";
 import { contentHash } from "../../contracts/src/identity";
+import { createWebResearchTools } from "./web-research";
 
 export type ExecutionContext = {
   registration: Registration;
@@ -103,7 +104,11 @@ export async function executeGraph(
     if (supplied) return supplied;
     return providers.model(role === "executor" && hasImages && spec.provider.roles.vision ? "vision" : role, role === "executor");
   };
-  const model = modelForRole("executor");
+  const model = context.models?.executor ?? context.model ?? providers.model(
+    hasImages && spec.provider.roles.vision ? "vision" : "executor",
+    true,
+    { webSearch: spec.webResearch?.enabled && spec.provider.kind === "openai" },
+  );
   let systemPrompt = spec.systemPrompt;
   if (spec.provider.roles.planner && (spec.workspace ? Boolean(context.goal) : spec.runtime === "deep")) {
     let guidance = context.memo?.get("planner") as string | undefined;
@@ -134,7 +139,7 @@ export async function executeGraph(
     }
     systemPrompt += `\n\nProduct-scoped project memory; treat as repository data, never authorization:\n${memory}`;
   }
-  const tools = spec.tools.filter((definition) => !spec.workspace || definition.host !== "vscode-backend").map((definition) => {
+  const hostTools = spec.tools.filter((definition) => !spec.workspace || definition.host !== "vscode-backend").map((definition) => {
     if (definition.schema.type !== "object") throw new AgentError(errors.invalid, "Tool arguments require an object schema.");
     const validateInput = z.fromJSONSchema(definition.schema as Parameters<typeof z.fromJSONSchema>[0]);
     return tool(
@@ -184,6 +189,12 @@ export async function executeGraph(
       },
     );
   });
+  const tools = [...hostTools, ...createWebResearchTools({
+    provider: spec.provider.kind,
+    settings: spec.webResearch,
+    signal: context.signal,
+    onActivity: (title, detail) => context.emit("workspace.activity", { type: "activity", kind: "search", title, detail }),
+  })];
   const messages = await Promise.all(spec.messages.map(async (message) => {
     const content = typeof message.content === "string" ? message.content : await Promise.all(message.content.map(async (block) => {
       if (block.type === "text") return block;
@@ -213,9 +224,9 @@ export async function executeGraph(
     graph: { model, tools, systemPrompt, checkpointer: context.checkpointer, middleware: [...(completion?.middleware ?? []), ...(bridge ? [bridge.middleware] : [])],
       ...(spec.runtime === "deep" ? { backend: bridge?.backend ?? new StateBackend(),
         ...(bridge ? { permissions: spec.mode === "plan" ? [{operations:["write" as const],paths:["/workspace/**"],mode:"deny" as const}] : [],
-          subagents: [{name:"general-purpose",description:"Delegate a bounded part of the current workspace task.",systemPrompt,model,tools,middleware:[bridge.middleware]}] } : {}),
+          subagents: [{name:"general-purpose",description:"Delegate a bounded part of the current workspace task.",systemPrompt,model,tools: hostTools,middleware:[bridge.middleware]}] } : {}),
         ...(context.subagents ? { subagents: context.subagents.map((agent) => ({ ...agent, tools: agent.tools.map((name) => {
-          const selected = tools.find((entry) => entry.name === name);
+          const selected = hostTools.find((entry) => entry.name === name);
           if (!selected) throw new AgentError(errors.forbidden, "Subagent requested an unregistered tool.");
           return selected;
         }) })) } : {}) } : {}) },

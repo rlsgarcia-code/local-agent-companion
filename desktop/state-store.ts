@@ -9,6 +9,7 @@ import {
   type OllamaRecommendationPlan,
   type OllamaRoleConfiguration
 } from "../src/ollama-recommendation";
+import { DEFAULT_WEB_RESEARCH_CONFIGURATION, webResearchConfiguration } from "@companion/client-sdk/contracts";
 
 const DEFAULT_MODEL = "qwen3-coder:30b";
 const MAX_EXECUTION_STEPS = 60;
@@ -41,6 +42,7 @@ export class DesktopStateStore {
       modelSelectionMode: stored.modelSelectionMode === "optimized" ? "optimized" : "custom",
       modelOptimizationProfile: stored.modelOptimizationProfile === "quality" || stored.modelOptimizationProfile === "speed"
         ? stored.modelOptimizationProfile : "balanced",
+      webResearch: webResearchConfiguration.catch(DEFAULT_WEB_RESEARCH_CONFIGURATION).parse(stored.webResearch),
       openAiKeyStored: stored.openAiKeyStored === true,
       ollamaPublicCatalogEnabled: stored.ollamaPublicCatalogEnabled === true,
       dockerSandboxEnabled: stored.dockerSandboxEnabled === true,
@@ -66,7 +68,7 @@ export class DesktopStateStore {
     return thread;
   }
 
-  public async update(values: Partial<Pick<DesktopState, "workspacePath" | "modelRoles" | "modelProvider" | "modelSelectionMode" | "modelOptimizationProfile" | "openAiKeyStored" | "ollamaPublicCatalogEnabled" | "dockerSandboxEnabled" | "lastRecommendation" | "mode" | "agentRuntime" | "activeThreadId">>): Promise<void> {
+  public async update(values: Partial<Pick<DesktopState, "workspacePath" | "modelRoles" | "modelProvider" | "modelSelectionMode" | "modelOptimizationProfile" | "webResearch" | "openAiKeyStored" | "ollamaPublicCatalogEnabled" | "dockerSandboxEnabled" | "lastRecommendation" | "mode" | "agentRuntime" | "activeThreadId">>): Promise<void> {
     this.state = { ...this.state, ...values };
     await this.save();
   }

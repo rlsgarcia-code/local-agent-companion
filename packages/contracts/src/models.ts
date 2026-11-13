@@ -7,6 +7,26 @@ export const configurableModelProvider = z.enum(["ollama", "openai", "litellm"])
 export type ModelSelectionMode = z.infer<typeof modelSelectionMode>;
 export type ModelOptimizationProfile = z.infer<typeof modelOptimizationProfile>;
 
+export const webResearchConfiguration = z.object({
+  enabled: z.boolean().default(false),
+  contextSize: z.enum(["low", "medium", "high"]).default("medium"),
+  allowedDomains: z.array(z.string().trim().min(1).max(253).regex(/^[a-z0-9.-]+$/i)).max(100).default([]),
+  searxngEndpoint: z.string().url().default("http://127.0.0.1:8080"),
+  language: z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z]{2})?$/).default("pt-BR"),
+  safeSearch: z.union([z.literal(0), z.literal(1), z.literal(2)]).default(1),
+  maxResults: z.number().int().min(1).max(12).default(8),
+}).strict();
+export type WebResearchConfiguration = z.infer<typeof webResearchConfiguration>;
+export const DEFAULT_WEB_RESEARCH_CONFIGURATION: WebResearchConfiguration = {
+  enabled: false,
+  contextSize: "medium",
+  allowedDomains: [],
+  searxngEndpoint: "http://127.0.0.1:8080",
+  language: "pt-BR",
+  safeSearch: 1,
+  maxResults: 8,
+};
+
 export const ollamaRoleConfiguration = z.object({
   executor: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/),
   planner: z.string().max(200).optional(), evaluator: z.string().max(200).optional(),
@@ -19,6 +39,7 @@ export const modelConfiguration = z.object({
   credentialRef: identifier.optional(),
   selectionMode: modelSelectionMode.default("custom"),
   optimizationProfile: modelOptimizationProfile.default("balanced"),
+  webResearch: webResearchConfiguration.default(DEFAULT_WEB_RESEARCH_CONFIGURATION),
   roles: ollamaRoleConfiguration,
 }).strict();
 export type ModelConfiguration = z.infer<typeof modelConfiguration>;

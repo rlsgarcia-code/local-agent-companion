@@ -182,6 +182,15 @@
           <label><span>Vision</span><input id="role-vision" list="provider-model-options"></label>
           <label><span>Embedding</span><input id="role-embedding" list="provider-model-options"></label>
         </div>
+        <div class="web-research-settings">
+          <label class="catalog-opt-in"><input id="web-research-enabled" type="checkbox"><span>Disponibilizar pesquisa web para o agente</span></label>
+          <p id="web-research-connector">Conector: SearXNG local</p>
+          <div class="provider-settings-grid">
+            <label><span>Profundidade</span><select id="web-research-context"><option value="low">Rápida</option><option value="medium">Equilibrada</option><option value="high">Profunda</option></select></label>
+            <label><span>Domínios permitidos (opcional)</span><input id="web-research-domains" placeholder="pubmed.ncbi.nlm.nih.gov, who.int"></label>
+          </div>
+          <small>Ollama usa SearXNG em loopback; OpenAI usa Web Search hospedado. Consultas devem ser desidentificadas.</small>
+        </div>
         <datalist id="provider-model-options"></datalist>
         <div class="provider-settings-actions"><p id="model-settings-status"></p><button id="save-model-settings">Salvar configuração</button></div>
       </section>

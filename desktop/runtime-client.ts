@@ -3,6 +3,7 @@ import type { AgentClient, HostResponses } from "@companion/client-sdk";
 import { COMPANION_RELEASE_PUBLIC_KEY, ensureEngine } from "@companion/client-sdk/bootstrap";
 import {
   AgentError,
+  DEFAULT_WEB_RESEARCH_CONFIGURATION,
   engineCapabilities,
   errors,
   type EngineInfo,
@@ -16,6 +17,7 @@ import {
   type Run,
   type RunState,
   type Session,
+  type WebResearchConfiguration,
 } from "@companion/client-sdk/contracts";
 import type {
   DesktopActivity,
@@ -49,6 +51,7 @@ export type DesktopModelConfiguration = {
   credentialRef?: string;
   selectionMode: ModelSelectionMode;
   optimizationProfile: ModelOptimizationProfile;
+  webResearch: WebResearchConfiguration;
   roles: OllamaRoleConfiguration;
 };
 
@@ -193,7 +196,7 @@ export class OllamaDesktopRuntime {
     const previous = await client.call<DesktopModelConfiguration | null>("models.configuration");
     await client.call("models.configure", previous
       ? { ...previous, roles }
-      : { revision: 0, provider: "ollama", endpoint: "http://127.0.0.1:11434/v1", selectionMode: "custom", optimizationProfile: "balanced", roles });
+      : { revision: 0, provider: "ollama", endpoint: "http://127.0.0.1:11434/v1", selectionMode: "custom", optimizationProfile: "balanced", webResearch: DEFAULT_WEB_RESEARCH_CONFIGURATION, roles });
   }
   async modelConfiguration(initial?: OllamaRoleConfiguration): Promise<DesktopModelConfiguration | undefined> {
     const client = await this.connect();
@@ -202,7 +205,7 @@ export class OllamaDesktopRuntime {
     if (!initial?.executor) return undefined;
     return client.call<DesktopModelConfiguration>("models.configure", {
       revision: 0, provider: "ollama", endpoint: "http://127.0.0.1:11434/v1",
-      selectionMode: "custom", optimizationProfile: "balanced", roles: initial,
+      selectionMode: "custom", optimizationProfile: "balanced", webResearch: DEFAULT_WEB_RESEARCH_CONFIGURATION, roles: initial,
     });
   }
   async configureModels(input: Omit<DesktopModelConfiguration, "revision">): Promise<DesktopModelConfiguration> {

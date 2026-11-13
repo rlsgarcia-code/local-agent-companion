@@ -4,7 +4,7 @@ import type {
 } from "./ollama";
 import { z } from "zod";
 import { modelRoles, providerSpec, type EngineUpdateBlockers, type ProviderSpec, type RunState } from "./index";
-import type { ModelOptimizationProfile, ModelSelectionMode } from "./models";
+import { webResearchConfiguration, type ModelOptimizationProfile, type ModelSelectionMode, type WebResearchConfiguration } from "./models";
 
 export const desktopRunSpec = z
   .object({
@@ -32,6 +32,7 @@ export const desktopRunSpec = z
     workspacePath: z.string().max(4096),
     modelRoles,
     provider: providerSpec.optional(),
+    webResearch: webResearchConfiguration.optional(),
     dockerSandboxEnabled: z.boolean(),
     mode: z.enum(["review", "execute", "plan"]),
     agentRuntime: z.enum(["standard", "deep"]),
@@ -116,6 +117,7 @@ export type DesktopState = {
   modelProvider: "ollama" | "openai";
   modelSelectionMode: ModelSelectionMode;
   modelOptimizationProfile: ModelOptimizationProfile;
+  webResearch: WebResearchConfiguration;
   openAiKeyStored: boolean;
   ollamaPublicCatalogEnabled: boolean;
   dockerSandboxEnabled: boolean;
@@ -286,6 +288,7 @@ export type DesktopModelSettingsInput = {
   provider: "ollama" | "openai";
   selectionMode: ModelSelectionMode;
   optimizationProfile: ModelOptimizationProfile;
+  webResearch: WebResearchConfiguration;
   roles: OllamaRoleConfiguration;
   openAiKey?: string;
 };
@@ -318,6 +321,7 @@ export type DesktopRuntimeRunOptions = {
   workspacePath: string;
   modelRoles: OllamaRoleConfiguration;
   provider?: ProviderSpec;
+  webResearch?: WebResearchConfiguration;
   credential?: string;
   dockerSandboxEnabled: boolean;
   mode: DesktopRunMode;

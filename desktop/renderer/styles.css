@@ -370,6 +370,10 @@ button, input, textarea { -webkit-tap-highlight-color: transparent; }
 .provider-settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .provider-settings-actions p { min-height: 14px; margin: 0; color: var(--quiet); font-size: 8px; line-height: 1.4; }
 .provider-settings-actions button { flex: 0 0 auto; border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.web-research-settings { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.web-research-settings .provider-settings-grid { margin-top: 9px; }
+.web-research-settings p, .web-research-settings small { display: block; margin: 6px 0 0; color: var(--quiet); font-size: 8px; line-height: 1.45; }
+.web-research-settings .catalog-opt-in span { display: inline; margin: 0; color: var(--text); }
 .provider-settings button:disabled { opacity: .4; cursor: default; }
 .active-model-config { padding: 15px 0; border-bottom: 1px solid var(--line); }
 .active-model-config > div:first-child strong { display: block; margin-top: 4px; color: var(--text); font-size: 11px; }

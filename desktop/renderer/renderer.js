@@ -662,6 +662,11 @@ function renderModelSettings(snapshot) {
   el["model-selection-mode"].value = snapshot.modelSelectionMode || "custom";
   el["model-optimization-profile"].value = snapshot.modelOptimizationProfile || "balanced";
   const hosted = snapshot.modelProvider === "openai";
+  const webResearch = snapshot.webResearch || {};
+  el["web-research-enabled"].checked = webResearch.enabled === true;
+  el["web-research-context"].value = webResearch.contextSize || "medium";
+  el["web-research-domains"].value = (webResearch.allowedDomains || []).join(", ");
+  el["web-research-connector"].textContent = `Conector: ${hosted ? "OpenAI Web Search" : "SearXNG local (iniciado ao salvar)"}`;
   const custom = snapshot.modelSelectionMode === "custom";
   const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
   const catalogModels = new Set(catalog.map((model) => model.toLowerCase()));
@@ -984,6 +989,7 @@ el["refresh-model-catalog"].addEventListener("click", async () => {
 });
 el["model-provider"].addEventListener("change", () => {
   const hosted = el["model-provider"].value === "openai";
+  el["web-research-connector"].textContent = `Conector: ${hosted ? "OpenAI Web Search" : "SearXNG local (iniciado ao salvar)"}`;
   const changed = el["model-provider"].value !== appState.snapshot.modelProvider;
   el["openai-key-row"].classList.toggle("hidden", !hosted);
   el["refresh-model-catalog"].disabled = changed;
@@ -1020,6 +1026,15 @@ el["save-model-settings"].addEventListener("click", async () => {
       provider: el["model-provider"].value,
       selectionMode: el["model-selection-mode"].value,
       optimizationProfile: el["model-optimization-profile"].value,
+      webResearch: {
+        enabled: el["web-research-enabled"].checked,
+        contextSize: el["web-research-context"].value,
+        allowedDomains: el["web-research-domains"].value.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean),
+        searxngEndpoint: appState.snapshot.webResearch?.searxngEndpoint || "http://127.0.0.1:8080",
+        language: appState.snapshot.webResearch?.language || "pt-BR",
+        safeSearch: appState.snapshot.webResearch?.safeSearch ?? 1,
+        maxResults: appState.snapshot.webResearch?.maxResults || 8
+      },
       roles,
       ...(el["openai-key"].value.trim() ? { openAiKey: el["openai-key"].value.trim() } : {})
     });
