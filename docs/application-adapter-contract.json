@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "engine": "1.0.8",
+  "protocol": "1.0",
+  "applicationProduct": "companion-app",
+  "sdkArtifact": "companion-sdks-1.0.8.tar.gz",
+  "requiredEngineCapabilities": [
+    "sessions",
+    "runs",
+    "events",
+    "approvals",
+    "goals",
+    "sqlite-checkpoints",
+    "chunked-transfers",
+    "durable-approvals",
+    "bound-tool-receipts",
+    "ollama-model-jobs",
+    "model-assistance",
+    "public-session-snapshots"
+  ],
+  "requiredTypeScriptMethods": [
+    "engineInfo",
+    "upload",
+    "download",
+    "importSession",
+    "startRun",
+    "exportSession",
+    "snapshotSession",
+    "readEvents",
+    "waitForRun",
+    "modelConfiguration",
+    "configureModels",
+    "modelCatalog",
+    "assistModel",
+    "close"
+  ],
+  "requiredBrokerMethods": [
+    "modelConfiguration",
+    "configureModels",
+    "leaseOpenAiCredential",
+    "openSettings"
+  ],
+  "requiredPythonMethods": [
+    "engine_info",
+    "upload",
+    "download",
+    "import_session",
+    "start_run",
+    "export_session",
+    "snapshot_session",
+    "read_events",
+    "wait",
+    "assist_model",
+    "close"
+  ],
+  "hostResponsibilities": [
+    "presentation",
+    "domain-context",
+    "provider-credential-hosting",
+    "tool-catalog",
+    "tool-execution",
+    "approval-ui",
+    "event-projection",
+    "lifecycle"
+  ]
+}

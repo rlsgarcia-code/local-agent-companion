@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.11 - 2026-11-12
+
+### Added
+- Publish a canonical, versioned application-adapter contract with a reference adapter and a repository gate that requires SDK/capability documentation to evolve with the engine.
+- Add the isolated `companion-app` client identity so new products no longer impersonate the Mac or VS Code clients.
+- Expose typed `engineInfo()` helpers in the TypeScript and Python SDKs for startup capability negotiation.
+
+### Security
+- Keep application sessions, memory, goals and checkpoints in their own product/profile/workspace namespace.
+- Permit the trusted Mac credential host to delegate only an ephemeral grant to an exact registered `companion-app`; provider keys are never returned to the adapter.
+
+This release advances the clients to 0.12.11 and the engine and SDKs to 1.0.8. It contains no Med-Graph or other application-domain code.
+
 ## 0.12.10 - 2026-11-12
 
 ### Added

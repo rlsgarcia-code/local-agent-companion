@@ -140,6 +140,10 @@ class AgentClient:
                 if self.socket:
                     self.socket.settimeout(previous_timeout)
 
+    def engine_info(self) -> dict:
+        """Return negotiated engine version, protocol, product and capabilities."""
+        return self.call("engine.info")
+
     def export_session(self, identifier: str) -> object:
         transfer = self.call("sessions.export", {"id": identifier})
         return json.loads(self.download(transfer["id"]))

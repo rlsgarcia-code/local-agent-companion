@@ -14,6 +14,7 @@ import {
   type ModelConfiguration,
   type ProviderSpec,
   type EngineEvent,
+  type EngineInfo,
   type RpcResponse,
   type Run,
   type Session,
@@ -22,6 +23,7 @@ import {
 } from "../../contracts/src/index";
 import { MAX_TRANSFER_BYTES, TRANSFER_CHUNK_BYTES, type Transfer } from "../../contracts/src/transfers";
 import { contentHash } from "../../contracts/src/identity";
+export { CompanionInterfaceBroker, interfaceBrokerDescriptorPath, type InterfaceModelConfiguration } from "./interface-broker";
 
 export type HostResponses = Map<string, { signature: string; response: Promise<unknown> }>;
 
@@ -133,6 +135,9 @@ export class AgentClient {
       ? {transferId:(await this.upload(`model-assistance:${randomUUID()}`,bytes,"application/json")).id}
       : request;
     return this.call<ModelAssistanceResult>("models.assist",params,100_000);
+  }
+  engineInfo(): Promise<EngineInfo> {
+    return this.call("engine.info");
   }
   modelConfiguration(): Promise<ModelConfiguration | null> {
     return this.call("models.configuration");

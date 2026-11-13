@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startInterfaceBroker } from "../desktop/interface-broker";
+import { CompanionInterfaceBroker } from "../packages/client-ts/src/interface-broker";
 
 test("the interface broker shares settings and leases without exposing credentials", async () => {
   const descriptorPath = path.join(tmpdir(), `companion-interface-broker-${process.pid}.json`);
@@ -28,16 +29,21 @@ test("the interface broker shares settings and leases without exposing credentia
   });
   try {
     const descriptor = JSON.parse(await readFile(descriptorPath, "utf8")) as { baseUrl: string; token: string };
+    const client = await CompanionInterfaceBroker.connect(descriptorPath);
+    assert.equal((await client.modelConfiguration()).provider, "ollama");
+    await client.leaseOpenAiCredential("example-application");
+    assert.equal(leased, 1);
+    assert.equal(delegatedTarget, "example-application");
     const headers = { authorization: `Bearer ${descriptor.token}`, "content-type": "application/json" };
     const configuration = await fetch(`${descriptor.baseUrl}/v1/model-configuration`, { headers });
     assert.equal(configuration.status, 200);
     assert.equal((await configuration.json() as { provider: string }).provider, "ollama");
     const lease = await fetch(`${descriptor.baseUrl}/v1/credentials/openai/lease`, {
-      method: "POST", headers, body: JSON.stringify({ targetClientId: "medgraph-interface" }),
+      method: "POST", headers, body: JSON.stringify({ targetClientId: "example-application" }),
     });
     assert.equal(lease.status, 202);
-    assert.equal(leased, 1);
-    assert.equal(delegatedTarget, "medgraph-interface");
+    assert.equal(leased, 2);
+    assert.equal(delegatedTarget, "example-application");
     assert.equal(JSON.stringify(await lease.json()).includes("key"), false);
     const denied = await fetch(`${descriptor.baseUrl}/v1/model-configuration`);
     assert.equal(denied.status, 401);

@@ -43,6 +43,10 @@ await esbuild
     await generateThirdPartyNotices({metafile:result.metafile,outputDirectory:path.join(output,"licenses")});
   });
 await cp("LICENSE",path.join(output,"LICENSE"));
+await mkdir(path.join(output, "integration"), { recursive: true });
+await cp("docs/APPLICATION_ADAPTERS.md", path.join(output, "integration", "APPLICATION_ADAPTERS.md"));
+await cp("docs/application-adapter-contract.json", path.join(output, "integration", "application-adapter-contract.json"));
+await cp("examples/application-adapter", path.join(output, "integration", "example"), { recursive: true });
 await cp("packages/client-python", path.join(output, "python"), {
   recursive: true,
   filter: (name) => !name.includes("__pycache__"),
