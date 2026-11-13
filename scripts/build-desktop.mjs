@@ -1,9 +1,29 @@
 import * as esbuild from "esbuild";
+import { execFileSync } from "node:child_process";
 import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { generateThirdPartyNotices } from "./generate-third-party-notices.mjs";
 
+if (process.env.COMPANION_USE_EXISTING_SDK !== "1")
+  execFileSync(process.execPath, ["scripts/build-sdks.mjs"], { stdio: "inherit" });
+
 const output = path.resolve("desktop-dist");
+const sdkRoot = path.resolve("release/sdk");
+const sdkEntries = new Map([
+  ["@companion/client-sdk", path.join(sdkRoot, "typescript/client-ts/src/index.cjs")],
+  ["@companion/client-sdk/bootstrap", path.join(sdkRoot, "typescript/client-ts/src/bootstrap.cjs")],
+  ["@companion/client-sdk/contracts", path.join(sdkRoot, "typescript/contracts/src/index.cjs")],
+  ["@companion/client-sdk/desktop", path.join(sdkRoot, "typescript/contracts/src/desktop.cjs")],
+]);
+const installedSdkPlugin = {
+  name: "installed-companion-sdk",
+  setup(build) {
+    build.onResolve({ filter: /^@companion\/client-sdk(?:\/.*)?$/ }, (args) => {
+      const resolved = sdkEntries.get(args.path);
+      return resolved ? { path: resolved } : { errors: [{ text: `Unknown Companion SDK entry: ${args.path}` }] };
+    });
+  },
+};
 await rm(output, { recursive: true, force: true });
 await mkdir(path.join(output, "renderer"), { recursive: true });
 
@@ -18,6 +38,7 @@ const [mainBuild] = await Promise.all([
     external: ["electron"],
     sourcemap: true,
     metafile: true,
+    plugins: [installedSdkPlugin],
     logLevel: "info"
   }),
   esbuild.build({
@@ -29,10 +50,17 @@ const [mainBuild] = await Promise.all([
     target: "node22",
     external: ["electron"],
     sourcemap: true,
+    plugins: [installedSdkPlugin],
     logLevel: "info"
   })
 ]);
 const inputs = Object.keys(mainBuild.metafile.inputs);
+if (!inputs.some((name) => name.includes("release/sdk/typescript/client-ts/src/bootstrap.cjs"))) {
+  throw new Error("The Mac client did not consume the packaged Companion SDK.");
+}
+if (inputs.some((name) => /packages\/(?:client-ts|contracts)\/src/.test(name))) {
+  throw new Error("The Mac client bypassed the packaged Companion SDK.");
+}
 if (inputs.some((name) => /node_modules\/(?:langchain|deepagents|@langchain)\//.test(name))) {
   throw new Error("The Mac client contains an agent runtime. Keep execution inside the shared engine.");
 }

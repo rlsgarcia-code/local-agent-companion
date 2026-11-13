@@ -1,9 +1,18 @@
 {
   "schema": 1,
-  "engine": "1.0.8",
+  "engine": "1.0.9",
   "protocol": "1.0",
   "applicationProduct": "companion-app",
-  "sdkArtifact": "companion-sdks-1.0.8.tar.gz",
+  "sdkArtifact": "companion-sdks-1.0.9.tar.gz",
+  "publicSdkExports": [
+    ".",
+    "./bootstrap",
+    "./contracts",
+    "./desktop"
+  ],
+  "referenceConsumers": [
+    "companion-mac"
+  ],
   "requiredEngineCapabilities": [
     "sessions",
     "runs",

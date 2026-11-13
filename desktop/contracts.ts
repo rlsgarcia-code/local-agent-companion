@@ -1,1 +1,1 @@
-export * from "../packages/contracts/src/desktop";
+export * from "@companion/client-sdk/desktop";

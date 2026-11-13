@@ -3,7 +3,7 @@ import type {
   OllamaRoleConfiguration,
 } from "./ollama";
 import { z } from "zod";
-import { modelRoles, providerSpec, type EngineUpdateBlockers, type RunState } from "./index";
+import { modelRoles, providerSpec, type EngineUpdateBlockers, type ProviderSpec, type RunState } from "./index";
 import type { ModelOptimizationProfile, ModelSelectionMode } from "./models";
 
 export const desktopRunSpec = z
@@ -132,6 +132,24 @@ export type OllamaModel = {
   modifiedAt?: string;
   capabilities?: string[];
   contextLength?: number;
+};
+
+export type DesktopOllamaStatus = {
+  connected: boolean;
+  version?: string;
+  models: OllamaModel[];
+  error?: string;
+};
+
+export type DesktopDockerStatus = {
+  available: boolean;
+  version?: string;
+  images: Array<{
+    alias: string;
+    id: string;
+    size: string;
+  }>;
+  error?: string;
 };
 
 export type DesktopContextTab = {
@@ -277,4 +295,48 @@ export type PullProgress = {
   line: string;
   done: boolean;
   error?: string;
+};
+
+export type DesktopRuntimeCallbacks = {
+  approval: (request: ApprovalRequest) => Promise<boolean>;
+  activity: (activity: DesktopActivity) => void;
+  delta: (messageId: string, delta: string) => void;
+  step: (messageId: string, step: DesktopExecutionStep) => void;
+  reset: (messageId: string) => void;
+};
+
+export type DesktopOperationExecutor = (
+  id: string,
+  tool: string,
+  args: unknown,
+  perform: () => Promise<unknown>,
+) => Promise<unknown>;
+
+export type DesktopRuntimeRunOptions = {
+  thread: DesktopThread;
+  request: string;
+  workspacePath: string;
+  modelRoles: OllamaRoleConfiguration;
+  provider?: ProviderSpec;
+  credential?: string;
+  dockerSandboxEnabled: boolean;
+  mode: DesktopRunMode;
+  agentRuntime: DesktopAgentRuntime;
+  assistantMessageId: string;
+  userMessageId?: string;
+  contextPages: DesktopContextPage[];
+  openPreview: (url: string) => Promise<void>;
+  callbacks: DesktopRuntimeCallbacks;
+  execution?: {
+    threadId: string;
+    signal: AbortSignal;
+    operation: DesktopOperationExecutor;
+    reconciliations: Record<string, unknown>;
+    requireCheckpoint?: boolean;
+  };
+};
+
+export type DesktopRuntimeRunResult = {
+  message: DesktopMessage;
+  changes: DesktopChange[];
 };

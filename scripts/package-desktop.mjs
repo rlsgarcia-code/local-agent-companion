@@ -25,7 +25,10 @@ try {
   await verifyBundle(path.resolve(source), publicKey, false, `darwin-${architecture}`);
   await cp(path.resolve(source), bundle, { recursive: true, dereference: false });
   await verifyBundle(bundle, publicKey, false, `darwin-${architecture}`);
-  execFileSync(process.execPath, ["scripts/build-desktop.mjs"], { stdio: "inherit" });
+  execFileSync(process.execPath, ["scripts/build-desktop.mjs"], {
+    stdio: "inherit",
+    env: { ...process.env, COMPANION_USE_EXISTING_SDK: "1" },
+  });
   const client = path.join(staging, "client");
   await cp(path.resolve("desktop-dist"), client, { recursive: true });
   const lock = JSON.parse(await readFile("package-lock.json", "utf8"));

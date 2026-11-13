@@ -30,6 +30,7 @@ import {
   type ProviderSpec,
   type ToolSpec,
 } from "../../contracts/src/index";
+export { COMPANION_RELEASE_PUBLIC_KEY } from "./release-key";
 
 export function engineStateDirectory(): string {
   return process.platform === "win32"

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.12 - 2026-11-12
+
+### Added
+- Export the desktop interaction contract as `@companion/client-sdk/desktop` and validate the Mac runtime against the packaged SDK artifact.
+- Negotiate every declared engine capability before the Mac interface enables service-backed work.
+- Add a repository boundary test that rejects direct Mac imports from internal client, contract or agent-runtime source trees.
+
+### Changed
+- Make the Mac application a reference consumer of the same public SDK imports documented for external application adapters.
+- Align every workspace package manifest with engine and SDK version 1.0.9.
+
+This release advances the clients to 0.12.12 and the engine and SDKs to 1.0.9. The Mac UI and Keychain host remain product-specific; execution, sessions, memory, planning and model access continue through the shared engine.
+
 ## 0.12.11 - 2026-11-12
 
 ### Added

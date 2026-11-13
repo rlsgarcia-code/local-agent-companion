@@ -20,7 +20,7 @@ import type {
 } from "./contracts";
 import { redactSensitiveText } from "../src/redaction";
 import { OllamaDesktopRuntime } from "./runtime-client";
-import { PreparedEngineUpdateError } from "../packages/client-ts/src/bootstrap";
+import { PreparedEngineUpdateError } from "@companion/client-sdk/bootstrap";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
 import { directOpenAiDesktopCatalog, recommendHostedRoles, reconcileHostedRoles } from "./provider-models";

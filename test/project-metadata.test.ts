@@ -35,7 +35,7 @@ test("keeps professional extension metadata and a valid package icon", () => {
   assert.deepEqual(notifications?.enum, ["whenHidden", "always", "never"]);
   assert.equal(
     manifest.scripts?.["test:repository"],
-    "node --test test/adapter-documentation.test.mjs test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs test/release-artifacts.test.mjs test/installed-vsix.test.mjs"
+    "node --test test/adapter-documentation.test.mjs test/mac-sdk-boundary.test.mjs test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs test/release-artifacts.test.mjs test/installed-vsix.test.mjs"
   );
   assert.match(manifest.scripts?.test ?? "", /npm run test:repository/);
   assert.equal(manifest.scripts?.package, "npm run build && node scripts/package-native.mjs");
