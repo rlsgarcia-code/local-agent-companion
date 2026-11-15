@@ -41,6 +41,13 @@ de produção exige recibo exato de encerramento e ausência do processo origina
 Operações antigas continuam reconhecidas; encerramento desconhecido conserva o
 temporário. A suíte local passou com 856 testes e um skip explícito. A nova rodada
 remota ainda precisa comprovar os dois caminhos e a renderização restante.
+A rodada `95b0ce9` passou no CI de Linux x64, Linux ARM64 e Mac ARM64. Windows
+continuou recusando a resolução do perfil, e o runner Mac Intel mostrou saturação
+(um prazo de5s retornando erro após quase1min). A próxima revisão usa a estrutura
+Windows `USERPROFILE/AppData/{Local,Roaming}`, mantém o perfil de dados separado,
+e espera o primeiro quadro do visor antes de informar carregamento. Os testes
+unitários passam a ser seriados; nenhum prazo de produção ou assert foi aumentado.
+
 O teste do visor conserva os checks reais de pose, animação e câmera; a abertura
 usa o detector compartilhado de pixels não uniformes em lugar de exigir uma
 paleta de mais de cinquenta cores, que varia com o backend gráfico. O contador

@@ -66,6 +66,9 @@ export const modelViewerScript=String.raw`(async()=>{
     el('reset').onclick=()=>{if(active)seek(active.from);};
     document.addEventListener('visibilitychange',()=>{if(document.hidden&&active&&playing){pause();position(active.getCurrentFrame());}});
     window.addEventListener('resize',()=>engine.resize());window.addEventListener('pagehide',()=>{stop();scene.dispose();engine.dispose();},{once:true});
-    await scene.whenReadyAsync();scene.render();engine.runRenderLoop(()=>{if(!document.hidden){scene.render();if(playing&&active)position(active.getCurrentFrame());}});el('status').textContent='Modelo carregado · somente inspeção';
+    await scene.whenReadyAsync();
+    let firstRendered=false;const firstFrame=new Promise(resolve=>engine.onEndFrameObservable.addOnce(resolve));
+    engine.runRenderLoop(()=>{if(!firstRendered||!document.hidden){scene.render();firstRendered=true;if(playing&&active)position(active.getCurrentFrame());}});
+    await firstFrame;el('status').textContent='Modelo carregado · somente inspeção';
   }catch{fail();scene?.dispose();engine?.dispose();}
 })();`;

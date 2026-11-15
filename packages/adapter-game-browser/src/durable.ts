@@ -78,7 +78,10 @@ export function durableBrowser(options: Options) {
     await checkDirectory(options.stateDirectory); await ensureDirectory(path.join(options.stateDirectory, "game-browser-jobs"));
     await privateDirectory(directory(access));
     for (const name of ["input", "home", "tmp"]) await privateDirectory(path.join(directory(access), name));
-    if (process.platform === "win32") for (const name of ["local", "roaming"]) await privateDirectory(path.join(directory(access), "home", name));
+    if (process.platform === "win32") {
+      const appData = path.join(directory(access), "home", "AppData");await privateDirectory(appData);
+      for (const name of ["Local", "Roaming"]) await privateDirectory(path.join(appData, name));
+    }
     let bytes = 0; const copied = new Set<string>();
     for (const file of access.artifact.files) {
       access.signal.throwIfAborted(); bytes += file.size;
@@ -105,7 +108,11 @@ export function durableBrowser(options: Options) {
     const home = path.join(directory(access), "home"), temp = op.temporary?.path ?? path.join(directory(access), "tmp");
     const env: NodeJS.ProcessEnv = { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home, XDG_CACHE_HOME: home, TMPDIR: temp, TEMP: temp, TMP: temp,
       PATH: process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32") : "/usr/bin:/bin", LANG: "en_US.UTF-8" };
-    if (process.platform === "win32") { env.LOCALAPPDATA = path.join(home, "local");env.APPDATA = path.join(home, "roaming"); }
+    if (process.platform === "win32") {
+      env.LOCALAPPDATA = path.join(home, "AppData", "Local");env.APPDATA = path.join(home, "AppData", "Roaming");
+      env.HOMEDRIVE = path.parse(home).root.replace(/[\\/]$/, "");env.HOMEPATH = home.slice(env.HOMEDRIVE.length);
+      env.SystemDrive = path.parse(process.env.SystemRoot ?? "C:\\Windows").root.replace(/[\\/]$/, "");
+    }
     for (const key of process.platform === "win32" ? ["SystemRoot", "WINDIR"] : options.headless ? [] : ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR"])
       if (process.env[key]) env[key] = process.env[key];
     return env;

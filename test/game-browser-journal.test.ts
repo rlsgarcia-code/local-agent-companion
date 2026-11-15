@@ -89,8 +89,10 @@ process.exit(12);}});process.send({kind:'ready',nonce:operation.nonce});`, { mod
         assert.ok(operation.temporary);
         assert.equal(environment.tmp, operation.temporary.path);
         if (process.platform === "win32") {
-          assert.equal(environment.local, path.join(directory, "home", "local"));
-          assert.equal(environment.roaming, path.join(directory, "home", "roaming"));
+          assert.equal(environment.local, path.join(directory, "home", "AppData", "Local"));
+          assert.equal(environment.roaming, path.join(directory, "home", "AppData", "Roaming"));
+          assert.ok((await lstat(environment.local)).isDirectory());
+          assert.ok((await lstat(environment.roaming)).isDirectory());
         }
         if (receipt) assert.equal((await runtime.recover(context)).state, "missing");
         else await assert.rejects(runtime.recover(context), /without a shutdown acknowledgment/);
