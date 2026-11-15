@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { contentHash } from "../../contracts/src/identity";
 import { GameProductionFailure, GameProductionUncertain, type GameValidationCollector, type CollectedGameObservation, type GameRecovery } from "../../game-production/src/index";
 import type { QualifiedBrowser } from "./browser";
+import { createBrowserTemporary, checkBrowserTemporary, removeBrowserTemporary } from "./temporary";
 import { alive, checkDirectory, digest, ensureDirectory, json, leaseSchema, operationSchema, privateDirectory, readOperation, readResult, receiptSchema, requestSchema, writeJson, writePrivate, type BrowserOperation, type BrowserReceipt } from "./journal";
 
 type Access = Parameters<GameValidationCollector["validate"]>[0];
@@ -76,9 +77,8 @@ export function durableBrowser(options: Options) {
     access.signal.throwIfAborted();
     await checkDirectory(options.stateDirectory); await ensureDirectory(path.join(options.stateDirectory, "game-browser-jobs"));
     await privateDirectory(directory(access));
-    const op = operationSchema.parse({ schemaVersion: 1, nonce: randomBytes(32).toString("hex"), workerSha256: options.workerSha256, binding: binding(access) });
-    await writePrivate(path.join(directory(access), "operation.json"), Buffer.from(JSON.stringify(op)));
     for (const name of ["input", "home", "tmp"]) await privateDirectory(path.join(directory(access), name));
+    if (process.platform === "win32") for (const name of ["local", "roaming"]) await privateDirectory(path.join(directory(access), "home", name));
     let bytes = 0; const copied = new Set<string>();
     for (const file of access.artifact.files) {
       access.signal.throwIfAborted(); bytes += file.size;
@@ -93,13 +93,19 @@ export function durableBrowser(options: Options) {
     })));
     if (request.byteLength > 32 * 1024 * 1024) throw new GameProductionFailure("Browser input metadata exceeded its transfer budget; source is preserved.");
     await writePrivate(path.join(directory(access), "request.json"), request);
-    await writePrivate(path.join(directory(access), "prepared.json"), Buffer.from(JSON.stringify({ operationHash: contentHash(op), requestSha256: digest(request) })));
-    return op;
+    const temporary = await createBrowserTemporary();
+    try {
+      const op = operationSchema.parse({ schemaVersion: 1, nonce: randomBytes(32).toString("hex"), workerSha256: options.workerSha256, binding: binding(access), temporary });
+      await writePrivate(path.join(directory(access), "operation.json"), Buffer.from(JSON.stringify(op)));
+      await writePrivate(path.join(directory(access), "prepared.json"), Buffer.from(JSON.stringify({ operationHash: contentHash(op), requestSha256: digest(request) })));
+      return op;
+    } catch (error) { await removeBrowserTemporary(temporary);throw error; } // No helper can have started yet.
   }
-  function environment(access: Access): NodeJS.ProcessEnv {
-    const home = path.join(directory(access), "home"), temp = path.join(directory(access), "tmp");
+  function environment(access: Access, op: BrowserOperation): NodeJS.ProcessEnv {
+    const home = path.join(directory(access), "home"), temp = op.temporary?.path ?? path.join(directory(access), "tmp");
     const env: NodeJS.ProcessEnv = { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home, XDG_CACHE_HOME: home, TMPDIR: temp, TEMP: temp, TMP: temp,
       PATH: process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32") : "/usr/bin:/bin", LANG: "en_US.UTF-8" };
+    if (process.platform === "win32") { env.LOCALAPPDATA = path.join(home, "local");env.APPDATA = path.join(home, "roaming"); }
     for (const key of process.platform === "win32" ? ["SystemRoot", "WINDIR"] : options.headless ? [] : ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR"])
       if (process.env[key]) env[key] = process.env[key];
     return env;
@@ -108,7 +114,6 @@ export function durableBrowser(options: Options) {
     let child: ChildProcess | undefined, op: BrowserOperation;
     try { op = await prepare(access); }
     catch (error) { access.signal.throwIfAborted(); throw new GameProductionFailure(error instanceof Error ? error.message : "Browser preparation failed before launch."); }
-    access.signal.throwIfAborted();
     let ready!: () => void, failed!: (error: unknown) => void;
     const readyTask = new Promise<void>((resolve, reject) => { ready = resolve; failed = reject; });
     void readyTask.catch(() => {});
@@ -125,8 +130,10 @@ export function durableBrowser(options: Options) {
       child?.unref(); failed(error); timeoutFailure(error);
     }, 150000);
     try {
+      access.signal.throwIfAborted();
+      if (op.temporary) await checkBrowserTemporary(op.temporary);
       child = fork(options.workerPath, [directory(access)], { execPath: process.execPath, execArgv: ["--max-old-space-size=768"],
-        env: environment(access), stdio: ["ignore", "ignore", "ignore", "ipc"], windowsHide: true });
+        env: environment(access, op), stdio: ["ignore", "ignore", "ignore", "ipc"], windowsHide: true });
       active.set(access.job.id, child);
       child.once("exit", () => { exited(); failed(new Error("Browser supervisor exited before readiness.")); });
       child.once("error", (error) => { failed(error); if (!child?.pid) exited(); });
@@ -149,7 +156,11 @@ export function durableBrowser(options: Options) {
     } catch (error) {
       // A failed preparation/spawn cannot run game code. Once a helper exists,
       // only a checked stopped receipt can acknowledge cancellation/failure.
-      if (!child?.pid) throw new GameProductionFailure(error instanceof Error ? error.message : "Browser supervisor did not start.");
+      if (!child?.pid) {
+        if (op.temporary) await removeBrowserTemporary(op.temporary);
+        access.signal.throwIfAborted();
+        throw new GameProductionFailure(error instanceof Error ? error.message : "Browser supervisor did not start.");
+      }
       if (error instanceof GameProductionFailure || (access.signal.aborted && error === access.signal.reason)) throw error;
       if (error instanceof GameProductionUncertain) { if (child.connected) child.disconnect(); child.unref(); throw error; }
       if (child.exitCode !== null || child.signalCode !== null) {
@@ -174,6 +185,11 @@ export function durableBrowser(options: Options) {
   async function dispose(access: Access): Promise<void> {
     if (!["completed", "failed", "cancelled"].includes(access.job.state) || active.has(access.job.id)) return;
     const op = await operation(access);
+    if (op.temporary) {
+      const saved = await receipt(access);
+      if (!saved || saved.status === "uncertain") throw new GameProductionUncertain("Retain the private browser temporary directory until its original shutdown is confirmed.");
+      await removeBrowserTemporary(op.temporary);
+    }
     // Payload cleanup follows a committed terminal job; retain the small binding
     // and acknowledgment for audit. Never erase an unknown operation's candidate.
     await writeJson(path.join(directory(access), "disposed.json"), { operationHash: contentHash(op), state: access.job.state });

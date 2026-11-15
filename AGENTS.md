@@ -8,6 +8,15 @@ selection while the earlier suite plan restricted Mac to Ollama. Keep candidate
 preparation separate from activation; do not infer consent to enable a provider,
 perform real inference, merge or promote a release from local tests.
 
+Browser supervisor temporary directories are operation-owned (`temporary.ts`).
+Their optional private journal binding covers owner/device/inode; no RPC accepts
+the path. The worker validates the closed temporary/AppData environment. Keep
+legacy receipts readable and require bound shutdown plus absent original worker
+before deleting external temporary resources; unknown work retains them. The
+test-only never-browser fixture may explicitly remove its own directory after
+asserting production refusal. Preserve actual rendering/animation assertions;
+pixel palette size is diagnostic, not a quality or hardware acceptance gate.
+
 For the remaining full-product gates, read [acceptance readiness](docs/GAME_DESIGN_ACCEPTANCE_READINESS.md).
 Do not substitute more authored fixtures for the pending real-generation,
 licensed Unity, native Root/GUI, physical/human and reviewed distribution gates.

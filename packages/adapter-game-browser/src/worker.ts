@@ -3,6 +3,7 @@ import { contentHash } from "../../contracts/src/identity";
 import { GameProductionFailure, GameProductionUncertain } from "../../game-production/src/index";
 import { browserDigest } from "./browser";
 import { collect } from "./collect";
+import { checkBrowserTemporary } from "./temporary";
 import { alive, checkDirectory, digest, json, operationSchema, preparedSchema, readOperation, readPrivate, requestSchema, writeJson, writeResult, type BrowserOperation, type BrowserReceipt } from "./journal";
 
 // Fixed installed helper, not a client registry, shell or intelligence runtime.
@@ -85,6 +86,13 @@ async function main(): Promise<void> {
   const argument = process.argv[2];
   if (!argument || !path.isAbsolute(argument) || !process.send) throw new Error("Browser workers require a private coordinator descriptor and absolute state directory.");
   directory = argument; operation = operationSchema.parse(await readOperation(directory));
+  // The service bound this parent into the operation before replacing TMPDIR.
+  // Workers only validate it; deletion uses the service's original OS temp base.
+  if (operation.temporary) {
+    if (process.env.TMPDIR !== operation.temporary.path || process.env.TEMP !== operation.temporary.path)
+      throw new Error("The worker temporary environment differs from its pinned operation.");
+    await checkBrowserTemporary(operation.temporary, path.dirname(operation.temporary.path));
+  }
   if (path.basename(directory) !== operation.binding.jobId || await browserDigest(process.argv[1]!) !== operation.workerSha256) throw new Error("Installed browser worker identity changed.");
   if (!process.connected || controller.signal.aborted) { await finish("cancelled", "The coordinator disconnected before browser launch."); return; }
   idle = setTimeout(abort, 30000);

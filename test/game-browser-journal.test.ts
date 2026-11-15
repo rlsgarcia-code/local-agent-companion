@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm, writeFile, readFile, link, symlink, chmod } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, link, symlink, chmod, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { contentHash } from "../packages/contracts/src/identity";
@@ -10,6 +10,7 @@ import { GameProductionUncertain, GameProductionFailure, type GameValidationColl
 import { gameArtifact } from "../packages/contracts/src/game-production";
 import { durableBrowser } from "../packages/adapter-game-browser/src/durable";
 import { fixtureGameDocument } from "./game-fixtures";
+import { removeBrowserTemporary } from "../packages/adapter-game-browser/src/temporary";
 
 const observation = (): CollectedGameObservation => ({ category: "runtime", environment: { platform: "fixture", device: "journal fixture", browser: "none", input: [], scope: "automated" },
   checks: [{ id: "storage", status: "unverified", detail: "This fixture checks durable bytes, not a game." }], metrics: {},
@@ -67,7 +68,7 @@ test("supervisor loss cannot be mistaken for shutdown; worker credentials/enviro
 const directory=process.argv[2],operation=JSON.parse(fs.readFileSync(path.join(directory,'operation.json')));
 // Canonical hash comes from the installed journal module; this fixture never launches a browser.
 const identity=require(${JSON.stringify(path.resolve("dist-tests/packages/contracts/src/identity.js"))});
-fs.writeFileSync(path.join(directory,'environment.json'),JSON.stringify({canary:process.env.COMPANION_BROWSER_SECRET_CANARY??null,home:process.env.HOME}),{mode:0o600});
+fs.writeFileSync(path.join(directory,'environment.json'),JSON.stringify({canary:process.env.COMPANION_BROWSER_SECRET_CANARY??null,home:process.env.HOME,tmp:process.env.TMPDIR,local:process.env.LOCALAPPDATA,roaming:process.env.APPDATA}),{mode:0o600});
 fs.writeFileSync(path.join(directory,'launch-count'),'1',{mode:0o600});
 process.on('message',message=>{if(message.nonce!==operation.nonce)return;if(message.kind==='start'){
 ${receipt ? "fs.writeFileSync(path.join(directory,'receipt.json'),JSON.stringify({operationHash:identity.contentHash(operation),pid:process.pid,status:'failed',detail:'Fixture confirmed that no browser was launched'}),{mode:0o600});" : ""}
@@ -84,11 +85,34 @@ process.exit(12);}});process.send({kind:'ready',nonce:operation.nonce});`, { mod
         await assert.rejects(runtime.validate(context), receipt ? GameProductionFailure : GameProductionUncertain);
         const directory = path.join(f.directory, "game-browser-jobs", context.job.id), environment = JSON.parse(await readFile(path.join(directory, "environment.json"), "utf8"));
         assert.equal(environment.canary, null); assert.equal(environment.home, path.join(directory, "home"));
+        const operation = await readOperation(directory);
+        assert.ok(operation.temporary);
+        assert.equal(environment.tmp, operation.temporary.path);
+        if (process.platform === "win32") {
+          assert.equal(environment.local, path.join(directory, "home", "local"));
+          assert.equal(environment.roaming, path.join(directory, "home", "roaming"));
+        }
         if (receipt) assert.equal((await runtime.recover(context)).state, "missing");
         else await assert.rejects(runtime.recover(context), /without a shutdown acknowledgment/);
         await assert.rejects(runtime.recover({ ...context, registration: { ...context.registration, product: "companion-vscode" } }), /exact namespace/);
         assert.equal(await readFile(path.join(directory, "launch-count"), "utf8"), "1");
-      } finally { await f.close(); }
+        const terminal = { ...context, job: { ...context.job, state: "failed" as const } };
+        if (receipt) {
+          await runtime.dispose(terminal);
+          await assert.rejects(lstat(operation.temporary.path), { code: "ENOENT" });
+        } else {
+          await assert.rejects(runtime.dispose(terminal), /without a shutdown acknowledgment/);
+          assert.ok((await lstat(operation.temporary.path)).isDirectory(), "unknown shutdown retains its original private temporary directory");
+        }
+      } finally {
+        // This hash-pinned fixture worker only writes files and exits; it never
+        // launches a browser. Production disposal above still requires proof.
+        try {
+          const operation = await readOperation(path.join(f.directory, "game-browser-jobs", "fixture-observation"));
+          if (operation.temporary) await removeBrowserTemporary(operation.temporary);
+        } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+        await f.close();
+      }
     }
   } finally { if (previous === undefined) delete process.env.COMPANION_BROWSER_SECRET_CANARY; else process.env.COMPANION_BROWSER_SECRET_CANARY = previous; }
 });

@@ -10,6 +10,7 @@ import {once} from 'node:events';
 import {prepareGameModelPreview,openGameModelPreview} from '../packages/adapter-game-browser/src/model-preview';
 import {qualifyBrowser} from '../packages/adapter-game-browser/src/browser';
 import {modelPreviewFixture} from './game-model-preview-fixtures';
+import {hasRenderedPixels} from '../packages/adapter-game-browser/src/pixels';
 const runtimeDirectory=path.resolve('packages/adapter-game-web/runtimes');
 
 async function preserveViewerEvidence(directory:string,f:Awaited<ReturnType<typeof modelPreviewFixture>>){
@@ -68,7 +69,7 @@ test('actual offline model viewer renders textured geometry, selects32 real clip
     const output=path.resolve('output/playwright/game-model-viewer/tests',new Date().toISOString().replace(/[:.]/g,'-'));await mkdir(output,{recursive:true});
     await preserveViewerEvidence(output,f);
     const pixels=await page.locator('canvas').screenshot();await writeFile(path.join(output,'model.png'),pixels);
-    const image=PNG.sync.read(pixels);const colors=new Set<string>();for(let i=0;i<image.data.length;i+=16)colors.add(image.data.subarray(i,i+3).toString('hex'));await writeFile(path.join(output,'observation.json'),JSON.stringify({colors:colors.size,errors:preview.errors,blocked:preview.blocked,geometry:await page.locator('#geometry').textContent(),scope:'Authored offline catalog fixture; visibility only, no artistic/game/physical acceptance'},null,2));assert.ok(colors.size>50,'actual textured mesh must produce a nonflat rendering; inspect '+output);
+    const image=PNG.sync.read(pixels);const colors=new Set<string>();for(let i=0;i<image.data.length;i+=16)colors.add(image.data.subarray(i,i+3).toString('hex'));await writeFile(path.join(output,'observation.json'),JSON.stringify({colors:colors.size,errors:preview.errors,blocked:preview.blocked,geometry:await page.locator('#geometry').textContent(),scope:'Authored offline catalog fixture; visibility only, no artistic/game/physical acceptance'},null,2));console.error('MODEL_FIXTURE_PIXEL_SUMMARY',JSON.stringify({width:image.width,height:image.height,colors:colors.size,nonuniform:hasRenderedPixels(pixels)}));assert.ok(hasRenderedPixels(pixels),'actual textured mesh must produce a nonflat rendering; inspect '+output);
     const frames=()=>page.evaluate(()=>new Promise<void>(resolve=>{let count=0;const step=()=>++count===24?resolve():requestAnimationFrame(step);requestAnimationFrame(step);}));
     const clips=await page.locator('#clip option').evaluateAll(options=>options.map(option=>({value:(option as HTMLOptionElement).value,label:option.textContent??''}))),walk=clips.find(clip=>/walk/i.test(clip.label));assert.ok(walk);
     await page.selectOption('#clip',walk.value);assert.equal(await page.locator('#play').textContent(),'Reproduzir');await frames();

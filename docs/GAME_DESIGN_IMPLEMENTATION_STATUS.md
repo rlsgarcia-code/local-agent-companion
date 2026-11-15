@@ -33,6 +33,19 @@ fixture passa a preservar a causa original do lançamento. Os erros de renderiza
 e tempo no runner Mac Intel ainda exigem diagnóstico; não foram convertidos em
 passe ou skip. Essa rodada não criou nem promoveu uma release.
 
+O diagnóstico posterior confirmou `Socket path too long` no Chrome/Linux e
+recusa do diretório de dados de depuração no Chrome/Windows. A correção prepara
+um temporário curto por operação, com dono/dispositivo/inode vinculados ao journal,
+e AppData privado explícito no Windows. O worker confere esse vínculo; limpeza
+de produção exige recibo exato de encerramento e ausência do processo original.
+Operações antigas continuam reconhecidas; encerramento desconhecido conserva o
+temporário. A suíte local passou com 856 testes e um skip explícito. A nova rodada
+remota ainda precisa comprovar os dois caminhos e a renderização restante.
+O teste do visor conserva os checks reais de pose, animação e câmera; a abertura
+usa o detector compartilhado de pixels não uniformes em lugar de exigir uma
+paleta de mais de cinquenta cores, que varia com o backend gráfico. O contador
+continua disponível como diagnóstico numérico, separado de aprovação artística.
+
 Pendente desta primeira entrega: matriz assinada sobre commit exato, percurso
 visual nas duas interfaces instaladas, migração e rollback com dados novos. O
 Mac foi encontrado bloqueado e o desbloqueio foi solicitado. A base atual também

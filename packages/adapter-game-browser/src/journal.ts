@@ -9,10 +9,12 @@ import { gameArtifact, gameObservation, gameToolchain } from "../../contracts/sr
 import { gameFilePath } from "../../contracts/src/games";
 import { gameTestSuitePath } from "../../contracts/src/game-browser-tests";
 import type { CollectedGameObservation } from "../../game-production/src/index";
+import { browserTemporary } from "./temporary";
 
 export const digest = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const operationSchema = z.object({ schemaVersion: z.literal(1), nonce: hash, workerSha256: hash,
+  temporary: browserTemporary.optional(),
   binding: z.object({ namespace: hash, jobId: identifier, sourceHash: hash, artifactHash: hash, toolchain: gameToolchain, testSuite: gameTestSuitePath.optional() }).strict(),
 }).strict();
 export type BrowserOperation = z.infer<typeof operationSchema>;
