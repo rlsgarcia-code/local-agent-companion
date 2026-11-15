@@ -18,7 +18,7 @@ import { createBrowserGameCollector } from "../packages/adapter-game-browser/src
 import { collect } from "../packages/adapter-game-browser/src/collect";
 import { openGamePreview } from "../packages/adapter-game-browser/src/preview";
 import { gameBrowserTestGuide, gameBrowserTestSuite, gameTestSuitePath } from "../packages/contracts/src/game-browser-tests";
-import type { Registration } from "../packages/contracts/src/index";
+import type { EngineUpdateStatus, Registration } from "../packages/contracts/src/index";
 import { fixtureGameDocument } from "./game-fixtures";
 import { webFixture } from "./game-web-fixtures";
 
@@ -176,6 +176,14 @@ test("real Chromium observes keyboard-to-pixel changes and stores private verifi
     const inspection = { registration: reg, job: result, document: (await f.client.getGameRevision(project.id, 1)).document,
       artifact: await f.client.getGameArtifact(job.id), signal: new AbortController().signal,
       readFile: (name: string) => f.client.downloadGameArtifactFile(job.id, name) };
+    // Publishing the acknowledged report precedes asynchronous cache cleanup.
+    // Wait for the service's actual idle barrier, not another rendering delay.
+    let idle = false;
+    for (let i = 0; i < 1000; i++) {
+      if ((await f.client.call<EngineUpdateStatus>("engine.updateStatus", {})).ready) { idle = true; break; }
+      await tick();
+    }
+    assert.equal(idle, true, "the original service finished disposing the terminal observation");
     assert.equal((await f.collector.reconcile!(inspection)).state, "missing", "the original collector acknowledged its browser/resource shutdown");
     const freshCollector = await createBrowserGameCollector({ stateDirectory: f.directory });
     assert.equal((await freshCollector.reconcile!(inspection)).state, "missing", "a new exact collector reads the durable acknowledgment after confirmed shutdown");

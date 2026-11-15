@@ -74,7 +74,11 @@ export async function openGameModelPreview(options:Parameters<typeof prepareGame
   const preview=await openPinnedResourcePreview({...prepared,signal:options.signal,headless:options.headless});
   try{
     await preview.page.waitForFunction(()=>document.getElementById('status')?.textContent?.startsWith('Modelo carregado')||document.getElementById('error')?.hidden===false,undefined,{timeout:20000});
-    if(await preview.page.locator('#error').isVisible())throw Error('O modelo não pôde ser renderizado com os recursos locais deste visor. Preserve o candidato e confira suas dependências.');
+    if(await preview.page.locator('#error').isVisible()){
+      // Private host diagnostics, not an event/log upload or model-tool result.
+      const cause=await preview.page.locator('#error').evaluate(element=>({stage:(element as HTMLElement).dataset.stage,detail:(element as HTMLElement).dataset.detail}));
+      throw Error('O modelo não pôde ser renderizado com os recursos locais deste visor. Preserve o candidato e confira suas dependências.',{cause});
+    }
     return preview;
   }catch(error){await preview.close();throw error;}
 }

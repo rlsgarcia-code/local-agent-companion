@@ -53,6 +53,20 @@ usa o detector compartilhado de pixels não uniformes em lugar de exigir uma
 paleta de mais de cinquenta cores, que varia com o backend gráfico. O contador
 continua disponível como diagnóstico numérico, separado de aprovação artística.
 
+A rodada `5003d2f` confirmou os dois Linux e Mac ARM64. No Windows passaram
+lançamento privado e pixels reais do modelo; restou a verificação que lia a
+limpeza antes de o serviço ficar ocioso. Ela agora aguarda a barreira existente,
+sem mudar prazos de produção ou aceitar recibo desconhecido. No Mac Intel,
+serializar eliminou a saturação geral, mas restaram duas falhas de abertura do
+visor GLB. O próximo CI conserva diagnóstico textual limitado das fixtures
+locais, sem upload de PNG ou dados pessoais.
+
+Os testes locais passaram com 820 execuções e um skip explícito, mais 42
+verificações de repositório. Os 21 casos focados de navegador/visor/configuração
+também passaram após as alterações seguintes. A configuração de modelos ganhou
+armazenamento compatível e passou no rollback com os binários oficiais 1.0.6 e
+1.0.7, em estados temporários e sem IA; veja [escopo e limites](GAME_DOMAIN_ROLLBACK.md).
+
 Pendente desta primeira entrega: matriz assinada sobre commit exato, percurso
 visual nas duas interfaces instaladas, migração e rollback com dados novos. O
 Mac foi encontrado bloqueado e o desbloqueio foi solicitado. A base atual também

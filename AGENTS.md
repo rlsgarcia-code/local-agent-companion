@@ -8,6 +8,11 @@ selection while the earlier suite plan restricted Mac to Ollama. Keep candidate
 preparation separate from activation; do not infer consent to enable a provider,
 perform real inference, merge or promote a release from local tests.
 
+Model settings use a legacy-compatible base row plus namespace/provider/account
+feature storage. Keep the original validated migration text and atomic revision
+checks; never strip unknown fields or restore another account's web permissions.
+Read the current section of [rollback](docs/GAME_DOMAIN_ROLLBACK.md) before activation.
+
 Browser supervisor temporary directories are operation-owned (`temporary.ts`).
 Their optional private journal binding covers owner/device/inode; no RPC accepts
 the path. The worker validates the closed temporary/AppData environment. Keep

@@ -11,8 +11,39 @@ campos. Antes de ativar sobre dados pessoais, a instalação precisa qualificar 
 restauração/importação de configurações e perfis, além de conversas/jogos. Conservar
 apenas o aplicativo anterior ou abrir o mesmo banco com um binário antigo não
 resolve essa incompatibilidade. Preservar os dois conjuntos de dados e recibos;
-não apagar campos novos para fazer uma consulta antiga passar. Os ensaios abaixo
-não cobrem esse cenário novo nem autorizam a instalação pessoal.
+não apagar campos novos para fazer uma consulta antiga passar.
+
+### Correção e ensaio de configurações — 15/11/2026
+
+`model-configuration-store.ts` conserva em `model_configurations` os campos
+compatíveis com 1.0.6/1.0.7 e guarda pesquisa web/contexto separadamente no mesmo
+banco privado, por namespace e identidade exata de provedor/endpoint/referência
+de conta. Ler uma configuração nova antiga migra apenas dados inteiramente
+validados e preserva o texto original em recibo. A projeção, as preferências e
+o recibo são uma única transação; revisão vencida ou falha não aplica metade
+da migração. Campos desconhecidos/inválidos são preservados com erro. Trocar
+de produto, perfil, workspace ou conta não herda essas permissões. A autoridade
+KidOS continua recusando leitura/configuração antes de qualquer migração.
+
+O runner [qualify-model-configuration-rollback.mjs](../scripts/qualify-model-configuration-rollback.mjs)
+passou nos percursos 1.1.0 desenvolvimento → **1.0.7 oficial** → 1.1.0 e
+1.1.0 desenvolvimento → **1.0.6 oficial** → 1.1.0. Cada percurso usa os dois
+produtos em estado temporário, verifica o SDK e o motor anteriores antes de
+executá-los e confirma encerramento antes da troca. A versão anterior consulta
+e edita configurações; a reativação conserva a edição e as preferências novas.
+Conversas criadas nas duas versões permanecem separadas por produto. O export
+também contém a configuração atual: ela é comparada exatamente em cada fase,
+e os demais campos de domínio são comparados separadamente, sem truncamento.
+
+Motor de desenvolvimento verificado: manifesto
+`c36e74201a6997c4ebc1b9f0c469eb781b54dae3d03d58f14282256ceb6e92f4`.
+Os dois ensaios não fizeram chamadas de modelo nem executaram ferramentas;
+os dois primeiros insucessos do observador foram preservados em temporários
+privados: ele comparava a configuração atual embutida no export como se fosse
+histórico invariável. Isso foi corrigido com as comparações separadas acima.
+Esses resultados cobrem configuração e domínio em processos reais; não comprovam
+credenciais, checkpoints, instalação pessoal, interface ou rollback do perfil
+inteiro. Os relatos históricos seguintes têm outro escopo e permanecem históricos.
 
 Evidência local de **2026-11-13**, GD-01/GD-11 do
 [plano integral](GAME_DESIGN_IMPLEMENTATION_PLAN.md). Complementa os

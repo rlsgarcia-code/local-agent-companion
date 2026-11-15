@@ -14,7 +14,7 @@ export const modelViewerCss=`:root{color-scheme:dark;font-family:system-ui,-appl
 
 export const modelViewerScript=String.raw`(async()=>{
   'use strict';
-  const el=id=>document.getElementById(id),canvas=el('model');let engine,scene,groups=[],active=null,playing=false;
+  const el=id=>document.getElementById(id),canvas=el('model');let engine,scene,groups=[],active=null,playing=false,stage='metadata';
   const stop=()=>{for(const group of groups)group.stop();playing=false;el('play').textContent='Reproduzir';};
   const fail=()=>{stop();el('status').textContent='Inspeção indisponível';el('error').hidden=false;el('error').textContent='Não foi possível carregar este modelo com os recursos locais disponíveis. Preserve o candidato e confira o formato, as dependências e o runtime instalado.';for(const control of document.querySelectorAll('button,select,input'))control.disabled=true;};
   try{
@@ -22,15 +22,15 @@ export const modelViewerScript=String.raw`(async()=>{
     el('title').textContent=config.title;document.title='Companion · '+config.title;
     el('identity').textContent='Candidato da revisão '+config.revision+(config.placeholder?' · Recurso temporário':' · Final declarado');
     el('provenance').textContent='Origem: '+config.source+' · Licença declarada: '+config.license;
-    engine=new BABYLON.Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true});engine.setHardwareScalingLevel(1/Math.min(devicePixelRatio||1,2));
+    stage='graphics';engine=new BABYLON.Engine(canvas,true,{preserveDrawingBuffer:true,stencil:true});engine.setHardwareScalingLevel(1/Math.min(devicePixelRatio||1,2));
     scene=new BABYLON.Scene(engine);scene.clearColor=new BABYLON.Color4(.105,.133,.176,1);
     const camera=new BABYLON.ArcRotateCamera('viewer-camera',-Math.PI/2.4,Math.PI/2.5,5,BABYLON.Vector3.Zero(),scene);scene.activeCamera=camera;camera.attachControl(canvas,true);camera.inertia=.65;
     const fill=new BABYLON.HemisphericLight('viewer-fill',new BABYLON.Vector3(0,1,0),scene);fill.intensity=1.1;fill.groundColor=new BABYLON.Color3(.24,.27,.32);
     const key=new BABYLON.DirectionalLight('viewer-key',new BABYLON.Vector3(-.5,-1,.4),scene);key.intensity=1.4;
     BABYLON.SceneLoader.OnPluginActivatedObservable.addOnce(plugin=>{if(plugin.name==='gltf'){plugin.animationStartMode=BABYLON.GLTFLoaderAnimationStartMode.NONE;plugin.onExtensionLoadedObservable.add(extension=>{if(['KHR_draco_mesh_compression','EXT_meshopt_compression','KHR_texture_basisu','MSFT_audio_emitter','KHR_interactivity'].includes(extension.name))extension.enabled=false;});}});
-    const slash=config.model.lastIndexOf('/'),container=await BABYLON.SceneLoader.LoadAssetContainerAsync(config.model.slice(0,slash+1),config.model.slice(slash+1),scene,undefined,'.glb');
+    stage='model';const slash=config.model.lastIndexOf('/'),container=await BABYLON.SceneLoader.LoadAssetContainerAsync(config.model.slice(0,slash+1),config.model.slice(slash+1),scene,undefined,'.glb');
     container.addAllToScene();groups=container.animationGroups;stop();
-    const meshes=container.meshes.filter(mesh=>mesh.getTotalVertices()>0);if(!meshes.length)throw Error('No geometry');
+    stage='framing';const meshes=container.meshes.filter(mesh=>mesh.getTotalVertices()>0);if(!meshes.length)throw Error('No geometry');
     let min=new BABYLON.Vector3(Infinity,Infinity,Infinity),max=new BABYLON.Vector3(-Infinity,-Infinity,-Infinity),vertices=0,triangles=0;
     for(const mesh of meshes){mesh.computeWorldMatrix(true);const box=mesh.getBoundingInfo().boundingBox;min=BABYLON.Vector3.Minimize(min,box.minimumWorld);max=BABYLON.Vector3.Maximize(max,box.maximumWorld);vertices+=mesh.getTotalVertices();triangles+=Math.floor(mesh.getTotalIndices()/3);}
     const size=max.subtract(min),center=min.add(max).scale(.5),diameter=size.length();if(!Number.isFinite(diameter)||diameter<=0)throw Error('Invalid bounds');
@@ -39,7 +39,7 @@ export const modelViewerScript=String.raw`(async()=>{
     const floor=BABYLON.MeshBuilder.CreateGround('viewer-floor',{width:diameter*3,height:diameter*3},scene);floor.position.set(center.x,min.y-diameter*.005,center.z);const floorMaterial=new BABYLON.StandardMaterial('viewer-floor-material',scene);floorMaterial.diffuseColor=new BABYLON.Color3(.15,.18,.23);floorMaterial.specularColor=BABYLON.Color3.Black();floor.material=floorMaterial;
     el('geometry').textContent=meshes.length+' malhas · '+vertices.toLocaleString('pt-BR')+' vértices · '+triangles.toLocaleString('pt-BR')+' triângulos · Dimensões '+[size.x,size.y,size.z].map(value=>value.toFixed(2)).join(' × ')+' unidades · '+groups.length+' animações';
     for(const [index,group] of groups.entries()){const option=document.createElement('option');option.value=String(index);option.textContent=group.name||'Animação '+(index+1);el('clip').append(option);}
-    for(const id of ['frame','front','side','top'])el(id).disabled=false;
+    stage='controls';for(const id of ['frame','front','side','top'])el(id).disabled=false;
     el('frame').onclick=frame;el('front').onclick=()=>{frame();camera.alpha=-Math.PI/2;camera.beta=Math.PI/2.2;};el('side').onclick=()=>{frame();camera.alpha=0;camera.beta=Math.PI/2.2;};el('top').onclick=()=>{frame();camera.beta=.04;};
     const format=value=>value.toLocaleString('pt-BR',{maximumFractionDigits:2});
     let fps=null;
@@ -66,9 +66,9 @@ export const modelViewerScript=String.raw`(async()=>{
     el('reset').onclick=()=>{if(active)seek(active.from);};
     document.addEventListener('visibilitychange',()=>{if(document.hidden&&active&&playing){pause();position(active.getCurrentFrame());}});
     window.addEventListener('resize',()=>engine.resize());window.addEventListener('pagehide',()=>{stop();scene.dispose();engine.dispose();},{once:true});
-    await scene.whenReadyAsync();
+    stage='ready';await scene.whenReadyAsync();stage='first-frame';
     let firstRendered=false;const firstFrame=new Promise(resolve=>engine.onEndFrameObservable.addOnce(resolve));
     engine.runRenderLoop(()=>{if(!firstRendered||!document.hidden){scene.render();firstRendered=true;if(playing&&active)position(active.getCurrentFrame());}});
     await firstFrame;el('status').textContent='Modelo carregado · somente inspeção';
-  }catch{fail();scene?.dispose();engine?.dispose();}
+  }catch(error){fail();el('error').dataset.stage=stage;el('error').dataset.detail=String(error instanceof Error?error.message:'Unknown viewer failure').slice(0,1000);scene?.dispose();engine?.dispose();}
 })();`;
