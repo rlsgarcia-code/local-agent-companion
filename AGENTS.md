@@ -2,7 +2,11 @@
 
 This integration branch combines Game Design with upstream `a6f3977` on candidate
 engine 1.1.1 / clients 0.13.1 in source. The original Game Design checkout is preserved.
-The installed 1.1.0 / 0.13.0 artifacts are frozen at `58a3612`; read the first section of
+The installed 1.1.0 / 0.13.0 artifacts are frozen at `58a3612`.
+The signed corrective 1.1.1 / 0.13.1 artifacts are frozen at `ea2db23`, verified
+locally after five-platform CI and disposable signed-binary rollback. They await
+the user's decision to end the one diagnosed failed request before activation;
+do not interpret preparation as that decision. Read the first section of
 [implementation status](docs/GAME_DESIGN_IMPLEMENTATION_STATUS.md) for current
 binary/signature/rollback evidence. Later observer/report edits do not rebuild
 that candidate. Finish installed Mac/VS Code acceptance before more sample games.

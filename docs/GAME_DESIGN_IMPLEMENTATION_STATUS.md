@@ -10,7 +10,11 @@ backups e limites. O aceite completo foi impedido por uma falha real na delegaç
 reconciliação e bloqueia a troca de versão; não foi cancelado ou reexecutado.
 A correção está em fonte no grafo comum para motor/SDK **1.1.1**, interfaces
 **0.13.1**, com reprodução negativa preservada, tipos/build e **823 + 42 testes
-aprovados**, um skip explícito. Ainda precisa de candidato assinado e ativação segura.
+aprovados**, um skip explícito. A produção assinada do commit `ea2db23` passou nas
+cinco plataformas; app/VSIX/motor independente e SDK foram conferidos localmente,
+e rollback de configuração/histórico com binários assinados passou contra
+1.0.6/1.0.7. **Ainda não ativado**: aguarda a decisão solicitada sobre encerrar
+somente o pedido diagnosticado; o perfil pessoal não foi revertido.
 A decisão do usuário é preservar os recursos atuais Ollama/OpenAI.
 
 O primeiro lote continua sendo **Mac/VS Code integrados**, antes de novos jogos.

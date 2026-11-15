@@ -9,6 +9,14 @@ reset ou resultado inventado para testar rollback. Os passes em bancos temporár
 abaixo não comprovam rollback desse perfil instalado. O Mac está desbloqueado;
 a pendência atual é a execução/assinatura/ativação corrigida, não o bloqueio da tela.
 
+**Corretivo preparado:** o motor oficial 1.1.1, commit `ea2db23`, manifesto
+`141d5cdca78f050b6175851a6aefe2ee4dea0a946aac935e11d90c5dc9558039`,
+passou nos mesmos percursos temporários contra os dois motores anteriores.
+Preservou configurações/editadas/preferências/histórico; zero modelos/ferramentas.
+O [relatório instalado](GAME_INSTALLED_ACCEPTANCE_20261115.md#corretivo-assinado-preparado)
+registra verificação e inspeção do checkpoint original. Ativação e rollback do
+perfil pessoal aguardam a decisão solicitada, sem repetição do pedido.
+
 **Preparação de 15/11/2026:** a leitura da máquina encontrou Mac 0.12.10 / motor
 1.0.7 e VS Code 0.12.8 / motor 1.0.6. As assinaturas e todos os bytes de ambos
 foram conferidos usando seus SDKs oficiais correspondentes, igualmente verificados.

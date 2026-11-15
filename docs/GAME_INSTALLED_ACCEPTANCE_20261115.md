@@ -107,6 +107,43 @@ log foi preservado e a rodada com esses recursos locais autorizados passou sem
 alterar asserts ou a proteção contra inferência real. Produção assinada e
 instalação dessa revisão permanecem separadas desses resultados.
 
+### Corretivo assinado preparado
+
+A [produção oficial](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/43754802917)
+concluiu as cinco plataformas e o rascunho com **37 arquivos**, no commit
+`ea2db23a44db9984ad32ade260616f6b1f5415a8`. Motor/SDK **1.1.1**, clientes
+**0.13.1**, Node **22.23.4**, protocolo **1.0**. O
+[rascunho](https://github.com/rlsgarcia-code/local-agent-companion/releases/tag/untagged-950b300827cf84844e19)
+não foi promovido nem integrado ao main.
+
+Oito arquivos selecionados foram conferidos contra o índice original assinado,
+incluindo o VSIX inteiro e os dois manifestos Mac. SDK e motores tiveram assinatura
+e todos os payloads conferidos antes de importar código. Extração limitada recusou
+caminhos/tipos inválidos e gravação por links; os 14 links internos do app e seu
+selo Apple foram conferidos. App, VSIX e pacote independente contêm o mesmo motor:
+
+| Metadado | SHA-256 |
+|---|---|
+| Motor 1.1.1 | `141d5cdca78f050b6175851a6aefe2ee4dea0a946aac935e11d90c5dc9558039` |
+| SDK 1.1.1 | `b698659846abe205e5469a79195ec352bf31b1c607ce8ce357bf1bd94defbfdc` |
+| Índice da release | `8d111cbac5b4645b258c7822fcab059c7d12fec7ea335aa764af3b291a9f67e9` |
+
+Os percursos assinados **1.1.1 → 1.0.6/1.0.7 → 1.1.1** passaram para
+configurações e histórico dos dois produtos em bancos temporários. Nenhum modelo
+ou ferramenta foi chamado. Esses passes não substituem rollback do perfil
+instalado, checkpoint ou aceite visual do corretivo, que **não foi ativado**.
+Recibos locais: `.cache/game-design-candidate-1.1.1-ea2db23/`.
+
+A inspeção consistente e somente de leitura do checkpoint original encontrou
+um pai com mensagem humana e chamada `task` para `game-design-director`; o filho
+contém somente a mensagem humana, nenhum arquivo e um `__error__` com o erro
+nativo exato de `read_file`. A interrupção pai está vinculada ao mesmo recibo.
+Foi preparado um procedimento restrito a essa estrutura/identidade/versão, que
+recusa qualquer divergência e não retoma o grafo. Registrar o erro observado e
+encerrar somente esse pedido depende da confirmação solicitada ao usuário;
+**somente a inspeção foi executada**. Não houve cancelamento nem reconciliação
+automática para liberar a atualização.
+
 Recibos privados locais: `.cache/game-design-install-20261115/`, incluindo
 `personal-backup.json`, `installed-engines.json`, `extension-installed.json`,
 `model-storage-comparison.json`, inventário de exportação e a reprodução negativa.
