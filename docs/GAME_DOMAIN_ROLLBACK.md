@@ -15,7 +15,17 @@ não apagar campos novos para fazer uma consulta antiga passar.
 
 ### Correção e ensaio de configurações — 15/11/2026
 
-**Ensaio oficial posterior:** o mesmo percurso passou com o motor1.1.0
+**Candidato final:** o percurso também passou com o motor assinado do commit
+`58a361264146fca15342b964a01b973c9d978715`, manifesto
+`b06b858cd732911c3548a20b728f78ba9ebcccd3561e324a4303b9a01ce7bf43`,
+e SDK assinado `fcf7fff7a6606481f8db70d28151f3302c76a72ab766eebe7a9f509f64251eca`.
+As versões anteriores foram iniciadas das cópias verificadas dos programas
+instalados, não de caminhos que serão substituídos. Os recibos finais estão na
+pasta local `.cache/game-design-candidate-1.1.0-58a3612/`. O app extraído e o
+VSIX inteiro foram conferidos contra o índice final assinado; a instalação
+pessoal e o rollback do perfil inteiro continuam pendentes do Mac desbloqueado.
+
+**Primeiro ensaio oficial, preservado:** o mesmo percurso passou com o motor1.1.0
 oficialmente assinado, manifesto
 `15999add90408a2288f0121fdff28dbc6daeea48e037897e4541cdcb157de761`,
 commit `5d1b660c21e2c93f6e300878574fffad738f26d0`, contra as duas versões

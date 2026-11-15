@@ -1,14 +1,14 @@
 # Game Design: dependências para concluir a entrega
 
-**Atualização de15/11/2026:** o [estado do candidato Mac/VS Code](GAME_DESIGN_IMPLEMENTATION_STATUS.md)
+**Atualização de 15/11/2026:** o [estado do candidato Mac/VS Code](GAME_DESIGN_IMPLEMENTATION_STATUS.md)
 é a referência atual. CI passou nas cinco plataformas; o motor assinado foi
 conferido no pacote independente, app extraído e VSIX, e o rollback de
-configurações/conversas com binários oficiais passou. Ainda faltam concluir a
-nova rodada assinada com qualificação de inicialização/índice final, instalação, percurso visual e rollback do
-perfil; o Mac continua bloqueado. Não retomar polimento de jogos individuais
+configurações/conversas com binários oficiais passou. Ainda faltam instalação,
+percurso visual e rollback do perfil; a rodada assinada e seu índice final
+passaram nas cinco plataformas, mas o Mac continua bloqueado. Não retomar polimento de jogos individuais
 para substituir essa entrega. As demais frentes integrais abaixo permanecem.
 
-## Histórico de13/11/2026
+## Histórico de 13/11/2026
 
 Conferência de **2026-11-13**, preservando o [plano integral](GAME_DESIGN_IMPLEMENTATION_PLAN.md).
 Este recorte identifica o caminho restante; não é auditoria de conclusão nem

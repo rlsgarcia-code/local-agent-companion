@@ -2,7 +2,7 @@
 
 This integration branch combines Game Design with upstream `a6f3977` on candidate
 engine 1.1.0 / clients 0.13.0. The original Game Design checkout is preserved.
-Production candidate artifacts are frozen at `5d1b660`; read the first section of
+Production candidate artifacts are frozen at `58a3612`; read the first section of
 [implementation status](docs/GAME_DESIGN_IMPLEMENTATION_STATUS.md) for current
 binary/signature/rollback evidence. Later observer/report edits do not rebuild
 that candidate. Finish installed Mac/VS Code acceptance before more sample games.
