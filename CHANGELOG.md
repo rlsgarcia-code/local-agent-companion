@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.1
+
+- Engine/SDK 1.1.1 keeps host adapter tools distinct from DeepAgents filesystem names in supervisors and delegated game specialists. Original adapter validation, schemas, call identity, runtime and permissions remain in force.
+- Adds regression coverage for the actual delegated `read_file` collision, checkpoint replay and conflicting host aliases.
+- Records installed 0.13.0 acceptance and its unresolved operation; a source fix does not reset that run or authorize cancelling it for activation/rollback.
+
 ## 0.13.0
 
 - Candidate integration of Game Design and the shared Game Studio for Mac and VS Code on engine 1.1.0.

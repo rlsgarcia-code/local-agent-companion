@@ -1,5 +1,14 @@
 # Rollback real de binários com dados de jogos novos
 
+**Instalação de 15/11/2026:** backups privados de dados e software foram
+conferidos antes da ativação ociosa do 1.1.0. Mac/VS Code instalados usam o mesmo
+motor. Uma nova execução encontrou a colisão de ferramenta descrita no
+[relatório instalado](GAME_INSTALLED_ACCEPTANCE_20261115.md) e permanece em
+reconciliação. A barreira de atualização recusa a troca; não houve cancelamento,
+reset ou resultado inventado para testar rollback. Os passes em bancos temporários
+abaixo não comprovam rollback desse perfil instalado. O Mac está desbloqueado;
+a pendência atual é a execução/assinatura/ativação corrigida, não o bloqueio da tela.
+
 **Preparação de 15/11/2026:** a leitura da máquina encontrou Mac 0.12.10 / motor
 1.0.7 e VS Code 0.12.8 / motor 1.0.6. As assinaturas e todos os bytes de ambos
 foram conferidos usando seus SDKs oficiais correspondentes, igualmente verificados.

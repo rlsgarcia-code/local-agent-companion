@@ -1,16 +1,25 @@
 # Local Agent Companion development guide
 
 This integration branch combines Game Design with upstream `a6f3977` on candidate
-engine 1.1.0 / clients 0.13.0. The original Game Design checkout is preserved.
-Production candidate artifacts are frozen at `58a3612`; read the first section of
+engine 1.1.1 / clients 0.13.1 in source. The original Game Design checkout is preserved.
+The installed 1.1.0 / 0.13.0 artifacts are frozen at `58a3612`; read the first section of
 [implementation status](docs/GAME_DESIGN_IMPLEMENTATION_STATUS.md) for current
 binary/signature/rollback evidence. Later observer/report edits do not rebuild
 that candidate. Finish installed Mac/VS Code acceptance before more sample games.
 Do not confuse old installed evidence with this candidate. Mac provider policy
-is awaiting the user's clarification: upstream allows explicit Ollama/OpenAI
-selection while the earlier suite plan restricted Mac to Ollama. Keep candidate
-preparation separate from activation; do not infer consent to enable a provider,
-perform real inference, merge or promote a release from local tests.
+was resolved by the user: preserve upstream's explicit Ollama/OpenAI selection
+and existing features. This does not authorize real inference, merge or release
+promotion from installation tests. Read [installed acceptance](docs/GAME_INSTALLED_ACCEPTANCE_20261115.md)
+before further activation: the installed candidate exposed a delegated `read_file`
+collision and an unknown `task` receipt. Preserve that run and all checkpoints;
+do not reset/replay it or cancel user work to force an update/rollback.
+
+DeepAgents owns native filesystem tool names. The common graph gives colliding
+host tools distinct `companion_host_*` model names, forwarding to the original
+authorized adapter with its schema, runtime, call identity and cancellation.
+Keep native backends/permissions unchanged, reject alias conflicts, and cover
+both supervisor and real delegated game profiles. Source fixes are not installed
+merely because tests pass; use a new immutable signed candidate.
 
 Model settings use a legacy-compatible base row plus namespace/provider/account
 feature storage. Keep the original validated migration text and atomic revision

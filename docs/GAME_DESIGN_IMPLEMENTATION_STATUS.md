@@ -2,6 +2,17 @@
 
 ## Estado atual do candidato — 15/11/2026
 
+**Instalação executada:** Mac e VS Code 0.13.0 usam o mesmo motor 1.1.0
+verificado. Foram observados Studio, build, preview, exportações e reabertura do
+editor. O [relatório de instalação](GAME_INSTALLED_ACCEPTANCE_20261115.md) registra
+backups e limites. O aceite completo foi impedido por uma falha real na delegação:
+`read_file` do host colide com o filesystem do DeepAgents. O run permanece em
+reconciliação e bloqueia a troca de versão; não foi cancelado ou reexecutado.
+A correção está em fonte no grafo comum para motor/SDK **1.1.1**, interfaces
+**0.13.1**, com reprodução negativa preservada, tipos/build e **823 + 42 testes
+aprovados**, um skip explícito. Ainda precisa de candidato assinado e ativação segura.
+A decisão do usuário é preservar os recursos atuais Ollama/OpenAI.
+
 O primeiro lote continua sendo **Mac/VS Code integrados**, antes de novos jogos.
 Artefatos de produção candidatos usam o commit imutável
 `58a361264146fca15342b964a01b973c9d978715`: motor/SDK **1.1.0**, interfaces
@@ -17,7 +28,7 @@ de rollback são ferramentas de qualificação, não mudanças nesses artefatos.
 | Rollback oficial | 1.1.0 assinado → 1.0.6/1.0.7 assinados → 1.1.0 assinado passou para configurações e domínio de conversas, nos dois produtos, em bancos temporários, sem IA |
 | Preparação anterior | App em uso 0.12.10 / motor 1.0.7 e extensão ativa 0.12.8 / motor 1.0.6 copiados sem alterar os originais; selo Apple, 405 arquivos/links do editor e motores copiados conferidos; par oficial 0.12.10 / motor 1.0.7 preparado nas três variantes |
 | Provedor do editor | Configuração observada é OpenAI; pacote ativo está marcado LiteLLM. Preservar configuração/credenciais e escolher a variante compatível; não interpretar isso como autorização de inferência |
-| Instalação/aceite | **Pendente**: Mac continua bloqueado para controle nativo. Não houve substituição pessoal, aceite visual, rollback instalado, merge ou promoção de release |
+| Instalação/aceite | Instalados Mac e VS Code, backup privado conferido e percursos técnicos observados. **Aceite parcial**: delegação falhou; recuperação completa do Mac, reinício/rollback do perfil e candidato corrigido permanecem pendentes. Sem merge ou promoção |
 
 Os arquivos finais locais ficam em `.cache/game-design-candidate-1.1.0-58a3612/`, fora
 do Git. `verification.json`, `index-verified.json`, `manifest-bindings-verified.json` e
@@ -44,9 +55,9 @@ não aceite de latência física ou de credenciais. A rodada `5d1b660` falhou du
 vezes no limite de 10 s; seus logs e pacotes continuam preservados em
 `.cache/game-design-candidate-1.1.0-5d1b660/`, separados do candidato final.
 
-Próxima ação: com o Mac disponível, fazer backup dos dados em ponto seguro e
-demonstrar criar projeto → Studio → preview → fechar/reabrir → continuar →
-exportar, migração e rollback nas interfaces instaladas. Geração real, Unity,
+Próxima ação: concluir o candidato que corrige a colisão de ferramentas, inspecionar
+o resultado desconhecido sem fabricá-lo e ativar em ponto seguro. Então repetir
+os percursos afetados e demonstrar reinício/rollback do perfil. Geração real, Unity,
 Navi protegido, portfólio e aceite físico/humano continuam depois disso, com
 suas autorizações e critérios preservados. O produto integral não está concluído.
 

@@ -11,10 +11,12 @@ consome o SDK empacotado; seus adaptadores nativos de preview usam os validadore
 publicados nesse mesmo SDK. Não há grafo ou inteligência no renderer/SDK.
 Jobs de jogo e reconciliações também impedem ativação de outro motor enquanto
 estão em andamento. Os testes locais e builds não comprovam instalação, aceite
-visual nem a conclusão do plano integral. A política de provedores do Mac deve
-ser conciliada com a decisão do usuário antes de ativar esta composição: a base
-atual permite troca explícita; as descrições abaixo de Ollama exclusivo refletem
-a composição histórica e não devem justificar uma ampliação silenciosa.
+visual nem a conclusão do plano integral. O usuário confirmou preservar os
+recursos atuais de Ollama/OpenAI no Mac. As descrições abaixo de Ollama exclusivo
+refletem composições históricas. A [instalação de 15/11](GAME_INSTALLED_ACCEPTANCE_20261115.md)
+confirma clientes 0.13.0 e motor 1.1.0 idêntico, mas registra falha de delegação
+e o bloqueio de rollback. A correção de nomes reservados fica no grafo comum;
+não nas interfaces, no módulo de conhecimento ou nas autoridades do KidOS.
 
 A [restauração de foco do Correio](GAME_WINDMAIL_FOCUS_RECOVERY.md) é comportamento
 do jogo exportado; o guia comum apenas orienta. Eventos DOM de diagnóstico não

@@ -1,10 +1,11 @@
 import {declaredModelContextWindow} from './model-context';
 import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { ClientTool, ServerTool } from "@langchain/core/tools";
+import { isStructuredTool, type ClientTool, type ServerTool, type StructuredTool, type ToolRuntime } from "@langchain/core/tools";
+import { isToolMessage, ToolMessage } from "@langchain/core/messages";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { createDeepAgent, createSummarizationMiddleware, StateBackend, GENERAL_PURPOSE_SUBAGENT, type AnyBackendProtocol, type FilesystemPermission, type SubAgent } from "deepagents";
-import { createAgent, summarizationMiddleware, type AnyAgentMiddleware } from "langchain";
+import { createAgent, summarizationMiddleware, tool, type AnyAgentMiddleware } from "langchain";
 import type { StreamedAssistantMessage } from "./assistant-stream";
 import { modelMessageIdentity } from "./model-message-identity";
 import {contextWorkingBudget,type ContextWorkingBudget} from '../../contracts/src/model-context';
@@ -50,9 +51,33 @@ export type ProductGraph = {
   }>;
 };
 
+// DeepAgents owns these names and their backend. Keep host adapters distinct,
+// forwarding to the original registered tool rather than replacing a built-in.
+const deepFilesystemNames = new Set(["ls", "read_file", "write_file", "edit_file", "delete", "glob", "grep", "execute"]);
+function deepHostTools(entries: StructuredTool[]): StructuredTool[];
+function deepHostTools(entries: Array<ClientTool | ServerTool>): Array<ClientTool | ServerTool>;
+function deepHostTools(entries: Array<ClientTool | ServerTool>): Array<ClientTool | ServerTool> {
+  const names = new Set(entries.map(entry => "name" in entry ? entry.name : undefined));
+  return entries.map(entry => {
+    if (typeof entry.name !== "string" || !deepFilesystemNames.has(entry.name)) return entry;
+    const original = entry as ClientTool;
+    if (!isStructuredTool(original)) throw new Error("A reserved Deep Agent tool name requires an invocable host adapter.");
+    const name = `companion_host_${original.name}`;
+    if (names.has(name)) throw new Error(`Host tool alias conflicts with an existing tool: ${name}`);
+    return tool(async (input, runtime) => {
+      const current = runtime as unknown as ToolRuntime;
+      if (!current.toolCall?.id) throw new Error("A host tool alias requires its original graph call identity.");
+      const originalCall = { type: "tool_call" as const, name: original.name, id: current.toolCall.id, args: input };
+      const result = await original.invoke(originalCall, { ...current, toolCall: originalCall });
+      return isToolMessage(result) ? new ToolMessage({ ...result, name }) : result;
+    }, { name, description: original.description, schema: original.schema });
+  });
+}
+
 /** All products construct the official graph here. Profiles supply adapters and middleware. */
 export function createProductGraph(runtime: "standard" | "deep", options: ProductGraphOptions): ProductGraph {
   const { backend, permissions, contextWorkingBudget:workingInput, ...common } = options;
+  if (runtime === "deep") common.tools = deepHostTools(common.tools);
   const working=workingInput===undefined?undefined:contextWorkingBudget.parse(workingInput);
   const window=declaredModelContextWindow(options.model);
   const workingFor=(model:BaseChatModel)=>{
@@ -70,7 +95,9 @@ export function createProductGraph(runtime: "standard" | "deep", options: Produc
   // Tools/backend/permissions still come from the official product configuration.
   const subagents = [...(options.subagents ?? [])];
   if (runtime === "deep" && !subagents.some(agent => agent.name === GENERAL_PURPOSE_SUBAGENT.name)) subagents.unshift({ ...GENERAL_PURPOSE_SUBAGENT });
-  common.subagents = subagents.map(agent => ({ ...agent, middleware: [modelMessageIdentity(), ...(agent.middleware ?? [])] }));
+  common.subagents = subagents.map(agent => ({ ...agent,
+    ...(runtime === "deep" && agent.tools ? { tools: deepHostTools(agent.tools) } : {}),
+    middleware: [modelMessageIdentity(), ...(agent.middleware ?? [])] }));
   const effectiveBackend=backend??((config:ConstructorParameters<typeof StateBackend>[0])=>new StateBackend(config));
   if(runtime==='deep'){
     // The pinned Deep middleware uses request.model even when options.model is
