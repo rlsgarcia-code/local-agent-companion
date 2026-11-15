@@ -138,12 +138,12 @@ for (const runtime of ["standard", "deep"] as const) for (const mode of ["socket
   });
 }
 
-test("Mac runtime diagnoses its actual model error without changing the request or executing game tools", async () => {
+test("Mac runtime diagnoses its actual model error without changing the request or executing game tools", async (t) => {
   const directory = await mkdtemp(path.join(tmpdir(), "desktop-model-failure-"));
   const saver = SqliteSaver.fromConnString(path.join(directory, "graph.sqlite"));
   let calls = 0;
   class FixtureRuntime extends OllamaDesktopRuntime {
-    protected override createModel(modelName: string, streaming: boolean): ChatOpenAICompletions {
+    public override createModel(modelName: string, streaming: boolean): ChatOpenAICompletions {
       return new ChatOpenAICompletions({ model: modelName, apiKey: "synthetic-only", streaming, disableStreaming: !streaming, maxRetries: 0,
         configuration: { baseURL: "http://127.0.0.1:11434/v1", fetch: async () => {
           calls++; throw Object.assign(new Error("synthetic confidential body"), { code: "ECONNREFUSED" });
@@ -151,6 +151,7 @@ test("Mac runtime diagnoses its actual model error without changing the request 
     }
   }
   const desktop = new FixtureRuntime(saver);
+  t.mock.method(ProviderModels.prototype, "model", (role = "executor", streaming = role === "executor") => desktop.createModel("fixture", streaming));
   try {
     await assert.rejects(desktop.run({ thread: { id: "fixture", title: "Read", messages: [], createdAt: 1, updatedAt: 1 }, request: "Read-only fixture",
       workspacePath: directory, modelRoles: { executor: "fixture" }, dockerSandboxEnabled: false, mode: "plan", agentRuntime: "standard",
@@ -164,13 +165,15 @@ test("Mac runtime diagnoses its actual model error without changing the request 
   } finally { await desktop.shutdown(); saver.db.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
-for(const runtime of ['standard','deep'] as const)test(`Mac ${runtime}: the actual SDK deadline is diagnosed without opening host resources or silently retrying`,async()=>{
+for(const runtime of ['standard','deep'] as const)test(`Mac ${runtime}: the actual SDK deadline is diagnosed without opening host resources or silently retrying`,async(t)=>{
  let requests=0;const server=createServer(request=>{requests++;request.resume();});await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();assert.ok(address&&typeof address==='object');
  const directory=await mkdtemp(path.join(tmpdir(),'desktop-sdk-deadline-')),saver=SqliteSaver.fromConnString(path.join(directory,'graph.sqlite'));
  class FixtureRuntime extends OllamaDesktopRuntime{
-  protected override createModel(modelName:string,streaming:boolean):ChatOpenAICompletions{return new ChatOpenAICompletions({model:modelName,apiKey:'synthetic-only',streaming,disableStreaming:!streaming,maxRetries:0,timeout:200,configuration:{baseURL:`http://127.0.0.1:${(address as {port:number}).port}/v1`}});}
+  public override createModel(modelName:string,streaming:boolean):ChatOpenAICompletions{return new ChatOpenAICompletions({model:modelName,apiKey:'synthetic-only',streaming,disableStreaming:!streaming,maxRetries:0,timeout:200,configuration:{baseURL:`http://127.0.0.1:${(address as {port:number}).port}/v1`}});}
  }
- const desktop=new FixtureRuntime(saver);try{
+ const desktop=new FixtureRuntime(saver);
+ t.mock.method(ProviderModels.prototype,"model",(role="executor",streaming=role==="executor")=>desktop.createModel("fixture",streaming));
+ try{
   await assert.rejects(desktop.run({thread:{id:'fixture',title:'Read',messages:[],createdAt:1,updatedAt:1},request:'Read-only simulated request deadline.',workspacePath:directory,modelRoles:{executor:'fixture'},dockerSandboxEnabled:false,mode:'plan',agentRuntime:runtime,assistantMessageId:'answer',contextPages:[],openPreview:async()=>assert.fail('No host preview'),callbacks:{approval:async()=>assert.fail('No approval'),activity:()=>{},delta:()=>{},step:()=>{},reset:()=>{}}}),
    (error:unknown)=>{assert.ok(error instanceof ModelTransportError);assert.deepEqual(error.failure,{category:'request_timeout'});assert.equal('cause' in error,false);return true;});
   assert.equal(requests,1);assert.equal(desktop.running,false);

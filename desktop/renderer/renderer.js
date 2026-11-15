@@ -31,7 +31,10 @@ const el = Object.fromEntries([
   "context-external-toggle", "context-tabs", "context-back", "context-forward", "context-reload",
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
-  "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "theme-control",
+  "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "manual-pull", "theme-control",
+  "active-model-roles", "active-model-status", "engine-status", "engine-detail", "restart-engine",
+  "model-provider", "model-selection-mode", "model-optimization-profile", "openai-key-row", "openai-key", "clear-openai-key",
+  "refresh-model-catalog", "provider-catalog-status", "provider-model-picker", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
   "active-model-roles", "active-model-status", "model-context-form", "model-context-alias", "model-context-tokens", "model-context-save", "model-context-status",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
@@ -160,7 +163,7 @@ function render(conversationEffect = null) {
   el["ollama-label"].textContent = snapshot.ollama.connected
     ? `Ollama ${snapshot.ollama.version || "conectado"}`
     : "Ollama desconectado";
-  el["model-label"].textContent = snapshot.modelRoles?.executor || "Escolher modelo";
+  el["model-label"].textContent = `${snapshot.modelProvider === "openai" ? "OpenAI" : "Ollama"} · ${snapshot.modelRoles?.executor || "Escolher modelo"}`;
   el["runtime-label"].textContent = snapshot.agentRuntime === "deep" ? "Deep Agent" : "Agente padrão";
   el["thread-title"].textContent = active?.title || "Nova conversa";
   renderThreadList(snapshot.threads, active?.id);
@@ -172,14 +175,14 @@ function render(conversationEffect = null) {
   document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === snapshot.mode));
   document.querySelectorAll("[data-runtime]").forEach((button) => button.classList.toggle("active", button.dataset.runtime === snapshot.agentRuntime));
   el["cancel-button"].classList.toggle("hidden", !snapshot.running);
-  el["send-button"].disabled = snapshot.running;
+  el["send-button"].disabled = snapshot.running || Boolean(snapshot.workspaceRun?.busy);
   const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
   const inspectorTitles = {
     activity: ({
       running: "Agente trabalhando", cancelling: "Encerrando a execução…",
       awaiting_approval: "Aguardando sua aprovação", awaiting_host: "Aguardando o aplicativo",
       awaiting_credentials: "Aguardando credenciais", awaiting_reconciliation: "Aguardando verificação do resultado",
-    })[snapshot.runState] || (snapshot.running ? "Agente trabalhando" : "Execução"),
+    })[snapshot.runState] || (snapshot.running ? "Agente trabalhando" : snapshot.workspaceRun?.busy ? "Execução preservada em outra conversa" : "Execução"),
     context: activeContext?.title || "Páginas e pesquisa",
     preview: activeContext?.title || "Preview local",
     changes: `${appState.selectedOutputs?.changeCount ?? appState.changes.length} arquivo${(appState.selectedOutputs?.changeCount ?? appState.changes.length) === 1 ? "" : "s"}`,
@@ -430,14 +433,19 @@ function applyConversationEffect(effect) {
 }
 
 function renderModels() {
-  const { models } = appState.snapshot.ollama;
+  const snapshot = appState.snapshot;
+  const hosted = snapshot.modelProvider === "openai";
+  const models = hosted
+    ? (snapshot.providerCatalog?.models || []).map((name) => ({ name, size: 0 }))
+    : snapshot.ollama.models;
+  el["manual-pull"].classList.toggle("hidden", hosted);
   el["model-list"].replaceChildren(...(models.length ? models.map((model) => {
     const button = document.createElement("button");
     button.className = `model-option${model.name === appState.snapshot.modelRoles?.executor ? " active" : ""}`;
     const text = document.createElement("span");
     text.textContent = model.name;
     const size = document.createElement("small");
-    size.textContent = formatBytes(model.size);
+    size.textContent = hosted ? "servidor" : formatBytes(model.size);
     button.append(text, size);
     button.addEventListener("click", async () => {
       appState.snapshot = await window.companion.setModel(model.name);
@@ -445,7 +453,7 @@ function renderModels() {
       render();
     });
     return button;
-  }) : [paragraph("Nenhum modelo instalado.", "empty-copy")]));
+  }) : [paragraph(hosted ? "Atualize o catálogo para ver os modelos disponíveis." : "Nenhum modelo instalado.", "empty-copy")]));
 }
 
 function renderInspector() {
@@ -459,17 +467,25 @@ function renderInspector() {
     ? (selected.commands || [])
     : activities.filter((activity) => activity.kind === "command");
   const hasWorkspace = Boolean(snapshot.workspacePath);
-  const selectedInstalled = snapshot.ollama.models.some((model) => model.name === snapshot.modelRoles?.executor);
-  el["setup-panel"].classList.toggle("hidden", hasWorkspace && snapshot.ollama.connected && selectedInstalled);
-  if (!snapshot.ollama.connected) {
+  const providerReady = snapshot.modelProvider === "openai"
+    ? snapshot.openAiKeyStored && Boolean(snapshot.modelRoles?.executor)
+    : snapshot.ollama.connected && snapshot.ollama.models.some((model) => model.name === snapshot.modelRoles?.executor);
+  el["setup-panel"].classList.toggle("hidden", hasWorkspace && providerReady);
+  if (snapshot.modelProvider === "openai" && !snapshot.openAiKeyStored) {
+    el["setup-copy"].textContent = "Salve a chave OpenAI no Keychain para usar o provedor hospedado.";
+    el["setup-action"].textContent = "Configurar provedor";
+  } else if (snapshot.modelProvider === "ollama" && !snapshot.ollama.connected) {
     el["setup-copy"].textContent = "Inicie o Ollama neste Mac. O Companion acessa apenas o endpoint local 127.0.0.1.";
     el["setup-action"].textContent = "Verificar novamente";
   } else if (!hasWorkspace) {
     el["setup-copy"].textContent = "Escolha a pasta do projeto que o agente poderá ler e alterar.";
     el["setup-action"].textContent = "Escolher workspace";
-  } else {
+  } else if (snapshot.modelProvider === "ollama") {
     el["setup-copy"].textContent = `O modelo ${snapshot.modelRoles?.executor} ainda não está instalado localmente.`;
     el["setup-action"].textContent = "Baixar modelo recomendado";
+  } else {
+    el["setup-copy"].textContent = "Escolha um modelo executor para continuar.";
+    el["setup-action"].textContent = "Configurar provedor";
   }
   const activityCount = selected?.activityCount ?? activities.length;
   el["activity-count"].textContent = `${activityCount} evento${activityCount === 1 ? "" : "s"}`;
@@ -537,6 +553,11 @@ function renderInspector() {
 let contextWindowEditing=false,contextWindowSaving=false;
 function renderRecommendation() {
   const snapshot = appState.snapshot;
+  renderModelSettings(snapshot);
+  const blockerCount = Object.values(snapshot.engine.blockers || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  el["engine-status"].textContent = `Motor ${snapshot.engine.version} · ${snapshot.engine.state === "ready" ? "pronto" : "ocupado"}`;
+  el["engine-detail"].textContent = blockerCount ? `${blockerCount} recurso(s) em uso` : "Serviço compartilhado ativo";
+  el["restart-engine"].disabled = Boolean(snapshot.running);
   const plan = snapshot.lastRecommendation;
   const activeLabels = { executor: "Executor", planner: "Planner", evaluator: "Evaluator", vision: "Vision", embedding: "Embedding" };
   el["active-model-roles"].replaceChildren(...Object.entries(snapshot.modelRoles || {}).map(([role, model]) => {
@@ -558,9 +579,20 @@ function renderRecommendation() {
   const contextAvailable=snapshot.modelContextWindows!==undefined&&Boolean(el["model-context-alias"].value);
   for(const id of ["model-context-save","model-context-alias","model-context-tokens"])el[id].disabled=contextWindowSaving||!contextAvailable;
   if(!contextAvailable)el["model-context-status"].textContent="Esta configuração exige motor compatível e um modelo selecionado.";
+  const activeCatalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const activeCatalogModels = new Set(activeCatalog.map((model) => model.toLowerCase()));
+  const incompatibleActiveRoles = snapshot.modelProvider === "openai" && activeCatalog.length
+    ? Object.entries(snapshot.modelRoles || {}).filter(([role, model]) => model && (
+      !activeCatalogModels.has(model.toLowerCase()) || (role === "embedding" ? !/embedding/i.test(model) : /(embedding|audio|realtime|transcribe|tts|search|image)/i.test(model))
+    ))
+    : [];
   el["active-model-status"].textContent = snapshot.modelRoleNotices?.length
     ? snapshot.modelRoleNotices.join(" ")
-    : "Somente modelos instalados entram na configuração ativa.";
+    : incompatibleActiveRoles.length
+      ? "Há modelos de outro provedor na configuração ativa. As sugestões OpenAI já foram preparadas; salve para ativá-las."
+      : snapshot.modelProvider === "openai"
+        ? "Modelos validados contra o catálogo da OpenAI."
+        : "Somente modelos instalados entram na configuração ativa.";
   el["docker-sandbox-toggle"].checked = Boolean(snapshot.dockerSandboxEnabled);
   el["docker-sandbox-status"].textContent = snapshot.dockerSandboxEnabled
     ? "Ativo: comandos usam somente Docker; não existe fallback nativo."
@@ -636,6 +668,50 @@ function renderRecommendation() {
       : "Aplicar escolhe os papéis imediatamente; nenhum download adicional é necessário.";
     setRecommendationNotice(nextStep, "neutral", false);
   }
+}
+
+function renderModelSettings(snapshot) {
+  el["model-provider"].value = snapshot.modelProvider || "ollama";
+  el["model-selection-mode"].value = snapshot.modelSelectionMode || "custom";
+  el["model-optimization-profile"].value = snapshot.modelOptimizationProfile || "balanced";
+  const hosted = snapshot.modelProvider === "openai";
+  const webResearch = snapshot.webResearch || {};
+  el["web-research-enabled"].checked = webResearch.enabled === true;
+  el["web-research-context"].value = webResearch.contextSize || "medium";
+  el["web-research-domains"].value = (webResearch.allowedDomains || []).join(", ");
+  el["web-research-connector"].textContent = `Conector: ${hosted ? "OpenAI Web Search" : "SearXNG local (iniciado ao salvar)"}`;
+  const custom = snapshot.modelSelectionMode === "custom";
+  const catalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
+  const catalogModels = new Set(catalog.map((model) => model.toLowerCase()));
+  el["openai-key-row"].classList.toggle("hidden", !hosted);
+  el["clear-openai-key"].disabled = !snapshot.openAiKeyStored;
+  el["clear-openai-key"].textContent = snapshot.openAiKeyStored ? "Remover" : "Não salva";
+  el["provider-role-editor"].classList.toggle("read-only", !custom);
+  for (const role of ["executor", "planner", "evaluator", "vision", "embedding"]) {
+    const input = el[`role-${role}`];
+    const activeModel = snapshot.modelRoles?.[role] || "";
+    const compatible = !hosted || !catalog.length || (catalogModels.has(activeModel.toLowerCase())
+      && (role === "embedding" ? /embedding/i.test(activeModel) : !/(embedding|audio|realtime|transcribe|tts|search|image)/i.test(activeModel)));
+    const displayedModel = compatible ? activeModel : snapshot.providerRecommendation?.[role] || "";
+    if (document.activeElement !== input) input.value = displayedModel;
+    input.readOnly = !custom;
+  }
+  const pickerOptions = [new Option(catalog.length ? `Escolha entre ${catalog.length} modelos` : "Atualize o catálogo para escolher", "")]
+    .concat(catalog.map((model) => new Option(model, model)));
+  el["provider-model-picker"].replaceChildren(...pickerOptions);
+  el["provider-model-picker"].disabled = !catalog.length;
+  el["provider-model-options"].replaceChildren(...catalog.map((model) => {
+    const option = document.createElement("option"); option.value = model; return option;
+  }));
+  const loaded = snapshot.providerCatalog?.loadedAt
+    ? new Date(snapshot.providerCatalog.loadedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  el["provider-catalog-status"].textContent = hosted
+    ? `${snapshot.openAiKeyStored ? "Chave protegida no Keychain" : "Chave ainda não configurada"}${catalog.length ? ` · ${catalog.length} modelos compatíveis com Chat Completions · ${loaded}` : " · atualize para consultar o servidor"}`
+    : `${snapshot.ollama.connected ? `${catalog.length} modelos instalados` : "Ollama desconectado"}${loaded ? ` · ${loaded}` : ""}`;
+  el["refresh-model-catalog"].disabled = false;
+  el["save-model-settings"].textContent = hosted && !catalog.length ? "Salvar e carregar modelos" : "Salvar configuração";
+  el["refresh-button"].classList.toggle("hidden", hosted);
+  el["model-advisor"].classList.toggle("hidden", hosted);
 }
 
 function setRecommendationNotice(text, kind = "neutral", remember = true) {
@@ -913,6 +989,91 @@ el["model-context-form"].addEventListener("submit",async event=>{
  try{appState.snapshot=await window.companion.setModelContextWindow(alias,text===""?null:Number(text));if(el["model-context-alias"].value===alias)contextWindowEditing=false;el["model-context-status"].textContent="Janela salva para as próximas execuções. A execução atual conserva sua configuração.";}catch(error){el["model-context-status"].textContent=String(error.message||error);}finally{contextWindowSaving=false;render();}
 });
 el["refresh-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.refreshOllama(); render(); });
+el["restart-engine"].addEventListener("click", async () => {
+  el["restart-engine"].disabled = true;
+  try { appState.snapshot = await window.companion.restartEngine(); render(); }
+  catch (error) { showError(error); }
+  finally { el["restart-engine"].disabled = Boolean(appState.snapshot?.running); }
+});
+el["refresh-model-catalog"].addEventListener("click", async () => {
+  el["model-settings-status"].textContent = "Atualizando catálogo…";
+  try {
+    appState.snapshot = await window.companion.refreshModelCatalog();
+    render();
+    el["model-settings-status"].textContent = "Catálogo atualizado.";
+  } catch (error) {
+    el["model-settings-status"].textContent = error?.message || String(error);
+    showError(error);
+  }
+});
+el["model-provider"].addEventListener("change", () => {
+  const hosted = el["model-provider"].value === "openai";
+  el["web-research-connector"].textContent = `Conector: ${hosted ? "OpenAI Web Search" : "SearXNG local (iniciado ao salvar)"}`;
+  const changed = el["model-provider"].value !== appState.snapshot.modelProvider;
+  el["openai-key-row"].classList.toggle("hidden", !hosted);
+  el["refresh-model-catalog"].disabled = changed;
+  el["provider-model-picker"].disabled = true;
+  el["provider-model-picker"].replaceChildren(new Option(changed
+    ? "Salve o provedor para carregar a lista"
+    : "Atualize o catálogo para escolher", ""));
+  el["provider-catalog-status"].textContent = changed
+    ? hosted ? "Salve a chave e o provedor; o Companion carregará os modelos oficiais automaticamente." : "Salve o provedor para carregar os modelos locais."
+    : el["provider-catalog-status"].textContent;
+  el["save-model-settings"].textContent = hosted ? "Salvar e carregar modelos" : "Salvar configuração";
+});
+el["model-selection-mode"].addEventListener("change", () => {
+  const custom = el["model-selection-mode"].value === "custom";
+  el["provider-role-editor"].classList.toggle("read-only", !custom);
+  el["provider-role-editor"].querySelectorAll("input").forEach((input) => { input.readOnly = !custom; });
+});
+el["provider-model-picker"].addEventListener("change", () => {
+  const model = el["provider-model-picker"].value;
+  if (!model) return;
+  el["model-selection-mode"].value = "custom";
+  el["provider-role-editor"].classList.remove("read-only");
+  el["provider-role-editor"].querySelectorAll("input").forEach((input) => { input.readOnly = false; });
+  el["role-executor"].value = model;
+});
+el["save-model-settings"].addEventListener("click", async () => {
+  const button = el["save-model-settings"];
+  button.disabled = true;
+  el["model-settings-status"].textContent = "Salvando…";
+  try {
+    const roles = Object.fromEntries(["executor", "planner", "evaluator", "vision", "embedding"]
+      .map((role) => [role, el[`role-${role}`].value.trim()]).filter(([, value]) => value));
+    appState.snapshot = await window.companion.saveModelSettings({
+      provider: el["model-provider"].value,
+      selectionMode: el["model-selection-mode"].value,
+      optimizationProfile: el["model-optimization-profile"].value,
+      webResearch: {
+        enabled: el["web-research-enabled"].checked,
+        contextSize: el["web-research-context"].value,
+        allowedDomains: el["web-research-domains"].value.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean),
+        searxngEndpoint: appState.snapshot.webResearch?.searxngEndpoint || "http://127.0.0.1:8080",
+        language: appState.snapshot.webResearch?.language || "pt-BR",
+        safeSearch: appState.snapshot.webResearch?.safeSearch ?? 1,
+        maxResults: appState.snapshot.webResearch?.maxResults || 8
+      },
+      roles,
+      ...(el["openai-key"].value.trim() ? { openAiKey: el["openai-key"].value.trim() } : {})
+    });
+    el["openai-key"].value = "";
+    render();
+    el["model-settings-status"].textContent = "Configuração ativa e compartilhável.";
+  } catch (error) {
+    el["model-settings-status"].textContent = error?.message || String(error);
+    showError(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+el["clear-openai-key"].addEventListener("click", async () => {
+  try {
+    appState.snapshot = await window.companion.clearOpenAiKey();
+    render();
+    el["model-settings-status"].textContent = "Chave removida do Keychain.";
+  } catch (error) { showError(error); }
+});
 el["context-button"].addEventListener("click", () => {
   if (appState.inspectorOpen) {
     appState.inspectorOpen = false;
@@ -1038,9 +1199,13 @@ el["pull-recommended"].addEventListener("click", async () => {
   }
 });
 el["setup-action"].addEventListener("click", async () => {
-  if (!appState.snapshot.ollama.connected) appState.snapshot = await window.companion.refreshOllama();
+  if (appState.snapshot.modelProvider === "openai" && (!appState.snapshot.openAiKeyStored || !appState.snapshot.modelRoles?.executor)) {
+    setSettingsSheetOpen(true);
+    return;
+  }
+  if (appState.snapshot.modelProvider === "ollama" && !appState.snapshot.ollama.connected) appState.snapshot = await window.companion.refreshOllama();
   else if (!appState.snapshot.workspacePath) appState.snapshot = await window.companion.chooseWorkspace();
-  else appState.snapshot = await window.companion.pullModel(appState.snapshot.modelRoles?.executor || "qwen3-coder:30b");
+  else if (appState.snapshot.modelProvider === "ollama") appState.snapshot = await window.companion.pullModel(appState.snapshot.modelRoles?.executor || "qwen3-coder:30b");
   render();
 });
 el["mode-control"].addEventListener("click", async (event) => {

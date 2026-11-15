@@ -12,7 +12,11 @@ import {
   type ClientCredential,
   type ModelAssistance,
   type ModelAssistanceResult,
+  type ModelCatalog,
+  type ModelConfiguration,
+  type ProviderSpec,
   type EngineEvent,
+  type EngineInfo,
   type RpcResponse,
   type Run,
   type Session,
@@ -34,6 +38,7 @@ import type { GameWorkflow, GameWorkflowSnapshot, GameWorkflowEvent } from "../.
 import {gameRevisionCompare,gameRevisionComparison,type GameRevisionComparison} from "../../contracts/src/game-comparison";
 import {gameFileCompare,gameFileComparison,type GameFileComparison} from "../../contracts/src/game-file-comparison";
 import type { InferenceBudgetSnapshot } from "../../contracts/src/inference-budget";
+export { CompanionInterfaceBroker, interfaceBrokerDescriptorPath, type InterfaceModelConfiguration } from "./interface-broker";
 
 export type HostResponses = Map<string, { signature: string; response: Promise<unknown> }>;
 
@@ -145,6 +150,18 @@ export class AgentClient {
       ? {transferId:(await this.upload(`model-assistance:${randomUUID()}`,bytes,"application/json")).id}
       : request;
     return this.call<ModelAssistanceResult>("models.assist",params,100_000);
+  }
+  engineInfo(): Promise<EngineInfo> {
+    return this.call("engine.info");
+  }
+  modelConfiguration(): Promise<ModelConfiguration | null> {
+    return this.call("models.configuration");
+  }
+  configureModels(configuration: ModelConfiguration): Promise<ModelConfiguration> {
+    return this.call("models.configure", configuration);
+  }
+  modelCatalog(provider: ProviderSpec): Promise<ModelCatalog> {
+    return this.call("models.catalog", { provider });
   }
   private receive(chunk: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, chunk]);
@@ -535,3 +552,8 @@ export class AgentClient {
     });
   }
 }
+
+export { GameStudioController } from "./game-studio";
+export { exportGameDirectory } from "./game-export";
+export { gameStudioDraftKey } from "./game-studio-drafts";
+export { fileGameStudioDraftStore } from "./game-studio-file-drafts";

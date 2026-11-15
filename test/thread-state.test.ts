@@ -177,6 +177,40 @@ test("preserves a bounded partial assistant response for interrupted-run recover
   });
 });
 
+test("marks a preserved nonterminal engine run as a workspace blocker", () => {
+  const collection = normalizeThreadCollection({
+    version: 1,
+    activeThreadId: "blocked",
+    threads: [{
+      id: "blocked",
+      title: "Preserved run",
+      createdAt: 1,
+      updatedAt: 2,
+      messages: [{ id: "pending", role: "user", content: "continue", createdAt: 2 }],
+      recovery: {
+        id: "request",
+        status: "interrupted",
+        mode: "review",
+        runtime: "standard",
+        startedAt: 1,
+        updatedAt: 2,
+        engineRunId: "engine-run",
+        engineState: "awaiting_host",
+      },
+    }],
+  });
+  assert.deepEqual(summarizeThreads(collection)[0], {
+    id: "blocked",
+    title: "Preserved run",
+    updatedAt: 2,
+    messageCount: 1,
+    pinned: false,
+    recoveryStatus: "interrupted",
+    workspaceBlocked: true,
+    engineState: "awaiting_host",
+  });
+});
+
 test("replaces an unfinished failed request when a new follow-up is typed", () => {
   const thread = createLocalThread("active", 10, "Review");
   thread.messages.push(

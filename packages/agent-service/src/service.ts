@@ -15,6 +15,7 @@ import {
 import {
   AgentError,
   ENGINE_VERSION,
+  engineCapabilities,
   errors,
   identifier,
   installedToolInspection,
@@ -23,8 +24,10 @@ import {
   negotiate,
   runSpec,
   modelAssistance,
+  providerSpec,
   terminalStates,
   type Registration,
+  type EngineUpdateBlockers,
   type Run,
   type RunSpec,
   type SessionSnapshot,
@@ -261,6 +264,7 @@ export class AgentService {
     if ("profile" in spec) {
       if (reg.product !== "companion-mac" || spec.spec.workspacePath !== reg.workspace)
         throw new AgentError(errors.forbidden, "Desktop profile does not match this installed client.");
+      if (spec.spec.provider) validateProvider(reg, spec.spec.provider);
       return;
     }
     validateProvider(reg, spec.provider);
@@ -272,6 +276,19 @@ export class AgentService {
       if (!installed || canonical(installed) !== canonical(definition))
         throw new AgentError(errors.forbidden, "Tool definition must match the installed adapter catalog.");
     }
+  }
+  private engineUpdateBlockers(): EngineUpdateBlockers {
+    const row = this.store.db.prepare(
+      "SELECT COUNT(*) AS count FROM runs WHERE state NOT IN ('completed','failed','cancelled')",
+    ).get() as { count: number };
+    return {
+      activeRuns: Math.max(Number(row.count) || 0, this.running.size),
+      ...(this.gameProduction.busy ? { gameOperations: 1 } : {}),
+      ...(this.toolInspections.size ? { toolInspections: this.toolInspections.size } : {}),
+      managedProcesses: this.workspaceProcesses.runningCount,
+      modelOperations: this.advisors.size + this.modelTasks.size + (this.models.busy ? 1 : 0),
+      desktopResources: [...this.desktopRuntimes.values()].filter((runtime) => runtime.hasActiveResources).length,
+    };
   }
   private readRun(reg: Registration, id: string): Run {
     const run = this.store.run(reg, id);
@@ -295,7 +312,7 @@ export class AgentService {
     connection: string,
   ): Promise<unknown> {
     if (this.closed) throw new AgentError(errors.unavailable, "The local engine is stopping; reconnect before continuing.");
-    if (this.quiescing && !["engine.info","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
+    if (this.quiescing && !["engine.info","engine.updateStatus","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","engine.stopManagedResourcesForUpdate","workspace.status","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
       throw new AgentError(errors.unavailable, "Engine is activating a prepared update. Reconnect with the updated client.");
     if(process.platform === "linux" && existsSync("/usr/share/kidos/engine-activation.json") &&
       ["runs.start","desktop.start","runs.resume","engine.resumeAfterUpdate","games.builds.start","games.validation.start","games.production.reconcile"].includes(method))
@@ -521,6 +538,23 @@ export class AgentService {
           return this.protect(reg,answer.text);
         } finally {await models.close();}
       }
+      case "models.catalog": {
+        if (reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS model discovery belongs to its system authority.");
+        const v = z.object({ provider: providerSpec }).strict().parse(p);
+        validateProvider(reg, v.provider);
+        const operation = randomUUID();
+        const credential = v.provider.credentialRef ? this.credentials.acquire(reg, v.provider.credentialRef, operation) : undefined;
+        if (v.provider.credentialRef && !credential) throw new AgentError(errors.unavailable, "Reconnect the credential host before refreshing models.");
+        const controller = new AbortController();
+        const models = new ProviderModels(v.provider, credential, AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]));
+        try {
+          const aliases = await models.listModels();
+          return { provider: v.provider.kind, models: aliases, loadedAt: Date.now() };
+        } finally {
+          await models.close();
+          this.credentials.release(operation);
+        }
+      }
       case "models.list":
       case "models.testConnection":
         z.object({}).strict().parse(p);
@@ -642,6 +676,7 @@ export class AgentService {
           quiescing:this.quiescing,
           build: this.buildInfo,
           capabilities: [
+            ...engineCapabilities,
             "sessions",
             "runs",
             "events",
@@ -681,14 +716,32 @@ export class AgentService {
         };
       case "engine.resumeAfterUpdate":
         z.object({}).strict().parse(p);this.quiescing=false;return {accepted:true};
+      case "workspace.status":
+        z.object({}).strict().parse(p);return this.store.workspaceStatus(reg.workspace);
+      case "engine.updateStatus": {
+        z.object({}).strict().parse(p);
+        const blockers = this.engineUpdateBlockers();
+        return { ready: Object.values(blockers).every((count) => count === 0), quiescing: this.quiescing, blockers };
+      }
+      case "engine.stopManagedResourcesForUpdate": {
+        z.object({}).strict().parse(p);
+        if (reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS updates remain under system authority.");
+        const blockers = this.engineUpdateBlockers();
+        if (blockers.activeRuns || blockers.modelOperations || blockers.desktopResources || blockers.gameOperations || blockers.toolInspections)
+          return { accepted: false, blockers, reason: "Finish active runs, model operations and desktop work before activating the update." };
+        await this.workspaceProcesses.close();
+        const remaining = this.engineUpdateBlockers();
+        this.quiescing = true;
+        return { accepted: true, blockers: remaining };
+      }
       case "engine.quiesceIfIdle":
       case "engine.shutdownIfIdle": {
         z.object({}).strict().parse(p);
-        const active = this.store.db.prepare("SELECT id FROM runs WHERE state NOT IN ('completed','failed','cancelled') LIMIT 1").get();
-        if (active || this.gameProduction.busy || this.workspaceProcesses.busy || this.running.size || this.advisors.size || this.modelTasks.size || this.toolInspections.size || this.models.busy || [...this.desktopRuntimes.values()].some((runtime) => runtime.hasActiveResources))
-          return { accepted: false, reason: "Work is active. The prepared update will wait without cancelling it." };
+        const blockers = this.engineUpdateBlockers();
+        if (Object.values(blockers).some((count) => count > 0))
+          return { accepted: false, blockers, reason: "Work is active. The prepared update will wait without cancelling it." };
         this.quiescing = true;
-        return { accepted: true };
+        return { accepted: true, blockers };
       }
       case "engine.negotiate": {
         const v = z.object({ protocol: z.string() }).strict().parse(p);
@@ -781,7 +834,7 @@ export class AgentService {
           schema: 1, product: reg.product, profile: reg.profile, workspace: reg.workspace,
           goals: this.goals.list(reg).filter((goal) => goal.threadId === id),
           memory: this.memory.list(reg).map((entry) => this.memory.get(reg, entry.key)),
-          modelConfiguration: reg.product !== "kidos" && reg.providers.includes("ollama") ? this.models.configuration(reg) : null,
+          modelConfiguration: reg.product !== "kidos" ? this.models.configuration(reg) : null,
           operations: receipts.map(({ value, ...receipt }) => ({ ...receipt, result: JSON.parse(value), historicalOnly: true })),
         };
         return this.persistTransfer(reg, `export:${id}`, this.protect(reg, { ...(domain as object), productState }));
@@ -812,6 +865,26 @@ export class AgentService {
           .parse(p);
         this.credentials.grant(reg, v.reference, v.value);
         return { accepted: true };
+      }
+      case "credentials.delegate": {
+        const v = z.object({
+          targetClientId: identifier,
+          reference: identifier,
+          value: z.string().min(1).max(16384),
+        }).strict().parse(p);
+        if (reg.product !== "companion-mac")
+          throw new AgentError(errors.forbidden, "Only the trusted Mac credential host can delegate provider access.");
+        const target = this.store.clientRegistration(v.targetClientId);
+        const authorizedTarget = target && (
+          target.product === "companion-app" ||
+          target.product === "companion-mac" && namespace(target) === namespace(reg)
+        );
+        if (!authorizedTarget)
+          throw new AgentError(errors.forbidden, "Credential delegation target is not an authorized Companion interface.");
+        if (!target.providers.includes("openai"))
+          throw new AgentError(errors.forbidden, "Credential delegation target is not authorized for OpenAI.");
+        this.credentials.grant(target, v.reference, v.value);
+        return { accepted: true, targetClientId: target.id };
       }
       case "runs.start": {
         const v = z
@@ -1103,7 +1176,7 @@ export class AgentService {
     this.launch(reg, run, spec);
   }
   private launch(reg: Registration, run: Run, spec: DurableSpec): void {
-    const provider = "profile" in spec ? undefined : spec.provider;
+    const provider = "profile" in spec ? spec.spec.provider : spec.provider;
     const credential = provider?.credentialRef
       ? this.credentials.acquire(reg, provider.credentialRef, run.id)
       : undefined;
@@ -1126,6 +1199,7 @@ export class AgentService {
           ...spec.spec,
           modelContextWindows:(this.store.receipt(reg,`private:${run.id}:model-context-windows`)?.value as ModelContextWindows|undefined)??{},
           contextWorkingBudget:this.runContextWorkingBudget(reg,run),
+          ...(provider ? { provider, credential } : {}),
           execution: {
             threadId: run.id,
             signal: controller.signal,

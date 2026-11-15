@@ -31,6 +31,8 @@ O build gera o inventário de terceiros em `dist/licenses/` a partir do metafile
 
 ## Contrato arquitetural
 
+Qualquer mudança pública em contratos, SDK, métodos RPC, capacidades, bootstrap, credenciais ou ciclo de vida precisa atualizar [o contrato de adaptadores de aplicação](docs/APPLICATION_ADAPTERS.md) e `docs/application-adapter-contract.json`. O teste `adapter-documentation.test.mjs` bloqueia versões ou listas de capacidades divergentes.
+
 - O runtime do agente deve continuar construído com primitivas LangChain e LangGraph.
 - `MemorySaver` é o único checkpointer do grafo; não crie um loop de mensagens ou checkpoint paralelo.
 - Contexto do editor, memória durável, runtime e UI permanecem separados em `ContextCollector`, `ProjectMemory`, `DevelopmentAgent` e `AgentViewProvider`.

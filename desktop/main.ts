@@ -1,4 +1,4 @@
-import {modelContextWindow} from '../packages/contracts/src/model-context';
+import {modelContextWindow} from '@companion/client-sdk/contracts';
 import { needsDesktopRecovery } from "./recovery";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
@@ -14,6 +14,7 @@ import type {
   DesktopMessage,
   DesktopRunMode,
   DesktopSnapshot,
+  DesktopModelSettingsInput,
   PullProgress,
   SendRequest,
   OllamaModel
@@ -21,16 +22,24 @@ import type {
 import { redactSensitiveText } from "../src/redaction";
 import { OllamaDesktopRuntime } from "./runtime-client";
 import { openDesktopGameStudio } from "./game-studio";
+import { PreparedEngineUpdateError } from "@companion/client-sdk/bootstrap";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
+import { directOpenAiDesktopCatalog, recommendHostedRoles, reconcileHostedRoles } from "./provider-models";
 import { DesktopStateStore } from "./state-store";
+import { DesktopCredentialStore } from "./credential-store";
+import { startInterfaceBroker, type InterfaceModelConfiguration } from "./interface-broker";
+import { configureManagedSearxng } from "./searxng-service";
 import { fetchPublicOllamaCatalog, type PublicOllamaCatalog } from "../src/ollama-public-catalog";
+import { DEFAULT_WEB_RESEARCH_CONFIGURATION, webResearchConfiguration } from "@companion/client-sdk/contracts";
 import {
   type OllamaRecommendationPlan
 } from "../src/ollama-recommendation";
 
 let window: BrowserWindow | undefined;
 let store: DesktopStateStore;
+let credentialStore: DesktopCredentialStore;
+const OPENAI_CREDENTIAL_REFERENCE = "openai-platform";
 const runtime = new OllamaDesktopRuntime({
   bundleDirectory: app.isPackaged ? path.join(process.resourcesPath, "companion-engine") : path.join(__dirname, "..", "engine-dist"),
   development: !app.isPackaged,
@@ -48,11 +57,16 @@ let publicOllamaCatalog: PublicOllamaCatalog | undefined;
 let activeRecommendation: OllamaRecommendationPlan | undefined;
 let recommendationController: AbortController | undefined;
 let modelRoleNotices: string[] = [];
+let cachedProviderCatalog: DesktopSnapshot["providerCatalog"] = { provider: "ollama", models: [] };
+let engineUpdateRecovery: Promise<void> | undefined;
+let closeInterfaceBroker: (() => Promise<void>) | undefined;
 
 app.setName("Local Companion");
 
 app.whenReady().then(async () => {
   store = await DesktopStateStore.open(path.join(app.getPath("userData"), "desktop-state.json"));
+  credentialStore = new DesktopCredentialStore(path.join(app.getPath("userData"), "provider-credentials.json"));
+  await store.update({ openAiKeyStored: await credentialStore.hasOpenAiKey() });
   if (dockerSandboxInstallParameter()) await store.update({ dockerSandboxEnabled: true });
   createWindow();
   contextBrowser = new DesktopContextBrowser(
@@ -60,8 +74,26 @@ app.whenReady().then(async () => {
     (context) => publish({ type: "context-snapshot", snapshot: context })
   );
   registerIpc();
-  void runtime.modelRoles(store.snapshot().modelRoles).then(async (roles) => {
-    if (roles) await store.update({ modelRoles: roles });
+  const broker = await startInterfaceBroker({
+    configuration: interfaceModelConfiguration,
+    configure: configureInterfaceModels,
+    leaseOpenAi: leaseSharedOpenAiCredential,
+    openSettings: () => {
+      if (!window) createWindow();
+      window?.show();
+      window?.focus();
+      window?.webContents.send("companion:open-model-settings");
+    },
+  });
+  closeInterfaceBroker = broker.close;
+  void withEngineUpdateRecovery(() => runtime.modelConfiguration(store.snapshot().modelRoles)).then(async (configuration) => {
+    if (configuration) await store.update({
+      modelRoles: configuration.roles,
+      modelProvider: configuration.provider === "openai" ? "openai" : "ollama",
+      modelSelectionMode: configuration.selectionMode,
+      modelOptimizationProfile: configuration.optimizationProfile,
+      webResearch: configuration.webResearch,
+    });
   }).catch((error) => dialog.showErrorBox("Motor local", String(error)));
   void runtime.recoverModelJobs(
     (progress) => window?.webContents.send("companion:pull-progress", progress),
@@ -128,6 +160,7 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   runtime.dispose();
+  void closeInterfaceBroker?.();
   contextBrowser?.close();
   // Pending approvals remain with the service when this interface closes.
   approvals.clear();
@@ -173,7 +206,22 @@ function registerIpc(): void {
     const snapshot=store.snapshot(),thread=store.thread(snapshot.activeThreadId);
     await openDesktopGameStudio({runtime,workspace:snapshot.workspacePath,thread,canWrite:()=>store.snapshot().mode!=="plan"});
   });
-  ipcMain.handle("companion:snapshot", async () => snapshot(true));
+  ipcMain.handle("companion:snapshot", async () => withEngineUpdateRecovery(() => snapshot(true)));
+  ipcMain.handle("companion:restart-engine", async () => {
+    const status = await runtime.engineStatus();
+    const protectedWork = status.blockers.activeRuns || status.blockers.modelOperations || status.blockers.desktopResources || status.blockers.gameOperations || status.blockers.toolInspections;
+    if (protectedWork) {
+      await dialog.showMessageBox(window!, { type: "info", title: "Motor ocupado", message: "Finalize o trabalho ativo antes de reiniciar", detail: engineBlockerLabels(status.blockers).join(", "), buttons: ["Entendi"] });
+      return snapshot();
+    }
+    const result = await dialog.showMessageBox(window!, {
+      type: "warning", title: "Reiniciar motor local", message: `Reiniciar motor ${status.version}?`,
+      detail: `${status.blockers.managedProcesses ? `Isso encerrará ${status.blockers.managedProcesses} servidor(es) local(is) gerenciado(s). ` : ""}Conversas concluídas e configurações serão preservadas.`,
+      buttons: ["Cancelar", "Encerrar recursos e reiniciar"], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    if (result.response === 1) await runtime.restartEngine(store.snapshot().workspacePath);
+    return snapshot(true);
+  });
   ipcMain.handle("companion:choose-workspace", async () => {
     const result = await dialog.showOpenDialog(window!, {
       title: "Escolha o projeto para o Local Companion",
@@ -188,6 +236,33 @@ function registerIpc(): void {
     const roles = { ...store.snapshot().modelRoles, executor: model.trim() };
     await runtime.configureModelRoles(roles);
     await store.update({ modelRoles: roles });
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:save-model-settings", async (_event, input: DesktopModelSettingsInput) => {
+    await saveModelSettings(input);
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:clear-openai-key", async () => {
+    await credentialStore.clearOpenAiKey();
+    await store.update({ openAiKeyStored: false });
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:refresh-model-catalog", async () => {
+    const state = store.snapshot();
+    cachedProviderCatalog = await loadProviderCatalog(state.modelProvider, state.modelRoles);
+    if (state.modelProvider === "openai") {
+      const roles = state.modelSelectionMode === "optimized"
+        ? recommendHostedRoles(cachedProviderCatalog.models, state.modelOptimizationProfile, state.modelRoles)
+        : reconcileHostedRoles(cachedProviderCatalog.models, state.modelOptimizationProfile, state.modelRoles);
+      if (!sameModelRoles(state.modelRoles, roles)) {
+        await runtime.configureModels({
+          provider: "openai", endpoint: "https://api.openai.com/v1", credentialRef: OPENAI_CREDENTIAL_REFERENCE,
+          selectionMode: state.modelSelectionMode, optimizationProfile: state.modelOptimizationProfile,
+          webResearch: state.webResearch, roles,
+        });
+        await store.update({ modelRoles: roles });
+      }
+    }
     return publishSnapshot();
   });
   ipcMain.handle("companion:set-mode", async (_event, mode: unknown) => {
@@ -323,6 +398,44 @@ function registerIpc(): void {
   });
 }
 
+async function withEngineUpdateRecovery<T>(operation: () => Promise<T>): Promise<T> {
+  try { return await operation(); }
+  catch (error) {
+    if (!(error instanceof PreparedEngineUpdateError)) throw error;
+    if (!engineUpdateRecovery) engineUpdateRecovery = promptEngineUpdate(error).finally(() => { engineUpdateRecovery = undefined; });
+    await engineUpdateRecovery;
+    return operation();
+  }
+}
+
+async function promptEngineUpdate(error: PreparedEngineUpdateError): Promise<void> {
+  const blockers = error.blockers;
+  const parts = blockers ? engineBlockerLabels(blockers) : [];
+  const result = await dialog.showMessageBox(window!, {
+    type: "warning",
+    title: "Atualização do motor pronta",
+    message: `Motor ${error.requestedVersion} pronto para ativação`,
+    detail: `O motor ${error.installedVersion} ainda está ativo. ${parts.length ? `Bloqueios: ${parts.join(", ")}.` : error.reason}\n\nFinalize trabalhos importantes antes de continuar. O Companion encerrará recursos locais gerenciados, reiniciará o motor e preservará as conversas concluídas.`,
+    buttons: ["Agora não", "Encerrar recursos e atualizar"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  if (result.response !== 1) throw error;
+  await runtime.activatePreparedUpdate(store.snapshot().workspacePath);
+}
+
+function engineBlockerLabels(blockers: import("@companion/client-sdk/contracts").EngineUpdateBlockers): string[] {
+  return [
+    blockers.activeRuns && `${blockers.activeRuns} execução(ões) ativa(s)`,
+    blockers.managedProcesses && `${blockers.managedProcesses} servidor(es) gerenciado(s)`,
+    blockers.modelOperations && `${blockers.modelOperations} operação(ões) de modelo`,
+    blockers.desktopResources && `${blockers.desktopResources} recurso(s) do aplicativo`,
+    blockers.gameOperations && `${blockers.gameOperations} operação(ões) de jogo`,
+    blockers.toolInspections && `${blockers.toolInspections} reconciliação(ões) de ferramenta`,
+  ].filter((value): value is string => Boolean(value));
+}
+
 function parseModelRoles(value: unknown): OllamaRecommendationPlan["roles"] {
   if (!value || typeof value !== "object") throw new Error("Invalid Ollama role configuration.");
   const record = value as Record<string, unknown>;
@@ -344,6 +457,83 @@ function parseModelRoles(value: unknown): OllamaRecommendationPlan["roles"] {
   };
 }
 
+async function saveModelSettings(input: DesktopModelSettingsInput): Promise<void> {
+  if (!input || (input.provider !== "ollama" && input.provider !== "openai")) throw new Error("Escolha Ollama ou OpenAI.");
+  const webResearch = webResearchConfiguration.catch(DEFAULT_WEB_RESEARCH_CONFIGURATION).parse(input.webResearch);
+  if (input.provider === "ollama" && webResearch.enabled) {
+    await configureManagedSearxng({
+      enabled: true,
+      composeFile: path.join(__dirname, "ops", "searxng", "compose.yaml"),
+      endpoint: webResearch.searxngEndpoint,
+    });
+  }
+  let roles = parseModelRoles(input.roles);
+  const selectionMode = input.selectionMode === "custom" ? "custom" : "optimized";
+  const optimizationProfile = input.optimizationProfile === "quality" || input.optimizationProfile === "speed"
+    ? input.optimizationProfile : "balanced";
+  if (input.provider === "openai") {
+    if (typeof input.openAiKey === "string" && input.openAiKey.trim()) await credentialStore.saveOpenAiKey(input.openAiKey);
+    if (!await credentialStore.hasOpenAiKey()) throw new Error("Salve uma chave OpenAI no Keychain antes de ativar este provedor.");
+    cachedProviderCatalog = await loadProviderCatalog("openai", roles);
+    roles = selectionMode === "optimized"
+      ? recommendHostedRoles(cachedProviderCatalog.models, optimizationProfile, roles)
+      : reconcileHostedRoles(cachedProviderCatalog.models, optimizationProfile, roles);
+  } else {
+    cachedOllama = await runtime.ollamaStatus();
+    hasCheckedOllama = true;
+    if (!cachedOllama.connected) throw new Error(cachedOllama.error || "Inicie o Ollama antes de ativar este provedor.");
+    const installed = new Map(cachedOllama.models.map((model) => [model.name.toLowerCase(), model.name]));
+    const executor = installed.get(roles.executor.toLowerCase())
+      ?? cachedOllama.models.find((model) => !/embed/i.test(model.name))?.name;
+    if (!executor) throw new Error("Instale ao menos um modelo de conversa no Ollama antes de ativar este provedor.");
+    const resolution = resolveInstalledModelRoles({ ...roles, executor }, cachedOllama.models, store.snapshot().lastRecommendation);
+    if (!resolution.ready) throw new Error(resolution.notices[0] || "Nenhuma configuração Ollama instalada está pronta.");
+    roles = resolution.roles;
+  }
+  await runtime.configureModels({
+    provider: input.provider,
+    endpoint: input.provider === "openai" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434/v1",
+    ...(input.provider === "openai" ? { credentialRef: OPENAI_CREDENTIAL_REFERENCE } : {}),
+    selectionMode, optimizationProfile, roles,
+    webResearch,
+  });
+  await store.update({ modelProvider: input.provider, modelSelectionMode: selectionMode,
+    modelOptimizationProfile: optimizationProfile, modelRoles: roles,
+    webResearch,
+    openAiKeyStored: await credentialStore.hasOpenAiKey() });
+}
+
+async function interfaceModelConfiguration(): Promise<InterfaceModelConfiguration> {
+  const state = store.snapshot();
+  return {
+    provider: state.modelProvider,
+    selectionMode: state.modelSelectionMode,
+    optimizationProfile: state.modelOptimizationProfile,
+    webResearch: state.webResearch,
+    assignments: state.modelRoles,
+    hasApiKey: await credentialStore.hasOpenAiKey(),
+  };
+}
+
+async function configureInterfaceModels(input: InterfaceModelConfiguration): Promise<InterfaceModelConfiguration> {
+  const state = store.snapshot();
+  await saveModelSettings({
+    provider: input.provider,
+    selectionMode: input.selectionMode,
+    optimizationProfile: input.optimizationProfile,
+    webResearch: input.webResearch,
+    roles: { ...state.modelRoles, ...(input.assignments ?? {}) },
+  });
+  return interfaceModelConfiguration();
+}
+
+async function leaseSharedOpenAiCredential(targetClientId?: string): Promise<void> {
+  const key = await credentialStore.openAiKey();
+  if (!key) throw new Error("A chave OpenAI não está disponível no Keychain.");
+  if (targetClientId) await runtime.delegateCredential(targetClientId, OPENAI_CREDENTIAL_REFERENCE, key);
+  else await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key);
+}
+
 async function send(request: SendRequest): Promise<void> {
   const text = typeof request?.text === "string" ? request.text.trim() : "";
   if (!text) throw new Error("Write a request first.");
@@ -351,9 +541,21 @@ async function send(request: SendRequest): Promise<void> {
   await snapshot(true);
   const state = store.snapshot();
   if (!state.workspacePath) throw new Error("Choose a workspace before starting.");
-  if (!state.modelRoles.executor) throw new Error("Choose an installed Ollama executor model.");
-  if (!cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())) {
+  const workspaceRun = await runtime.workspaceStatus(state.workspacePath);
+  if (workspaceRun.busy) throw new Error(`Outra conversa possui uma execução não finalizada${workspaceRun.state ? ` (${workspaceRun.state})` : ""}. Retome ou cancele essa execução antes de enviar uma nova solicitação.`);
+  if (!state.modelRoles.executor) throw new Error("Escolha o modelo executor.");
+  if (state.modelProvider === "ollama" && !cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())) {
     throw new Error(`O executor ${state.modelRoles.executor} não está instalado. Abra Modelos e execução para baixar o modelo ou aplicar a configuração instalada.`);
+  }
+  const provider = state.modelProvider === "openai"
+    ? { kind: "openai" as const, endpoint: "https://api.openai.com/v1", roles: state.modelRoles,
+        credentialRef: OPENAI_CREDENTIAL_REFERENCE, authHeader: "authorization" as const }
+    : { kind: "ollama" as const, endpoint: "http://127.0.0.1:11434/v1", roles: state.modelRoles,
+        authHeader: "authorization" as const };
+  if (state.modelProvider === "openai") {
+    const key = await credentialStore.openAiKey();
+    if (!key) throw new Error("A chave OpenAI não está disponível no Keychain.");
+    await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key, state.workspacePath);
   }
   const priorThread = structuredClone(store.thread(request.threadId));
   const userMessage: DesktopMessage = { id: randomUUID(), role: "user", text, createdAt: Date.now(), status: "complete" };
@@ -399,6 +601,8 @@ async function send(request: SendRequest): Promise<void> {
       request: text,
       workspacePath: state.workspacePath,
       modelRoles: state.modelRoles,
+      provider,
+      webResearch: state.webResearch,
       dockerSandboxEnabled: state.dockerSandboxEnabled,
       mode: state.mode,
       agentRuntime: state.agentRuntime,
@@ -451,7 +655,12 @@ async function send(request: SendRequest): Promise<void> {
     await store.appendMessage(request.threadId, completedMessage);
     publish({ type: "assistant-complete", threadId: request.threadId, message: completedMessage, changes: result.changes });
   } catch (error) {
-    const message = cancellationRequested ? "A execução foi interrompida." : error instanceof Error ? error.message : "A execução falhou.";
+    const rawMessage = error instanceof Error ? error.message : "A execução falhou.";
+    const message = cancellationRequested
+      ? "A execução foi interrompida."
+      : /Workspace is in use by another run/i.test(rawMessage)
+      ? "Outra conversa possui uma execução não finalizada. Retome ou cancele essa execução antes de enviar uma nova solicitação."
+      : rawMessage;
     const failedMessage: DesktopMessage = {
       id: assistantMessageId,
       role: "assistant",
@@ -506,6 +715,7 @@ async function recommendModels(): Promise<DesktopSnapshot> {
   activeRecommendation = await runtime.recommendModels({
     advisorModel: advisor,
     installedDockerImages: docker.images.map((image) => image.alias),
+    optimizationProfile: state.modelOptimizationProfile,
     ...(state.ollamaPublicCatalogEnabled && publicOllamaCatalog ? { publicCatalog: publicOllamaCatalog } : {})
   }, controller.signal);
   if (publicCatalogWarning) {
@@ -535,11 +745,12 @@ async function requestApproval(request: ApprovalRequest): Promise<boolean> {
 }
 
 async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
+  const engine = await runtime.engineStatus();
   if (refreshOllama || !hasCheckedOllama) {
     cachedOllama = await runtime.ollamaStatus();
     hasCheckedOllama = true;
   }
-  if (cachedOllama.connected) {
+  if (cachedOllama.connected && store.snapshot().modelProvider === "ollama") {
     let state = store.snapshot();
     if (state.lastRecommendation) {
       const installed = new Set(cachedOllama.models.map((model) => model.name.toLowerCase()));
@@ -564,16 +775,53 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
   } else {
     modelRoleNotices = [];
   }
+  const current = store.snapshot();
+  const workspaceRun = await runtime.workspaceStatus(current.workspacePath);
+  const providerCatalog: DesktopSnapshot["providerCatalog"] = current.modelProvider === "ollama"
+    ? { provider: "ollama", models: cachedOllama.models.map((model) => model.name), loadedAt: Date.now() }
+    : cachedProviderCatalog.provider === "openai" ? cachedProviderCatalog : { provider: "openai", models: [] };
+  const providerRecommendation = current.modelProvider === "openai" && providerCatalog.models.length
+    ? recommendHostedRoles(providerCatalog.models, current.modelOptimizationProfile, current.modelRoles)
+    : undefined;
   return {
     ...store.snapshot(),
     modelContextWindows:await runtime.modelContextWindows(),
+    ...current,
+    engine: { version: engine.version, state: engine.ready ? "ready" : "busy", blockers: engine.blockers },
+    workspaceRun: { busy: workspaceRun.busy, ...(workspaceRun.state ? { state: workspaceRun.state } : {}) },
+    openAiKeyStored: await credentialStore.hasOpenAiKey(),
     ollama: cachedOllama,
     context: contextBrowser.snapshot(),
     ollamaPublicCatalogLoaded: Boolean(publicOllamaCatalog),
     modelRoleNotices,
+    providerCatalog,
+    ...(providerRecommendation ? { providerRecommendation } : {}),
     running: runtime.running,
     runState: runtime.state
   };
+}
+
+async function loadProviderCatalog(provider: "ollama" | "openai", roles: OllamaRecommendationPlan["roles"]): Promise<DesktopSnapshot["providerCatalog"]> {
+  if (provider === "ollama") {
+    cachedOllama = await runtime.ollamaStatus();
+    hasCheckedOllama = true;
+    if (!cachedOllama.connected) throw new Error(cachedOllama.error || "Inicie o Ollama antes de atualizar os modelos.");
+    return { provider, models: cachedOllama.models.map((model) => model.name), loadedAt: Date.now() };
+  }
+  const key = await credentialStore.openAiKey();
+  if (!key) throw new Error("Salve uma chave OpenAI no Keychain antes de atualizar os modelos.");
+  await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key);
+  try {
+    const catalog = await runtime.modelCatalog({ kind: "openai", endpoint: "https://api.openai.com/v1", roles,
+      credentialRef: OPENAI_CREDENTIAL_REFERENCE, authHeader: "authorization" });
+    const models = directOpenAiDesktopCatalog(catalog.models);
+    if (!models.some((model) => !/embedding/i.test(model))) {
+      throw new Error("A conta não retornou modelos compatíveis com Chat Completions e function calling.");
+    }
+    return { provider: "openai", models, loadedAt: catalog.loadedAt };
+  } catch (error) {
+    throw new Error(`Não foi possível carregar os modelos da OpenAI: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 async function publishSnapshot(refreshOllama = false): Promise<DesktopSnapshot> {

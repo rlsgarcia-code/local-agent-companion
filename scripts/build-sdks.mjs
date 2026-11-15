@@ -18,6 +18,7 @@ await esbuild
       "packages/client-ts/src/index.ts",
       "packages/client-ts/src/bootstrap.ts",
       "packages/contracts/src/index.ts",
+      "packages/contracts/src/desktop.ts",
     ],
     outdir: path.join(output, "typescript"),
     outbase: "packages",
@@ -43,6 +44,10 @@ await esbuild
     await generateThirdPartyNotices({metafile:result.metafile,outputDirectory:path.join(output,"licenses")});
   });
 await cp("LICENSE",path.join(output,"LICENSE"));
+await mkdir(path.join(output, "integration"), { recursive: true });
+await cp("docs/APPLICATION_ADAPTERS.md", path.join(output, "integration", "APPLICATION_ADAPTERS.md"));
+await cp("docs/application-adapter-contract.json", path.join(output, "integration", "application-adapter-contract.json"));
+await cp("examples/application-adapter", path.join(output, "integration", "example"), { recursive: true });
 await cp("packages/client-python", path.join(output, "python"), {
   recursive: true,
   filter: (name) => !name.includes("__pycache__"),
@@ -90,6 +95,10 @@ await writeFile(
         "./contracts": {
           types: "./typescript/contracts/src/index.d.ts",
           require: "./typescript/contracts/src/index.cjs",
+        },
+        "./desktop": {
+          types: "./typescript/contracts/src/desktop.d.ts",
+          require: "./typescript/contracts/src/desktop.cjs",
         },
       },
     },

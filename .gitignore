@@ -14,7 +14,7 @@ release/
 .cache/
 build/
 engine-dist/
-output/playwright/
+output/
 .playwright-cli/
 *.key
 __pycache__/

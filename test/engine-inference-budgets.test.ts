@@ -11,6 +11,7 @@ import { Store } from "../packages/agent-service/src/store";
 import { InferenceBudgets } from "../packages/agent-service/src/inference-budgets";
 import { executeGraph } from "../packages/agent-core/src/index";
 import { InferenceBudgetCallback, type InferenceBudgetPort } from "../packages/agent-core/src/inference-budget";
+import { ProviderModels } from "../packages/agent-core/src/provider-models";
 import { OllamaDesktopRuntime } from "../packages/agent-core/src/desktop-runtime";
 import { runSpec, type Registration, type Run, type Session } from "../packages/contracts/src/index";
 import type { InferenceBudgetPolicy, InferenceBudgetSnapshot } from "../packages/contracts/src/inference-budget";
@@ -194,13 +195,13 @@ test("official summarization and the following agent model inherit the same budg
   assert.equal(began.size, 2); assert.deepEqual(ended, began);
 });
 
-test("Mac Standard/Deep meter structured task interpretation, planner, streamed executor and completion review with real LangChain models", async () => {
+test("Mac Standard/Deep meter structured task interpretation, planner, streamed executor and completion review with real LangChain models", async (t) => {
   for (const runtime of ["standard", "deep"] as const) {
     const requests: string[] = [], began = new Set<string>(), measured = new Map<string, { input: number; output: number } | undefined>();
     const selectedProject = { projectId: "saved-game", engine: "phaser" as const, revision: 23, sourceHash: "c".repeat(64), fileCount: 14, assetCount: 0, hasDesign: true };
     const port: InferenceBudgetPort = { begin: async (id) => { began.add(id); }, finish: (id, usage) => { measured.set(id, usage); } };
     class FixtureRuntime extends OllamaDesktopRuntime {
-      protected override createModel(modelName: string, streaming: boolean): ChatOpenAICompletions {
+      public override createModel(modelName: string, streaming: boolean): ChatOpenAICompletions {
         return new ChatOpenAICompletions({ model: modelName, apiKey: "synthetic-fixture-only", streaming, disableStreaming: !streaming, streamUsage: true, maxRetries: 0,
           configuration: { baseURL: "http://127.0.0.1:11434/v1", fetch: async (_url, init) => {
             const body = JSON.parse(init!.body as string); requests.push(modelName);
@@ -218,6 +219,7 @@ test("Mac Standard/Deep meter structured task interpretation, planner, streamed 
       }
     }
     const directory = await mkdtemp(path.join(tmpdir(), "desktop-inference-")), saver = SqliteSaver.fromConnString(path.join(directory, "graph.sqlite")), desktop = new FixtureRuntime(saver);
+    const providerMock = t.mock.method(ProviderModels.prototype, "model", (role = "executor", streaming = role === "executor") => desktop.createModel(role, streaming));
     try {
       await writeFile(path.join(directory, "README.md"), "Temporary fixture; no personal files or inference endpoints are used.");
       const result = await desktop.run({ thread: { id: "fixture", title: "Read game", messages: [], createdAt: Date.now(), updatedAt: Date.now() }, request: "Explain this saved game without changing it", workspacePath: directory,
@@ -230,6 +232,6 @@ test("Mac Standard/Deep meter structured task interpretation, planner, streamed 
       for (const value of measured.values()) assert.deepEqual(value, { input: 7, output: 3 });
       assert.ok(requests.includes("evaluator")); if (runtime === "deep") assert.ok(requests.includes("planner"));
       assert.match(await readFile(path.join(directory, "README.md"), "utf8"), /Temporary fixture/);
-    } finally { await desktop.shutdown(); saver.db.close(); await rm(directory, { recursive: true, force: true }); }
+    } finally { providerMock.mock.restore(); await desktop.shutdown(); saver.db.close(); await rm(directory, { recursive: true, force: true }); }
   }
 });

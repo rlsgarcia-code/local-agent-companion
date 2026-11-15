@@ -1,5 +1,35 @@
 # Game Design 1.0: acompanhamento da implementação
 
+## Candidato integrado Mac/VS Code — 15/11/2026
+
+Prioridade atual: entregar o percurso integrado das duas interfaces antes de
+retomar o acabamento de jogos individuais. A cópia `companion-game-design`,
+branch `codex/game-design-integrated-candidate`, concilia o Game Design preservado
+com o Companion `main` até `a6f3977`; a cópia original permanece intacta.
+Candidato: motor 1.1.0, clientes 0.13.0, Node empacotado 22.23.4.
+
+- Tipos, build VS Code, SDK empacotado e build Mac passaram localmente.
+- Suíte: 802 testes passaram e um foi explicitamente ignorado; outros 42 testes
+  de repositório passaram. O roteamento LangChain/DeepAgents passou com servidor
+  simulado e ambiente sem credenciais. Não houve nova geração real de jogo.
+- Quatro simulações antigas de fábrica de modelos não interceptavam o caminho
+  atual; houve requisições recusadas pelo Ollama real na primeira execução.
+  Foram corrigidas; a suíte agora bloqueia TCP externo e os gateways reais
+  11434/8788, permitindo somente servidores temporários e IPC.
+- SDK/Studio Mac e barreiras de atualização foram conciliados. Jobs de jogo e
+  reconciliações impedem substituição do motor, mesmo fora de uma conversa ativa.
+- O pacote de desenvolvimento ARM64 foi construído em diretório novo. Não é
+  assinatura de release, instalação, aceite visual ou rollback instalado.
+
+Pendente desta primeira entrega: matriz assinada sobre commit exato, percurso
+visual nas duas interfaces instaladas, migração e rollback com dados novos. O
+Mac foi encontrado bloqueado e o desbloqueio foi solicitado. A base atual também
+contém seleção Ollama/OpenAI no Mac; a conciliação dessa política com o plano
+antigo foi perguntada ao usuário e não autoriza ativação enquanto sem resposta.
+Unity, Navi protegido, jogos completos e aceitação física/humana continuam nas
+etapas seguintes do plano integral. Nenhum desses critérios foi removido.
+
+
 Conferência do caminho restante: [dependências de aceite](GAME_DESIGN_ACCEPTANCE_READINESS.md).
 Consulta readonly fresca não observou a tentativa Root5 no Alien; controle do
 Mac confirmou sessão bloqueada. A autorização repetida do Luna continua consumida,

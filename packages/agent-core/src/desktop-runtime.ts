@@ -15,6 +15,8 @@ import { InferenceBudgetCallback, type InferenceBudgetPort } from "./inference-b
 import { ModelFailureCallback } from "./model-failure";
 import { operationMiddleware, type OperationExecutor } from "./operations";
 import { OllamaModels, MODEL_NAME } from "./ollama-models";
+import { ProviderModels } from "./provider-models";
+import { createWebResearchTools } from "./web-research";
 export { pullOllamaModel } from "./ollama-models";
 import { CompositeBackend, StateBackend } from "deepagents";
 import {
@@ -48,11 +50,12 @@ import type {
   DesktopExecutionStep,
   DesktopMessage,
   DesktopRunMode,
+  DesktopRuntimeRunOptions,
+  DesktopRuntimeRunResult,
   DesktopThread,
   OllamaModel,
   PullProgress,
 } from "../../contracts/src/desktop";
-import type { OllamaRoleConfiguration } from "../../contracts/src/ollama";
 import {
   readWorkspaceFile,
   resolveWritablePath,
@@ -74,14 +77,6 @@ const SHELL_EXECUTABLES = new Set([
   "cmd",
   "cmd.exe",
 ]);
-
-type RuntimeCallbacks = {
-  approval: (request: ApprovalRequest) => Promise<boolean>;
-  activity: (activity: DesktopActivity) => void;
-  delta: (messageId: string, delta: string) => void;
-  step: (messageId: string, step: DesktopExecutionStep) => void;
-  reset: (messageId: string) => void;
-};
 
 export class OllamaDesktopRuntime extends OllamaModels {
   public constructor(private readonly checkpointer: BaseCheckpointSaver) { super(); }
@@ -126,33 +121,14 @@ export class OllamaDesktopRuntime extends OllamaModels {
     try { await this.configuration; } finally { this.configuration = undefined; }
   }
 
-  public async run(options: {
-    thread: DesktopThread;
-    request: string;
-    workspacePath: string;
-    modelRoles: OllamaRoleConfiguration;
-    modelContextWindows?:ModelContextWindows;
-    contextWorkingBudget?:import('../../contracts/src/model-context').ContextWorkingBudget;
-    dockerSandboxEnabled: boolean;
-    mode: DesktopRunMode;
-    agentRuntime: DesktopAgentRuntime;
-    assistantMessageId: string;
-    userMessageId?: string;
-    contextPages: DesktopContextPage[];
-    openPreview: (url: string) => Promise<void>;
-    callbacks: RuntimeCallbacks;
+  public async run(options: DesktopRuntimeRunOptions & {
+    modelContextWindows?: ModelContextWindows;
+    contextWorkingBudget?: import('../../contracts/src/model-context').ContextWorkingBudget;
     gameProduction?: GameAgentPort;
     inferenceBudget?: InferenceBudgetPort;
-    execution?: {
-      threadId: string;
-      signal: AbortSignal;
-      operation: OperationExecutor;
-      reconciliations: Record<string, unknown>;
-      requireCheckpoint?: boolean;
-    };
-  }): Promise<{ message: DesktopMessage; changes: DesktopChange[] }> {
+  }): Promise<DesktopRuntimeRunResult> {
     if (this.running) throw new Error("A run or configuration is already active.");
-    if (!MODEL_NAME.test(options.modelRoles.executor))
+    if ((!options.provider || options.provider.kind === "ollama") && !MODEL_NAME.test(options.modelRoles.executor))
       throw new Error("Choose a valid local Ollama executor model.");
     this.controller = new AbortController();
     const signal = options.execution
@@ -160,6 +136,17 @@ export class OllamaDesktopRuntime extends OllamaModels {
       : this.controller.signal;
     const modelFailures = new ModelFailureCallback();
     const callbacks = [modelFailures, ...(options.inferenceBudget ? [new InferenceBudgetCallback(options.inferenceBudget)] : [])];
+    const selectedProvider: NonNullable<DesktopRuntimeRunOptions["provider"]> = options.provider ?? {
+      kind: "ollama" as const,
+      endpoint: "http://127.0.0.1:11434/v1",
+      roles: options.modelRoles,
+      authHeader: "authorization" as const,
+    };
+    const provider = { ...selectedProvider, modelProfiles: { ...selectedProvider.modelProfiles,
+      ...Object.fromEntries(Object.entries(options.modelContextWindows ?? {}).map(([alias, contextWindow]) =>
+        [alias, { ...selectedProvider.modelProfiles?.[alias], contextWindow }])),
+    } };
+    const providerModels = new ProviderModels(provider, options.credential, signal);
     const tracker = new ChangeTracker(options.workspacePath);
     let observedRead = false;
     let approvalDenied = false;
@@ -183,12 +170,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
       options.callbacks.step(options.assistantMessageId, step);
     };
     try {
-      const model = this.createModel(options.modelRoles.executor, true, undefined,options.modelContextWindows?.[options.modelRoles.executor]);
-      const evaluatorModel = this.createModel(
-        options.modelRoles.evaluator || options.modelRoles.executor,
-        false,
-        undefined,options.modelContextWindows?.[options.modelRoles.evaluator || options.modelRoles.executor],
-      );
+      const model = providerModels.model("executor", true, { webSearch: options.webResearch?.enabled && provider.kind === "openai" });
+      const evaluatorModel = providerModels.model("evaluator", false);
       const publishActivity = (value: DesktopActivity): void => {
         if (!countedActivityIds.has(value.id)) {
           countedActivityIds.add(value.id);
@@ -258,6 +241,12 @@ export class OllamaDesktopRuntime extends OllamaModels {
         openPreview: options.openPreview,
         recordExecutionEvidence: (evidence) => executionEvidence.push(evidence),
       });
+      const webResearchTools = createWebResearchTools({
+        provider: provider.kind,
+        settings: options.webResearch,
+        signal,
+        onActivity: (title, detail) => activity("search", title, detail),
+      });
       const completionGate = createTaskCompletionMiddleware({
         model: evaluatorModel,
         callbacks,
@@ -321,7 +310,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
           options.modelRoles.planner,
           "active",
         );
-        const planner = this.createModel(options.modelRoles.planner, false,undefined,options.modelContextWindows?.[options.modelRoles.planner]);
+        const planner = providerModels.model("planner", false);
         const planned = await planner.invoke(
           [
             new SystemMessage(
@@ -379,7 +368,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
                   kind: "file",
                   title: `Ler arquivo sensível ${filePath}`,
                   detail:
-                    "Este caminho pode conter credenciais ou configuração privada. O conteúdo será enviado somente ao modelo Ollama local selecionado.",
+                    `Este caminho pode conter credenciais ou configuração privada. O conteúdo será enviado somente ao provedor ${provider.kind} selecionado.`,
                   confirmLabel: "Permitir leitura",
                 }),
               () => undefined,
@@ -427,10 +416,10 @@ export class OllamaDesktopRuntime extends OllamaModels {
       const gameProfile = gameProductionProfile(options.gameProduction, {
         mode: options.mode, signal,
         modelForRole: (role) => role === "executor" ? model : role === "evaluator" ? evaluatorModel
-          : this.createModel(options.modelRoles.planner || options.modelRoles.executor, false,undefined,options.modelContextWindows?.[options.modelRoles.planner || options.modelRoles.executor]),
+          : providerModels.model("planner", false),
         imageModel:()=>{
           const alias=options.modelRoles.vision;if(!alias)throw new Error("Configure o papel visual nos modelos do produto; nenhuma alternativa será escolhida.");
-          return {model:this.createModel(alias,false,undefined,options.modelContextWindows?.[alias]),alias};
+          return {model:providerModels.model("vision", false, { requiresTools: false }),alias};
         },
         readTools: tools.filter((entry) => ["list_files", "read_file", "search_text"].includes(entry.name)),
         onToolRejected: value => { activity("verification", `Argumentos rejeitados · ${value.tool}`, value.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("\n"), "failed"); },
@@ -443,7 +432,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
         tools: [...(options.agentRuntime === "deep" && workspaceBackend
           ? tools.filter((candidate) => ["list_sandbox_images", "run_sandbox_command", "start_sandbox_application",
               "inspect_sandbox_application", "wait_for_sandbox_application", "open_sandbox_preview", "stop_sandbox_application"].includes(candidate.name))
-          : tools), ...(gameProfile?.tools ?? [])],
+          : tools), ...webResearchTools, ...(gameProfile?.tools ?? [])],
         systemPrompt,
         ...(options.agentRuntime === "deep" && workspaceBackend ? {
           backend: new CompositeBackend(new StateBackend(), { "/workspace/": workspaceBackend }), permissions,
@@ -524,6 +513,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
     } catch (error) {
       throw modelFailures.terminalError(error, signal);
     } finally {
+      await providerModels.close();
       this.controller = undefined;
     }
   }

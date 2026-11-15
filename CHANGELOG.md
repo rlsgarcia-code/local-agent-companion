@@ -1,5 +1,109 @@
 # Changelog
 
+## 0.13.0
+
+- Candidate integration of Game Design and the shared Game Studio for Mac and VS Code on engine 1.1.0.
+- Retains the packaged public SDK, shared model settings, explicit provider policy and safe engine activation from the current Companion.
+- Game production workers and tool reconciliation block engine replacement until their work has stopped.
+- Candidate validation is separate from installed-client, game-quality and full-suite acceptance.
+
+## 0.12.12 - 2026-11-12
+
+### Added
+- Export the desktop interaction contract as `@companion/client-sdk/desktop` and validate the Mac runtime against the packaged SDK artifact.
+- Negotiate every declared engine capability before the Mac interface enables service-backed work.
+- Add a repository boundary test that rejects direct Mac imports from internal client, contract or agent-runtime source trees.
+
+### Changed
+- Make the Mac application a reference consumer of the same public SDK imports documented for external application adapters.
+- Align every workspace package manifest with engine and SDK version 1.0.9.
+
+This release advances the clients to 0.12.12 and the engine and SDKs to 1.0.9. The Mac UI and Keychain host remain product-specific; execution, sessions, memory, planning and model access continue through the shared engine.
+
+## 0.12.11 - 2026-11-12
+
+### Added
+- Publish a canonical, versioned application-adapter contract with a reference adapter and a repository gate that requires SDK/capability documentation to evolve with the engine.
+- Add the isolated `companion-app` client identity so new products no longer impersonate the Mac or VS Code clients.
+- Expose typed `engineInfo()` helpers in the TypeScript and Python SDKs for startup capability negotiation.
+
+### Security
+- Keep application sessions, memory, goals and checkpoints in their own product/profile/workspace namespace.
+- Permit the trusted Mac credential host to delegate only an ephemeral grant to an exact registered `companion-app`; provider keys are never returned to the adapter.
+
+This release advances the clients to 0.12.11 and the engine and SDKs to 1.0.8. It contains no Med-Graph or other application-domain code.
+
+## 0.12.10 - 2026-11-12
+
+### Added
+- Expose the shared provider/model configuration through a private authenticated loopback broker so separate local interfaces can use the same Companion settings.
+- Allow the trusted Mac credential host to delegate a short-lived OpenAI grant to an explicitly registered interface in the same Companion namespace without exposing the key.
+
+### Fixed
+- Keep provider credentials isolated per registered interface while allowing Med-Graph and other approved clients to execute through the shared engine.
+- Reject credential delegation across products, namespaces, revoked clients, or clients without OpenAI authority.
+
+This hotfix advances the engine and SDKs to 1.0.7. Provider keys remain in the original Keychain and are never returned by the interface broker.
+
+## 0.12.9 - 2026-11-12
+
+### Fixed
+- Reconcile custom role assignments with the selected provider catalog instead of retaining Ollama aliases after switching to OpenAI.
+- Preserve valid custom OpenAI choices while replacing incompatible executor, planner, evaluator, vision and embedding models with provider recommendations.
+- Show the prepared OpenAI assignments in the Mac settings before activation and distinguish provider validation from Ollama installation checks.
+- Filter the OpenAI server catalog to aliases supported by the signed engine's direct Chat Completions transport, preventing Responses-only Codex and reasoning models from being selected automatically.
+
+This client-only hotfix advances the clients to 0.12.9 and keeps the signed engine and SDKs at 1.0.6.
+
+## 0.12.8 - 2026-11-11
+
+### Fixed
+- Detect the shared engine's authoritative workspace lease before admitting a request from a new conversation.
+- Keep the composer locked while another conversation has a running or preserved execution, including `awaiting_host` after an engine restart.
+- Replace the low-level `Workspace is in use by another run` failure with guidance to resume or cancel the owning conversation.
+- Allow the owning conversation to resume its exact preserved run without being blocked by its own lease.
+
+This hotfix advances the clients to 0.12.8 and the engine and SDKs to 1.0.6.
+
+## 0.12.7 - 2026-11-11
+
+### Added
+- Show the shared engine version and operational state in the Mac environment settings, with a confirmed restart action.
+- Add **Local Agent Companion: Restart Engine** to VS Code and report update blockers by category without exposing conversation content.
+
+### Fixed
+- Replace the unactionable prepared-update error with a native activation flow in VS Code and macOS.
+- Protect active runs and model operations while allowing the user to stop retained local servers/watchers and activate an update.
+- Migrate legacy per-user engines through exact OS service controls after explicit confirmation, without shell execution.
+
+This hotfix advances the clients to 0.12.7 and the engine and SDKs to 1.0.5.
+
+## 0.12.6 - 2026-11-11
+
+### Added
+- Share one service-owned model configuration across authorized clients, with Ollama or OpenAI, optimized or custom selection, quality/balanced/speed objectives and role-specific models.
+- Discover models from the active provider without exposing credentials to consuming interfaces.
+
+### Fixed
+- Ship the pending LiteLLM and Windows connection hardening on the current engine baseline.
+- Preserve exact model aliases, improve correlated connection diagnostics and keep token counting available offline.
+
+This candidate advances the clients to 0.12.6 and the engine and SDKs to 1.0.4. It remains provider/runtime-generic and contains no MedGraph-specific code.
+
+
+## 0.12.5 - 2026-11-10
+
+### Fixed
+- Show the main and vision model fields for LiteLLM and OpenAI, outside Ollama-only controls.
+- Preserve Chat Completions by default; use Responses only when explicitly configured.
+- Count tokens offline after streamed output instead of fetching tokenizer ranks from a public CDN.
+
+### Added
+- Eight explicit capabilities per exact model alias, preserved by connection profiles and engine 1.0.3.
+- Correlated local connection-test logs, HTTP/failure classification and an Open test log action.
+
+No gateway credentials, conversations or user data are included. The engine and clients are released together; Game Design development is not part of this correction.
+
 ## 0.12.4
 
 - Publish run state callbacks only on transitions, preserving all public streaming deltas and event cursors.

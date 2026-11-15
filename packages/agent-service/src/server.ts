@@ -132,7 +132,7 @@ export class LocalServer {
               id,
               result,
             });
-            if (request.method === "engine.shutdownIfIdle" && (result as { accepted: boolean }).accepted)
+            if (["engine.shutdownIfIdle","engine.stopManagedResourcesForUpdate"].includes(request.method) && (result as { accepted: boolean }).accepted)
               setImmediate(() => { void this.close(); });
           } catch (error) {
             const known = error instanceof AgentError;

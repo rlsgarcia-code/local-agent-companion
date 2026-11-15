@@ -12,7 +12,8 @@ const id=z.object({id:z.string().min(1).max(64)}).strict();
 export class WorkspaceProcesses {
  private readonly managers=new Map<string,LocalProcessManager>();
  private readonly evidence=new Map<string,RunEvidenceRecorder>();
- get busy(){return [...this.managers.values()].some(manager=>manager.inspect().some(process=>process.state === "running"));}
+ get runningCount(){return [...this.managers.values()].reduce((count,manager)=>count+manager.inspect().filter(process=>process.state === "running").length,0);}
+ get busy(){return this.runningCount>0;}
  async prepare(reg:Registration,tool:ToolSpec,input:unknown){
   if(reg.product!=="companion-vscode"||!names.has(tool.name)||tool.host!=="service-process"||tool.effect!==(["inspect_local_process","wait_for_local_process"].includes(tool.name)?"read":"external"))throw new AgentError(errors.forbidden,"This product cannot use the workspace process adapter.");
   if(tool.name === "run_command"||tool.name === "start_local_process"){

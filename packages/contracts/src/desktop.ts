@@ -4,7 +4,8 @@ import type {
   OllamaRoleConfiguration,
 } from "./ollama";
 import { z } from "zod";
-import { modelRoles, type RunState } from "./index";
+import { modelRoles, providerSpec, type EngineUpdateBlockers, type ProviderSpec, type RunState } from "./index";
+import { webResearchConfiguration, type ModelOptimizationProfile, type ModelSelectionMode, type WebResearchConfiguration } from "./models";
 
 export const desktopRunSpec = z
   .object({
@@ -31,6 +32,8 @@ export const desktopRunSpec = z
     request: z.string().min(1).max(1_000_000),
     workspacePath: z.string().max(4096),
     modelRoles,
+    provider: providerSpec.optional(),
+    webResearch: webResearchConfiguration.optional(),
     dockerSandboxEnabled: z.boolean(),
     mode: z.enum(["review", "execute", "plan"]),
     agentRuntime: z.enum(["standard", "deep"]),
@@ -112,6 +115,11 @@ export type DesktopThread = {
 export type DesktopState = {
   workspacePath: string;
   modelRoles: OllamaRoleConfiguration;
+  modelProvider: "ollama" | "openai";
+  modelSelectionMode: ModelSelectionMode;
+  modelOptimizationProfile: ModelOptimizationProfile;
+  webResearch: WebResearchConfiguration;
+  openAiKeyStored: boolean;
   ollamaPublicCatalogEnabled: boolean;
   dockerSandboxEnabled: boolean;
   lastRecommendation?: OllamaRecommendationPlan;
@@ -127,6 +135,24 @@ export type OllamaModel = {
   modifiedAt?: string;
   capabilities?: string[];
   contextLength?: number;
+};
+
+export type DesktopOllamaStatus = {
+  connected: boolean;
+  version?: string;
+  models: OllamaModel[];
+  error?: string;
+};
+
+export type DesktopDockerStatus = {
+  available: boolean;
+  version?: string;
+  images: Array<{
+    alias: string;
+    id: string;
+    size: string;
+  }>;
+  error?: string;
 };
 
 export type DesktopContextTab = {
@@ -163,6 +189,15 @@ export type DesktopContextPage = {
 
 export type DesktopSnapshot = DesktopState & {
   modelContextWindows?:ModelContextWindows;
+  engine: {
+    version: string;
+    state: "ready" | "busy";
+    blockers: EngineUpdateBlockers;
+  };
+  workspaceRun: {
+    busy: boolean;
+    state?: RunState;
+  };
   ollama: {
     connected: boolean;
     version?: string;
@@ -172,6 +207,13 @@ export type DesktopSnapshot = DesktopState & {
   context: DesktopContextSnapshot;
   ollamaPublicCatalogLoaded: boolean;
   modelRoleNotices: string[];
+  providerCatalog: {
+    provider: "ollama" | "openai";
+    models: string[];
+    loadedAt?: number;
+    error?: string;
+  };
+  providerRecommendation?: OllamaRoleConfiguration;
   running: boolean;
   runState?: RunState;
 };
@@ -244,9 +286,63 @@ export type SendRequest = {
   threadId: string;
 };
 
+export type DesktopModelSettingsInput = {
+  provider: "ollama" | "openai";
+  selectionMode: ModelSelectionMode;
+  optimizationProfile: ModelOptimizationProfile;
+  webResearch: WebResearchConfiguration;
+  roles: OllamaRoleConfiguration;
+  openAiKey?: string;
+};
+
 export type PullProgress = {
   model: string;
   line: string;
   done: boolean;
   error?: string;
+};
+
+export type DesktopRuntimeCallbacks = {
+  approval: (request: ApprovalRequest) => Promise<boolean>;
+  activity: (activity: DesktopActivity) => void;
+  delta: (messageId: string, delta: string) => void;
+  step: (messageId: string, step: DesktopExecutionStep) => void;
+  reset: (messageId: string) => void;
+};
+
+export type DesktopOperationExecutor = (
+  id: string,
+  tool: string,
+  args: unknown,
+  perform: () => Promise<unknown>,
+) => Promise<unknown>;
+
+export type DesktopRuntimeRunOptions = {
+  thread: DesktopThread;
+  request: string;
+  workspacePath: string;
+  modelRoles: OllamaRoleConfiguration;
+  provider?: ProviderSpec;
+  webResearch?: WebResearchConfiguration;
+  credential?: string;
+  dockerSandboxEnabled: boolean;
+  mode: DesktopRunMode;
+  agentRuntime: DesktopAgentRuntime;
+  assistantMessageId: string;
+  userMessageId?: string;
+  contextPages: DesktopContextPage[];
+  openPreview: (url: string) => Promise<void>;
+  callbacks: DesktopRuntimeCallbacks;
+  execution?: {
+    threadId: string;
+    signal: AbortSignal;
+    operation: DesktopOperationExecutor;
+    reconciliations: Record<string, unknown>;
+    requireCheckpoint?: boolean;
+  };
+};
+
+export type DesktopRuntimeRunResult = {
+  message: DesktopMessage;
+  changes: DesktopChange[];
 };

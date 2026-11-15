@@ -7,6 +7,7 @@ import type {
   DesktopEvent,
   DesktopRunMode,
   DesktopSnapshot,
+  DesktopModelSettingsInput,
   PullProgress,
   SendRequest
 } from "./contracts";
@@ -14,9 +15,13 @@ import type {
 const api = {
   openGameStudio:():Promise<void>=>ipcRenderer.invoke("companion:game-studio-open"),
   snapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:snapshot"),
+  restartEngine: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:restart-engine"),
   chooseWorkspace: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:choose-workspace"),
   setModelContextWindow:(alias:string,tokens:number|null):Promise<DesktopSnapshot>=>ipcRenderer.invoke("companion:set-model-context-window",alias,tokens),
   setModel: (model: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-model", model),
+  saveModelSettings: (settings: DesktopModelSettingsInput): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:save-model-settings", settings),
+  clearOpenAiKey: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:clear-openai-key"),
+  refreshModelCatalog: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:refresh-model-catalog"),
   setMode: (mode: DesktopRunMode): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-mode", mode),
   setAgentRuntime: (runtime: DesktopAgentRuntime): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-agent-runtime", runtime),
   selectThread: (threadId: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:select-thread", threadId),

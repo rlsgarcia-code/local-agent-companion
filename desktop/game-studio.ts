@@ -1,12 +1,12 @@
 import { app,BrowserWindow,dialog,ipcMain } from "electron";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
-import { GameStudioController } from "../packages/client-ts/src/game-studio";
-import { exportGameDirectory } from "../packages/client-ts/src/game-export";
+import { GameStudioController } from "@companion/client-sdk";
+import { exportGameDirectory } from "@companion/client-sdk";
 import { openGamePreview } from "../packages/adapter-game-browser/src/preview";
 import {openGameModelPreview} from "../packages/adapter-game-browser/src/model-preview";
 import type { OllamaDesktopRuntime } from "./runtime-client";
-import { gameStudioDraftKey } from "../packages/client-ts/src/game-studio-drafts";
+import { gameStudioDraftKey } from "@companion/client-sdk";
 import { desktopGameStudioDraftStore } from "./game-studio-drafts";
 
 const windows=new Map<string,BrowserWindow>(),handlers=new Map<number,(command:unknown)=>Promise<unknown>>();

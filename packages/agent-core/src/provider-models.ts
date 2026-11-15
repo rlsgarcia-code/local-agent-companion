@@ -37,7 +37,7 @@ export function validateProvider(
     if (url.href.replace(/\/$/, "") !== "https://api.openai.com/v1")
       throw new AgentError(
         errors.forbidden,
-        "OpenAI variant permits only the fixed Chat Completions endpoint.",
+        "OpenAI variant permits only the fixed API endpoint.",
       );
   } else if (spec.kind === "kidos-gateway") {
     if (url.href.replace(/\/$/, "") !== "http://127.0.0.1:8788")
@@ -76,17 +76,17 @@ export class ProviderModels {
     }
     return dispatcher;
   }
-  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number; requiresTools?: boolean } = {}) {
+  model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number; requiresTools?: boolean; webSearch?: boolean } = {}) {
     const provider=this.provider;
     const alias=provider.roles[role]||provider.roles.executor;
     const profile=provider.modelProfiles?.[alias] ?? (alias===provider.roles.executor ? provider.profile??{} : {});
     if(provider.kind==="kidos-gateway")throw new AgentError(errors.unavailable,"Install the protected KidOS model adapter.");
-    if(provider.kind!=="litellm"&&profile.api==="responses")throw new AgentError(errors.forbidden,"This product permits only Chat Completions for this provider.");
+    if(provider.kind!=="litellm"&&profile.api==="responses"&&provider.kind!=="openai")throw new AgentError(errors.forbidden,"This product permits only Chat Completions for this provider.");
     if(provider.kind==="litellm" || profile.capabilities)validateLiteLlmModelProfile(alias,profile,true,options.requiresTools !== false,provider.endpoint);
     if(role==="vision" && profile.capabilities && !profile.capabilities.vision)
       throw new AgentError(errors.invalid,"Vision is not declared for the selected model alias.");
     const connection={endpoint:provider.endpoint,model:provider.roles[role]||provider.roles.executor,apiKey:this.credential||"ollama-local",authHeader:provider.authHeader};
-    const responses=provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile,connection.endpoint)==="responses";
+    const responses=provider.kind==="openai"&&options.webSearch===true || provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile,connection.endpoint)==="responses";
     const timeout = options.timeout ?? MODEL_REQUEST_TIMEOUT_MS;
     const dispatcher = this.dispatcher(timeout);
     const common={model:connection.model,apiKey:connection.apiKey,streaming,disableStreaming:!streaming,maxRetries:options.maxRetries ?? 0,timeout,
@@ -102,6 +102,25 @@ export class ProviderModels {
       apiKey: this.credential || "ollama-local",
       ...(this.credential && this.provider.authHeader !== "authorization" ? { defaultHeaders: { [this.provider.authHeader]: this.credential } } : {}),
       fetch: gatewayFetch(embeddingsUrl(connection, model, Boolean(endpoint)), this.provider.authHeader !== "authorization", this.dispatcher(), this.signal) };
+  }
+  async listModels(): Promise<string[]> {
+    if (this.provider.kind === "kidos-gateway")
+      throw new AgentError(errors.forbidden, "The protected KidOS catalog is managed by its system authority.");
+    const url = `${this.provider.endpoint.replace(/\/$/, "")}/models`;
+    const request = gatewayFetch(url, false, this.dispatcher(), this.signal, undefined, ["GET"]);
+    const headers = new Headers({ accept: "application/json", "cache-control": "no-cache" });
+    if (this.credential) {
+      const header = this.provider.authHeader ?? "authorization";
+      headers.set(header, header === "authorization" ? `Bearer ${this.credential}` : this.credential);
+    }
+    const response = await request(url, { method: "GET", headers });
+    if (!response.ok) throw new Error(`Model catalog request failed with HTTP ${response.status}.`);
+    const body = await response.json() as { data?: { id?: unknown }[]; models?: { name?: unknown; model?: unknown }[] };
+    const aliases = Array.isArray(body.data)
+      ? body.data.map((item) => item?.id)
+      : Array.isArray(body.models) ? body.models.map((item) => item?.name ?? item?.model) : [];
+    return [...new Set(aliases.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim()))].sort((left, right) => left.localeCompare(right));
   }
   async close(){await Promise.all([...this.dispatchers.values()].map(dispatcher => dispatcher.close()));}
 }

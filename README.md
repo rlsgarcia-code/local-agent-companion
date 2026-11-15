@@ -1,5 +1,11 @@
 # Local Agent Companion
 
+Esta branch prepara o **candidato de integração 0.13.0 / motor 1.1.0**, conciliado
+com a base `main` de 12/11 (`a6f3977`, clientes 0.12.12 / motor 1.0.9).
+O build local não atualiza as instalações. A primeira entrega em andamento é
+Mac + VS Code usando o mesmo motor, com Studio, preview, retomada e exportação;
+a distribuição assinada e o percurso visual instalado ainda precisam passar.
+
 O módulo compartilhado de [Game Design](docs/GAME_DESIGN.md) fica no mesmo
 repositório, em `packages/game-design`. A extração está no código-fonte; ativação
 nas interfaces e adaptadores Unity/Godot ainda não foram distribuídos.
@@ -20,7 +26,7 @@ A [arquitetura da suíte](docs/SUITE_ARCHITECTURE.md) é a referência canônica
 motor, contratos, SDKs, adaptadores e interfaces. Agentes devem começar pelo
 [guia de desenvolvimento](AGENTS.md).
 
-Referência versionada: motor **1.0.2**, clientes Mac/VSIX **0.12.4**, Node
+Referência histórica: motor **1.0.2**, clientes Mac/VSIX **0.12.4**, Node
 **22.23.4**, protocolo **1.0**. O [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15)
 foi integrado e registra a publicação final aprovada em 2026-11-09. O
 [relatório de aceite](docs/desktop-final-acceptance.json) e o
@@ -30,6 +36,10 @@ a indicação de revisão pendente nesses registros antecede a publicação.
 KidOS/Navi consome o motor em seu repositório separado. Sua integração foi
 retomada e sua revisão/distribuição são independentes desta release Companion.
 Não presumir estado instalado a partir de alterações no checkout.
+Base de conexão incorporada: clientes **0.12.12**, motor **1.0.9**, protocolo **1.0**,
+Node **22.23.4** empacotado. Veja [capacidades e diagnóstico](docs/MODEL_CAPABILITIES.md).
+A validação automatizada por plataforma não substitui o teste no gateway corporativo.
+As evidências de instalação da versão anterior permanecem datadas em `docs/`.
 
 O kit é montado por `scripts/assemble-desktop-delivery.mjs` a partir de um
 índice assinado e dos artefatos exatos. `node verify-delivery.mjs` verifica sua
@@ -95,6 +105,8 @@ payloads are also redacted.
 
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
 
+Aplicações externas integram o motor pelo SDK publicado e por um adaptador mantido no próprio repositório consumidor. O contrato canônico, o exemplo executável e o checklist de conformidade estão em [Integração de novas aplicações](docs/APPLICATION_ADAPTERS.md). O Companion não recebe código de domínio da aplicação e a aplicação não copia o runtime, planner, memória ou loop de ferramentas do Companion.
+
 Uma suíte com motor local independente e interfaces macOS/VS Code. Os dois modos de agente, construídos sobre primitivas do **LangChain**, executam no serviço comum, e a extensão é um cliente desse serviço. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
 
 ### Objetivos persistentes
@@ -116,7 +128,7 @@ POST/GET/DELETE <MCP_URL_EXATA>          # opcional, somente em conexões MCP co
 GET <REGISTRY_NPM_CORPORATIVO>           # opcional, realizado pelo npx aprovado para obter pacote fixado
 ```
 
-Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, ferramentas hospedadas, web search, descoberta pública silenciosa de MCP, LangSmith, telemetria ou verificação de atualização. Catálogos MCP públicos só são consultados depois de serem habilitados explicitamente pelo usuário; a instalação padrão não contém acesso habilitado à OpenAI Platform; a rota direta só é aceita pelo artefato OpenAI escolhido explicitamente.
+Não há runtime externo hospedado, loop paralelo de mensagens, login ChatGPT, descoberta pública silenciosa de MCP, LangSmith, telemetria ou verificação de atualização. A única ferramenta hospedada admitida é `web_search`, explicitamente habilitada com OpenAI; Ollama usa SearXNG local. Catálogos MCP públicos só são consultados depois de serem habilitados explicitamente pelo usuário; a instalação padrão não contém acesso habilitado à OpenAI Platform; a rota direta só é aceita pelo artefato OpenAI escolhido explicitamente.
 
 ## Capacidades
 
@@ -205,15 +217,21 @@ Depois:
 
 Cada release inclui `SHA256SUMS.txt` para ambientes que exigem validação de integridade. O VSIX já contém a extensão e o binário local do ChromaDB para a plataforma escolhida; não é necessário Docker nem instalar um servidor Chroma separadamente.
 
-### Aplicativo macOS — Ollama local
+### Aplicativo macOS — configuração compartilhada de modelos
 
-O repositório também contém um aplicativo macOS independente do VS Code. Essa variante usa exclusivamente o Ollama em `http://127.0.0.1:11434`, não solicita chave e bloqueia qualquer outro endpoint de modelo. O usuário escolhe explicitamente uma pasta antes do agente obter acesso ao projeto.
+O repositório também contém um aplicativo macOS independente do VS Code. O Companion mantém uma única configuração de modelos no serviço local e permite alternar entre Ollama em loopback e OpenAI na base fixa `https://api.openai.com/v1`. A chave OpenAI fica cifrada pelo Keychain do macOS e entra no motor somente como lease em memória; o valor não aparece no estado, nos snapshots nem nos clientes consumidores. O usuário escolhe explicitamente uma pasta antes do agente obter acesso ao projeto.
 
 O aplicativo oferece conversas persistidas no diretório privado da aplicação, seleção de modelos instalados, download opcional por `ollama pull`, streaming, cancelamento, timeline de atividade e escolha independente de runtime. A resposta corrente permanece estável durante o stream; falas intermediárias anteriores a ferramentas ou novas iterações são preservadas no grupo recolhível **Etapas da execução**, evitando tanto perda de contexto quanto excesso de mensagens abertas. A conversa rola de forma independente, mantendo o compositor dentro da janela mesmo em respostas longas.
 
 A interface usa uma bancada lateral progressiva: o chat ocupa a área principal e **Execução**, **Contexto**, **Preview**, **Alterações** e **Comandos** aparecem somente quando necessários. Ao final de uma rodada, a resposta recebe atalhos compactos para seus resultados. Ações, comandos e caminhos alterados são persistidos de forma limitada e com credenciais removidas, permitindo consultar uma execução anterior sem confundi-la com a mais recente; saídas brutas de terminal não são guardadas. A bancada pode ser fechada para leitura focada, redimensionada em telas amplas e assume o espaço inteiro em janelas estreitas. A barra de conversas oferece busca, fixação e recolhimento, enquanto tema e configuração adaptativa dos modelos ficam reunidos na folha **Modelos e execução**.
 
-Em **Modelos Ollama**, **Recomendação para esta máquina** detecta somente plataforma, arquitetura, memória, espaço livre, aceleração, versão local do Ollama e modelos instalados. Hostname, usuário, serial, projeto e conversas não entram na análise. O executor instalado pode atuar como advisor local via `ChatOpenAICompletions`; sem ele, o aplicativo apresenta uma estimativa inicial claramente identificada. Durante a chamada, o painel permanece aberto, apresenta progresso e bloqueia os controles que alterariam a seleção. A revisão mostra duas composições editáveis: a melhor configuração para a máquina, mesmo que exija downloads, e a melhor configuração restrita aos modelos já instalados. Ambas detalham executor, planner, evaluator, vision e embedding; a opção ideal também mostra downloads ausentes, tamanho estimado e alertas. Uma seção recolhível lista os modelos considerados por papel. **Aplicar configuração ideal** e **Aplicar configuração instalada** nunca baixam nada; **Baixar ausentes** é uma ação separada, exclusiva da opção ideal. Quando o opt-in do catálogo público está marcado, a primeira análise da sessão o carrega automaticamente; **Atualizar catálogo agora** força um novo GET manual.
+O estado do motor compartilhado aparece na configuração do ambiente. **Reiniciar motor** mostra bloqueios sem expor conteúdo clínico ou conversas, protege execuções e operações de modelo ativas e, após confirmação, encerra servidores/watchers gerenciados antes do reinício. Durante uma atualização, VS Code e macOS apresentam a mesma ação explícita para ativar o motor preparado; clientes antigos recebem uma migração única pelo serviço pertencente ao usuário, sem shell.
+
+Na folha **Configuração do ambiente**, **Provedor e objetivo** define Ollama/OpenAI, seleção otimizada ou personalizada e o objetivo **alta qualidade**, **equilíbrio** ou **alta velocidade**. **Atualizar modelos** consulta o catálogo do provedor ativo: os modelos locais instalados no Ollama ou `GET /v1/models` na base oficial da OpenAI. Executor, planner, evaluator, vision e embedding são papéis do mesmo contrato, reutilizável por outras interfaces como o Med-Graph.
+
+Na mesma superfície, **Pesquisa web** é uma opção explícita e desligada por padrão. Com Ollama, salvar a opção inicia uma instância SearXNG gerenciada e restrita a `127.0.0.1`; com OpenAI, o motor oferece a ferramenta hospedada `web_search` pela Responses API. Profundidade e lista opcional de domínios acompanham a configuração compartilhada pelo Interface Broker, inclusive para o Med-Graph. O modelo recebe a ferramenta somente quando a opção está ativa; consultas devem ser desidentificadas e resultados são tratados como fontes externas não confiáveis.
+
+Para Ollama, **Recomendação para esta máquina** detecta somente plataforma, arquitetura, memória, espaço livre, aceleração, versão local e modelos instalados. Hostname, usuário, serial, projeto e conversas não entram na análise. O executor instalado pode atuar como advisor local via `ChatOpenAICompletions`; sem ele, o aplicativo apresenta uma estimativa inicial claramente identificada. Durante a chamada, o painel permanece aberto, apresenta progresso e bloqueia os controles que alterariam a seleção. A revisão mostra duas composições editáveis: a melhor configuração para a máquina, mesmo que exija downloads, e a melhor configuração restrita aos modelos já instalados. Ambas detalham executor, planner, evaluator, vision e embedding; a opção ideal também mostra downloads ausentes, tamanho estimado e alertas. **Aplicar configuração ideal** e **Aplicar configuração instalada** nunca baixam nada; **Baixar ausentes** é uma ação separada. Quando o opt-in do catálogo público está marcado, a primeira análise da sessão o carrega automaticamente; **Atualizar catálogo agora** força um novo GET manual.
 
 O estado antigo com um único modelo é migrado automaticamente para o papel `executor`. No Deep Agent, o `planner` produz orientação limitada antes da execução e o `evaluator` alimenta o gate final; quando ausentes, ambos recorrem ao executor. Os modelos são chamados em sequência para reduzir pressão de memória.
 
@@ -259,7 +277,7 @@ O candidato piloto usa assinatura ad hoc do aplicativo e verifica novamente o mo
 
 Os artefatos ficam em `release/desktop/`. Builds locais são deliberadamente não assinados; para distribuição ampla, configure a identidade Apple Developer ID e notarização no pipeline de release antes de entregá-los a outros usuários.
 
-O desktop é uma superfície Ollama dedicada. Ele não expõe LiteLLM, OpenAI, MCP corporativo, ChromaDB ou APIs do editor do VS Code. Sua navegação é uma superfície visual isolada e controlada pelo usuário; não adiciona uma ferramenta autônoma de browser ao runtime. A extensão continua sendo a variante completa para os demais fluxos.
+O desktop expõe somente Ollama local e OpenAI na base oficial fixa; LiteLLM, MCP corporativo, ChromaDB e APIs do editor do VS Code continuam fora dessa superfície. A configuração pertence ao serviço local, não à tela Mac: clientes autorizados leem a mesma seleção, catálogo e papéis sem receber o segredo. Sua navegação é uma superfície visual isolada e controlada pelo usuário; não adiciona uma ferramenta autônoma de browser ao runtime.
 
 ## Gerar e instalar a partir do repositório
 
@@ -476,7 +494,7 @@ Na variante Ollama, **Recommend for this machine** substitui o antigo preset apl
 
 Antes de salvar, clique em **Test connection**. O diagnóstico valida os campos localmente e testa, em sequência, o catálogo configurado, o modelo selecionado (Chat Completions ou Responses API) com streaming e metadados de function tools e, quando habilitado, o modelo de embeddings. Cada etapa apresenta resultado e duração separadamente. O teste de chat não executa ferramentas, e o teste de embeddings envia apenas uma frase fixa de diagnóstico. Para troubleshooting local, os eventos resumidos também são gravados em `.local-agent/logs/agent.log`; o arquivo é rotacionado em 1 MB e não contém prompts, conversa, corpos de request ou credenciais.
 
-Ao informar o alias de chat, um resumo de compatibilidade aparece imediatamente fora das opções avançadas. Ele diferencia perfil reconhecido e pronto para teste, exigência de `reasoning_effort: none`, modelo conhecido por depender da Responses API e alias corporativo cuja capacidade não pode ser inferida. A indicação é preventiva e nunca substitui **Test connection**, que valida o deployment real do gateway.
+Ao informar o alias de chat, o resumo mostra os recursos declarados por você. O catálogo pode sugerir valores iniciais, mas não bloqueia uma declaração manual. A API automática mantém Chat Completions, salvo rota Responses explícita. **Test connection** verifica streaming e aceitação do schema de ferramenta no gateway; não certifica os oito recursos.
 
 Use **Export profile** para salvar um JSON versionado com as configurações não sensíveis da conexão, modelos e workspace. Em outra máquina, **Import profile** valida o formato, apresenta gateway/modelo/runtime para confirmação e aplica somente os campos reconhecidos. A chave permanece separada no Secret Storage e a CA corporativa precisa ser importada localmente quando o perfil indicar essa dependência. Arquivos acima de 256 KB, versões desconhecidas, campos extras, URLs sem HTTPS e qualquer propriedade com aparência de credencial são recusados. Depois da importação, execute **Test connection** antes de usar o agente.
 
@@ -548,7 +566,7 @@ O contrato de conclusão não procura verbos específicos na mensagem mais recen
 
 O serviço persiste sessões, estados, eventos públicos e recibos, com checkpoints SQLite dos grafos. Ao reabrir, a interface recupera o snapshot e retoma os eventos sem duplicar a resposta. Fechar o cliente preserva trabalho independente dele; ferramentas que precisam do editor aguardam sua reconexão. Após reiniciar o serviço, uma execução interrompida exige continuação explícita; credenciais ausentes e efeitos de resultado desconhecido produzem esperas distintas. Um efeito desconhecido precisa ser reconciliado antes de repetir a operação. O coordenador do serviço impede execuções concorrentes sobre o mesmo workspace entre produtos, mantendo históricos e memória isolados.
 
-LangChain/DeepAgents controlam o ciclo de ferramentas no serviço; as interfaces não criam outro executor como fallback. `ChatOpenAICompletions` mantém sua rota Chat Completions. Perfis LiteLLM Responses explicitamente selecionados conservam suas rotas e restrições próprias; a variante OpenAI direta continua limitada a Chat Completions. O tracing externo LangChain/LangSmith permanece desativado.
+LangChain/DeepAgents controlam o ciclo de ferramentas no serviço; as interfaces não criam outro executor como fallback. `ChatOpenAICompletions` mantém sua rota Chat Completions. Perfis LiteLLM Responses explicitamente selecionados conservam suas rotas e restrições próprias; OpenAI direta usa Responses apenas durante runs em que a pesquisa web foi explicitamente habilitada. O tracing externo LangChain/LangSmith permanece desativado.
 
 As ferramentas de leitura usam caminhos relativos e validam caminhos reais para impedir escape por `..` ou links simbólicos. Os comandos não passam por um shell, sempre exigem confirmação e recebem somente um conjunto mínimo de variáveis do sistema — nunca uma chave de provedor. A política local bloqueia interpretadores de shell, código inline, wrappers de comandos, clientes de rede, URLs remotas, downloads/publicações por gerenciadores de pacotes e operações Git remotas. Comandos capazes de remover ou descartar dados recebem um aviso destrutivo específico antes da execução.
 
@@ -734,4 +752,4 @@ macOS Companion / VS Code / Navi
 - A interpretação visual exige um modelo multimodal. Modelos somente de texto ainda podem validar DOM, controles, console e erros de página.
 - MCPs locais `stdio` dependem de o executável indicado pelo catálogo estar disponível no `PATH`. No caso de `npx`, Node.js precisa estar instalado e o registry corporativo precisa estar acessível; falhas de proxy, CA ou política do registry são apresentadas como diagnóstico do processo.
 - O inventário de terceiros é derivado do bundle no momento do build; consulte `dist/licenses/third-party-manifest.json` para versões, licenças, fontes e alertas de conformidade exatos do pacote gerado.
-- Não há suporte a ferramentas hospedadas, web search, descoberta pública de MCP ou execução do agente em nuvem. MCP remoto existe somente para endpoints corporativos HTTPS importados explicitamente; MCP local existe somente para comandos `stdio` importados e aprovados explicitamente.
+- Não há execução do agente em nuvem nem descoberta pública de MCP. A pesquisa web opcional usa SearXNG local com Ollama ou `web_search` hospedado com OpenAI; MCP remoto existe somente para endpoints corporativos HTTPS importados explicitamente e MCP local somente para comandos `stdio` importados e aprovados explicitamente.

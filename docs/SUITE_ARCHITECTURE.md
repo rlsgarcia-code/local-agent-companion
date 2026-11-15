@@ -1,5 +1,16 @@
 # Arquitetura e contrato de desacoplamento da suíte
 
+**Integração de 15/11/2026:** o candidato motor 1.1.0 / clientes 0.13.0 incorpora
+o `main` até `a6f3977`, preservando a cópia anterior de Game Design. O Studio Mac
+consome o SDK empacotado; seus adaptadores nativos de preview usam os validadores
+publicados nesse mesmo SDK. Não há grafo ou inteligência no renderer/SDK.
+Jobs de jogo e reconciliações também impedem ativação de outro motor enquanto
+estão em andamento. Os testes locais e builds não comprovam instalação, aceite
+visual nem a conclusão do plano integral. A política de provedores do Mac deve
+ser conciliada com a decisão do usuário antes de ativar esta composição: a base
+atual permite troca explícita; as descrições abaixo de Ollama exclusivo refletem
+a composição histórica e não devem justificar uma ampliação silenciosa.
+
 A [restauração de foco do Correio](GAME_WINDMAIL_FOCUS_RECOVERY.md) é comportamento
 do jogo exportado; o guia comum apenas orienta. Eventos DOM de diagnóstico não
 criam uma ponte de controle de estado, executor de IA ou autoridade infantil.

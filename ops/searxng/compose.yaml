@@ -1,0 +1,20 @@
+name: local-agent-searxng
+
+services:
+  searxng:
+    image: ghcr.io/searxng/searxng:2026.11.9-57ff753ad
+    container_name: local-agent-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SEARXNG_BASE_URL: http://127.0.0.1:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?SEARXNG_SECRET is required}
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  searxng-cache:

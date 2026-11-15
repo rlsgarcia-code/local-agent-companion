@@ -1,5 +1,13 @@
 # Local Agent Companion development guide
 
+This integration branch combines Game Design with upstream `a6f3977` on candidate
+engine 1.1.0 / clients 0.13.0. The original Game Design checkout is preserved.
+Do not confuse old installed evidence with this candidate. Mac provider policy
+is awaiting the user's clarification: upstream allows explicit Ollama/OpenAI
+selection while the earlier suite plan restricted Mac to Ollama. Keep candidate
+preparation separate from activation; do not infer consent to enable a provider,
+perform real inference, merge or promote a release from local tests.
+
 For the remaining full-product gates, read [acceptance readiness](docs/GAME_DESIGN_ACCEPTANCE_READINESS.md).
 Do not substitute more authored fixtures for the pending real-generation,
 licensed Unity, native Root/GUI, physical/human and reviewed distribution gates.
@@ -819,3 +827,8 @@ it must refuse all roles outside that boundary. Local guard/type/build tests
 are not positive Root/native evidence. Operator sudo authentication is pending;
 do not restart or change a possibly active packet, weaken its guards, or enable
 Navi v2 based on preparation. The engine and installed selections remain separate.
+## Model aliases and connection diagnostics
+
+Read [model capability declarations and connection diagnostics](docs/MODEL_CAPABILITIES.md) before changing alias validation, model routing or setup. Exact user declarations override catalog heuristics, never tool authority or provider restrictions. Keep the eight booleans strict, per-alias and preserved by clients, profiles and the service. The test verifies streaming/tool schemas, not all declared features. Logs must remain local, bounded and credential/body-free.
+
+Token estimation stays offline through `packages/agent-core/src/offline-token-count.ts` in both service model factories. Do not reintroduce a runtime tokenizer CDN request. Provider-reported usage remains distinct from local estimates. Default to Chat Completions unless an API or Responses endpoint is explicit.

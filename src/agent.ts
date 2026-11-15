@@ -480,7 +480,7 @@ export class DevelopmentAgent implements vscode.Disposable {
     }
   }
 
-  public async preflightRun(): Promise<RunPreflightResult> {
+  public async preflightRun(options: { resumeExisting?: boolean } = {}): Promise<RunPreflightResult> {
     if (this.isRunning) {
       return {
         ready: false,
@@ -505,6 +505,20 @@ export class DevelopmentAgent implements vscode.Disposable {
         message: "Trust this workspace in VS Code before allowing a local coding agent to read files or run tools.",
         openConnectionSettings: false
       };
+    }
+    const workspaceRoot = await realpath(workspace.uri.fsPath);
+    const workspaceRun = await this.serviceRuntime.workspaceStatus(workspaceRoot);
+    if (workspaceRun.busy) {
+      const snapshot = await this.threadSnapshot();
+      const currentRunId = snapshot.recovery?.engineRunId;
+      if (!(options.resumeExisting && currentRunId && currentRunId === workspaceRun.runId)) {
+        return {
+          ready: false,
+          kind: "busy",
+          message: `Another conversation has an unfinished workspace run${workspaceRun.state ? ` (${workspaceRun.state})` : ""}. Open that conversation and resume or cancel it before sending a new request.`,
+          openConnectionSettings: false
+        };
+      }
     }
     if (await this.externalRunActive()) {
       return {
@@ -1093,6 +1107,13 @@ export class DevelopmentAgent implements vscode.Disposable {
     this.serviceRuntime.cancel();
     this.abortController.abort();
     return "requested";
+  }
+
+  public async restartEngine(): Promise<void> {
+    if (this.isRunning) throw new Error("Wait for the active run to finish before restarting the engine.");
+    const workspace = vscode.workspace.workspaceFolders?.[0];
+    if (!workspace) throw new Error("Open a workspace before restarting the Companion engine.");
+    await this.serviceRuntime.restartEngine(workspace.uri.fsPath);
   }
 
   public async newThread(): Promise<void> {
@@ -1704,6 +1725,9 @@ ${journalGuidance}`;
   }
 
   private explainError(message: string): string {
+    if (/Workspace is in use by another run/i.test(message)) {
+      return "Another conversation has an unfinished workspace run. Open that conversation and resume or cancel it before sending a new request.";
+    }
     if (/function tools with reasoning_effort/i.test(message)) {
       return `${message}\n\nThis deployment defaults to reasoning that cannot be combined with function tools on Chat Completions. Open model provider settings and set Reasoning effort to “none” for this model.`;
     }

@@ -1,7 +1,7 @@
 import {declaredModelContextWindow} from './model-context';
 import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { StructuredToolInterface } from "@langchain/core/tools";
+import type { ClientTool, ServerTool } from "@langchain/core/tools";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { createDeepAgent, createSummarizationMiddleware, StateBackend, GENERAL_PURPOSE_SUBAGENT, type AnyBackendProtocol, type FilesystemPermission, type SubAgent } from "deepagents";
 import { createAgent, summarizationMiddleware, type AnyAgentMiddleware } from "langchain";
@@ -11,7 +11,7 @@ import {contextWorkingBudget,type ContextWorkingBudget} from '../../contracts/sr
 
 export type ProductGraphOptions = {
   model: BaseChatModel;
-  tools: StructuredToolInterface[];
+  tools: Array<ClientTool | ServerTool>;
   systemPrompt: string;
   checkpointer: BaseCheckpointSaver;
   middleware?: AnyAgentMiddleware[];

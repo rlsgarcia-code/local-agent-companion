@@ -13,7 +13,14 @@
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
     "rootDir": ".",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@companion/client-sdk": ["packages/client-ts/src/index.ts"],
+      "@companion/client-sdk/bootstrap": ["packages/client-ts/src/bootstrap.ts"],
+      "@companion/client-sdk/contracts": ["packages/contracts/src/index.ts"],
+      "@companion/client-sdk/desktop": ["packages/contracts/src/desktop.ts"]
+    }
   },
   "include": [
     "src/**/*.ts",

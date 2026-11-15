@@ -2201,7 +2201,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.sendPending = true;
     let preflight;
     try {
-      preflight = await this.agent.preflightRun();
+      preflight = await this.agent.preflightRun({ resumeExisting: replacePending });
     } catch (error) {
       this.post({
         type: "preflightFailed",
@@ -2782,6 +2782,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       this.agent.externalRunActive(),
       this.agent.listGoals()
     ]);
+    const workspaceBlocker = snapshot.threads.find((thread) => thread.workspaceBlocked);
     const validThreadIds = new Set(snapshot.threads.map((thread) => thread.id));
     const drafts = this.drafts();
     let pruned = false;
@@ -2799,9 +2800,12 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
       autonomyMode: this.autonomyMode(),
       responseLanguage: parseResponseLanguage(vscode.workspace.getConfiguration("localAgentCompanion").get("responseLanguage")),
       recovery: snapshot.recovery,
-      remoteRunActive: externalRunActive || (
+      remoteRunActive: this.agent.running || Boolean(workspaceBlocker) || externalRunActive || (
         !this.agent.running && snapshot.threads.some((thread) => thread.recoveryStatus === "running")
       ),
+      workspaceRunMessage: workspaceBlocker
+        ? `Another conversation has an unfinished workspace run${workspaceBlocker.engineState ? ` (${workspaceBlocker.engineState})` : ""}. Resume or cancel it before sending here.`
+        : undefined,
       goals
     };
   }
@@ -4076,6 +4080,7 @@ const topPanels = [threadPanel, memoryPanel, briefPanel, runReviewPanel, liteLlm
 let busy = false;
 let cancellationPending = false;
 let remoteRunActive = false;
+let workspaceRunMessage = '';
 let liteLlmModelProfiles = {};
 let loadedModelCatalog = [];
 let lastConnectionDiagnostics = [];
@@ -4895,7 +4900,7 @@ function setBusy(value) {
   });
   document.querySelectorAll('[data-restore-run]').forEach(button => { button.disabled = value; });
   renderThreadList();
-  if (!value && remoteRunActive) status.textContent = 'Agent active in another VS Code window';
+  if (!value && remoteRunActive) status.textContent = workspaceRunMessage || 'Another conversation is using this workspace';
   else if (!value && status.textContent !== 'Ready') status.textContent = 'Ready';
   renderActivityOverview();
   if (value) scrollConversationToBottom({ force: true });
@@ -6091,6 +6096,7 @@ function resetConversation(context, history, threads, draft = '') {
   const recovery = threads?.recovery;
   setAutonomyMode(recovery?.mode || threads?.autonomyMode || 'review');
   remoteRunActive = Boolean(threads?.remoteRunActive);
+  workspaceRunMessage = threads?.workspaceRunMessage || '';
   setBusy(false);
   wireStarterButtons();
   renderConversationHistory(history);
