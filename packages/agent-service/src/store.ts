@@ -255,7 +255,7 @@ export class Store {
     reg: Registration,
     id: string,
     state: RunState,
-    extra: { result?: unknown; error?: string } = {},
+    extra: { result?: unknown; error?: string; waitingFor?:Run["waitingFor"] } = {},
   ): Run {
     return this.db.transaction(() => {
       const run = {
@@ -265,6 +265,7 @@ export class Store {
         updatedAt: Date.now(),
       };
       if (["running", "completed", "cancelled"].includes(state) && !("error" in extra)) delete run.error;
+      if(state==="running"||terminalStates.has(state))delete run.waitingFor;
       this.db
         .prepare("UPDATE runs SET state=?,value=? WHERE id=?")
         .run(state, JSON.stringify(run), id);

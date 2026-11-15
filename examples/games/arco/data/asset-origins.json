@@ -1,0 +1,34 @@
+[
+  {
+    "id": "workshop-art",
+    "kind": "other",
+    "role": "Desenho procedural original da oficina, cerâmica e lanternas.",
+    "files": [
+      "src/art.js"
+    ],
+    "placeholder": false,
+    "origin": {
+      "kind": "procedural",
+      "source": "Desenho procedural original da oficina, cerâmica e lanternas.",
+      "author": "Local Agent Companion contributors",
+      "license": "MIT; ver data/LICENSE.txt. Declaração sujeita à revisão de proveniência.",
+      "referenceIds": []
+    }
+  },
+  {
+    "id": "workshop-music",
+    "kind": "other",
+    "role": "Partitura, timbres e efeitos sintetizados originais, sem samples externos.",
+    "files": [
+      "src/audio.js"
+    ],
+    "placeholder": false,
+    "origin": {
+      "kind": "procedural",
+      "source": "Partitura, timbres e efeitos sintetizados originais, sem samples externos.",
+      "author": "Local Agent Companion contributors",
+      "license": "MIT; ver data/LICENSE.txt. Declaração sujeita à revisão de proveniência.",
+      "referenceIds": []
+    }
+  }
+]

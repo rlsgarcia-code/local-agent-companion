@@ -1,0 +1,16 @@
+{
+  "scope": "Original unedited composed screenshots from the owned authored Mar\u00e9 reference in disposable Chromium, no account or personal data. MIT original game art; Godot notices remain in the qualified build. Not human or physical acceptance.",
+  "sourceHash": "691933c8bafc8c98227c4dbc6108f7068101fd1a9cbffb494647b48481ffd0b6",
+  "artifactHash": "89d3aaa9261ee581b4d057ff3d7bdca5b61fa5f3b547aae1550984454819dc9b",
+  "files": {
+    "mute-on.png": "9a08af14ca99e27fca747348be73a273eb4000f0078e955ea3249d01baed1dd7",
+    "mute-off.png": "8a875da1f11e93af8c342957b19526f71ad38db13c17a7ab17678e0bd35d8bef",
+    "one-delivery.png": "4ebb964e033052b5b8df248ca3dab1a602aac0e8d20b6b3baafa1dd4a43f035a",
+    "fresh-board.png": "c102429ad96853e025b84a1e67c94734a77dfc9b073eee35890cd1894174aa43",
+    "right-oar.png": "1582795d3dfc68b25796ac6fae7b756899c19e9fbf97e9f86eb0232d35d6a4e8",
+    "mute-restored.png": "9cac722432e0e693686abd3d87a1806fff41d022f735e092a7bd44f41d9da773",
+    "paused.png": "2161b3ade5be52cfc2216cc78772d02021c4cca3acdf52b4afc3f7b9f9714708",
+    "home-decorative-boat.png": "be512aba65b45c05d9919ea388eb47a35548a6dd08f3b4240644c734bd1df0b9"
+  },
+  "homeDecorativeBoatSource": "output/playwright/mare/runs/2026-11-13T03-27-00-513Z-68999ae4/loading-2026-11-13T04-27-14-083Z-26b37cbb/gzip-playable.png"
+}

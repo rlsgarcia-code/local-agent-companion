@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "id": "game-design",
+  "version": "0.1.0",
+  "language": "pt-BR",
+  "designFields": [
+    "premise",
+    "narrative_arc",
+    "progression",
+    "meaningful_choices",
+    "ending",
+    "save_strategy"
+  ],
+  "stageFields": [
+    "id",
+    "objective",
+    "new_mechanic",
+    "challenge",
+    "story_beat",
+    "completion"
+  ],
+  "designSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "premise",
+      "narrative_arc",
+      "progression",
+      "meaningful_choices",
+      "ending",
+      "save_strategy",
+      "stages",
+      "playtest_scenarios"
+    ],
+    "properties": {
+      "premise": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "narrative_arc": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "progression": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "meaningful_choices": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "ending": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "save_strategy": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "stages": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 12,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "objective",
+            "new_mechanic",
+            "challenge",
+            "story_beat",
+            "completion"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            },
+            "new_mechanic": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            },
+            "challenge": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            },
+            "story_beat": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            },
+            "completion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            }
+          }
+        }
+      },
+      "playtest_scenarios": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 16,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        }
+      }
+    }
+  },
+  "guide": "Direção de jogos completos:\n- Entregue um jogo original de escopo viável, com identidade, evolução e desfecho. Uma demo ou arena repetida não cumpre uma promessa de jogo completo. Quando um protótipo for explicitamente pedido, declare seu escopo e limitações.\n- Use o pedido e as preferências conhecidas; faça somente perguntas que mudem a experiência. O usuário não precisa escrever um GDD. Não restrinja a ideia a templates de gênero.\n- Antes da produção, persista um design pelo adaptador autorizado: premise (fantasia e motivação), narrative_arc (situação inicial, conflito, virada e resolução), progression (aprendizado, desbloqueios e combinações), meaningful_choices (alternativas com consequências), ending (conclusão e recompensa) e save_strategy (checkpoint, retomar, reiniciar e versão do save).\n- Para um jogo completo, planeje pelo menos três etapas distintas: ensinar, desenvolver e combinar/dominar. Cada etapa tem id, objective, new_mechanic, challenge, story_beat e completion. Arcade, corrida e puzzle podem usar ligas, desafios e narrativa ambiental. Aumentar velocidade, trocar cores ou repetir inimigos não basta como evolução; varie decisões, obstáculos e consequências observáveis. Não force diálogos.\n- Separe duração da sessão da experiência total: sessões curtas podem continuar uma campanha. Não imponha três minutos à aventura. Construa os objetivos prometidos, desbloqueios, transições e encerramento; elimine botões vazios e fases apenas anunciadas.\n- Trabalhe em etapas: design persistido → sistemas e estados → conteúdo → arte/áudio coerentes → revisão e correções. Organize cenas e sistemas reutilizáveis. Preserve a versão jogável anterior. O adaptador define formato, arquivos permitidos e como cobrir as etapas do design.\n- Registre playtest_scenarios como ações e resultados esperados: início sem explicação externa, transições, derrota e recuperação, conclusão, salvar/fechar/retomar, controles, pausa e som desligado. Revise cada caminho; nunca marque cenários como executados sem execução real. Build e verificações estruturais não comprovam diversão, narrativa ou campanha completável.\n- Compare o resultado ao plano antes de concluir. Diferencie proposta, arquivos produzidos, build, execução e playtest. Só declare cada resultado com sua evidência. Se faltar orçamento ou capacidade, salve o progresso e diga o que falta; não anuncie uma demo como jogo completo.\n- Evite grind artificial, recompensas aleatórias manipulativas e pressão para voltar. Engajamento deve vir de curiosidade, domínio, escolhas e descoberta.\n- Antes de oferecer produção em uma engine, consulte as capacidades verificadas do adaptador: instalação, projeto, edição, build, execução e teste são capacidades diferentes. Uma engine mencionada no pedido não está automaticamente disponível. Em modo de planejamento, ofereça apenas resultados possíveis nesse modo; não prometa criar ou executar projetos como próxima ação já habilitada.\n- O módulo não instala ferramentas, amplia permissões ou troca de engine silenciosamente. Aprovação do design não concede autoridade administrativa. Especialistas devolvem recomendações; arquivos virtuais não são arquivos publicados no computador.\n",
+  "specialists": [
+    {
+      "name": "game-designer",
+      "description": "Aprofunda narrativa, progressão, escolhas e estrutura de um jogo.",
+      "instruction": "Revise a proposta, encontre repetição e lacunas e recomende etapas com aprendizado e consequências. Não execute ações nem afirme publicação.",
+      "modelRole": "planner"
+    },
+    {
+      "name": "game-reviewer",
+      "description": "Revisa código e design: transições, save, derrota, final e conteúdo prometido.",
+      "instruction": "Faça revisão de código. Aponte falhas concretas e como reproduzi-las. Separe revisão estática de testes executados; não invente execução nem sucesso.",
+      "modelRole": "evaluator"
+    }
+  ]
+}

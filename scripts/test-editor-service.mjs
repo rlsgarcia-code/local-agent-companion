@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import {runTests} from '@vscode/test-electron';
 import {createHash} from 'node:crypto';
 const argument=name=>process.argv.find(value=>value.startsWith(name+'='))?.slice(name.length+1);
-const project=process.cwd(),root=await mkdtemp(path.join(tmpdir(),'companion-editor-service-')),workspace=path.join(root,'workspace'),bundle=path.resolve(argument('--bundle-dir')||'engine-dist'),state=path.join(root,'engine-state');
+const project=process.cwd(),root=await mkdtemp(path.join(tmpdir(),'companion-editor-service-')),workspace=path.join(root,'workspace'),bundle=path.resolve(argument('--bundle-dir')||process.env.COMPANION_ENGINE_BUNDLE||'engine-dist'),state=path.join(root,'engine-state');
 await cp(path.join(project,'test/fixtures/extension-host-workspace'),workspace,{recursive:true});
 const requests=[];
 const server=createServer((request,response)=>{let raw='';request.on('data',part=>raw+=part);request.on('end',()=>{

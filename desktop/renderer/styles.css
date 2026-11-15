@@ -468,3 +468,12 @@ button, input, textarea { -webkit-tap-highlight-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+#model-context-form { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+#model-context-form label, #model-context-form small, #model-context-status { grid-column: 1 / -1; }
+#model-context-form label { font-size: 12px; }
+#model-context-form small { color: var(--muted); line-height: 1.5; }
+#model-context-form input, #model-context-form select, #model-context-save { min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--control-fill); color: var(--text); font: inherit; font-size: 12px; }
+#model-context-form select { grid-column: 1 / -1; }
+#model-context-form :disabled { opacity: .55; cursor: default; }
+#model-context-status { font-size: 12px; line-height: 1.5; margin: 0; }

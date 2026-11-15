@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "compiler": {
+    "name": "esbuild",
+    "version": "0.25.12"
+  },
+  "engines": [
+    {
+      "engine": "phaser",
+      "version": "4.2.1",
+      "global": "Phaser",
+      "module": "phaser",
+      "entry": "phaser-4.2.1.min.js",
+      "license": "MIT",
+      "source": "https://registry.npmjs.org/phaser/-/phaser-4.2.1.tgz",
+      "files": {
+        "phaser-4.2.1.min.js": "66348b1b5141e49b7d5ebbe688cddcb502eab1cb00f21c538686a5b2c5abe4de",
+        "PHASER-LICENSE.md": "d59c20a9deb5dc240614b428dce5246ae561d15efeeebea0e069d73f0a78fbff"
+      },
+      "integrity": "sha512-WUNwCPJpdjvZiuT6SgCfYVW8Qw/3j0jJ4ws7P2QkhFLFu74sbGuyHJcbFueGkY/AYO4Pi47bNQXn1OCJeLX//w==",
+      "plugins": []
+    },
+    {
+      "engine": "babylon",
+      "version": "9.35.0",
+      "global": "BABYLON",
+      "module": "babylonjs",
+      "entry": "babylon-9.35.0.js",
+      "license": "Apache-2.0",
+      "source": "https://registry.npmjs.org/babylonjs/-/babylonjs-9.35.0.tgz",
+      "integrity": "sha512-RiJFpxzRx3r32kTU5fotyt4VGTCEukDbUPqHyn/7Fuoh3RjeuDeS90YZu/y6gIZmIJp8IAACT07AG93/chynpA==",
+      "files": {
+        "babylon-9.35.0.js": "e7489b1ba1044cb296b6cad3a5732309cc18fdc6873fd009dc585de34e4388e2",
+        "BABYLON-LICENSE.md": "9362ea9ea17cb221a20cbbd63f404710834cc273d2a9a7b60314fd68ab702cd6",
+        "BABYLON-NOTICE.md": "225463efd81558f120a6e0cdd7f4c1007ed486006d1228c4849fee0c49715823",
+        "babylon-gltf2-9.35.0.min.js": "3e1d6ebf421e2135daa0530539a479c208f3947afd72473b494425da8a083d24",
+        "BABYLON-LOADERS-LICENSE.md": "9362ea9ea17cb221a20cbbd63f404710834cc273d2a9a7b60314fd68ab702cd6"
+      },
+      "plugins": [
+        {
+          "module": "babylonjs-loaders/glTF/2.0",
+          "global": "BABYLON",
+          "entry": "babylon-gltf2-9.35.0.min.js",
+          "version": "9.35.0",
+          "license": "Apache-2.0",
+          "source": "https://registry.npmjs.org/babylonjs-loaders/-/babylonjs-loaders-9.35.0.tgz",
+          "integrity": "sha512-CU8VJ5DqPoeGEJ+61Vf1x/ymkhj7lBPbwYs+ScPvcqFUV7mi18O7fx+ULM9wZref75oeJ1mg0gZ07Tm4hyrjqQ=="
+        }
+      ]
+    }
+  ]
+}

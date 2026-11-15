@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "id": "kenney-mini-arena",
+  "title": "Kenney Mini Arena",
+  "version": "1.0",
+  "commit": "a6927e66ff8dd8e173660ce4825abe773c65f683",
+  "repository": "KenneyNL/Starter-Kit-Basic-Scene",
+  "source": "https://github.com/KenneyNL/Starter-Kit-Basic-Scene/tree/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena",
+  "author": "Kenney; additional credit: Tony Schär",
+  "spdx": "CC0-1.0",
+  "files": [
+    {
+      "path": "sample/Mini Arena/License.txt",
+      "size": 721,
+      "gitBlob": "2341dc497690ce980d96dbf1e43540afe755ad34",
+      "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/Textures/colormap.png",
+      "size": 10306,
+      "gitBlob": "a93965952cd3c7cf4b7e503c1576b4fc674b09da",
+      "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/banner.glb",
+      "size": 22108,
+      "gitBlob": "83c8a036ff8901555394bf9e4cdb4a078e7ff54d",
+      "sha256": "96e1cf7924fcc871be0e7e182c9b918de381b9783ca9e96922f8db62af384056"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/block.glb",
+      "size": 2804,
+      "gitBlob": "5a71c78ee670dfd05169b7bb0ede87199cd9e781",
+      "sha256": "656e07f0a3e7d0620892aca6fc40683b4266ff6b9672ecf89f3553e5ed85a1fb"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/border-corner.glb",
+      "size": 11124,
+      "gitBlob": "a4f0b942acf6c9b25e3fb1ef98d0f795ca8fb4ff",
+      "sha256": "120ce330ca50fe50e51bf693eadb957abaca972c42d573a07d8e8e404560bc3c"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/border-straight.glb",
+      "size": 6520,
+      "gitBlob": "d7c92417406f9cdb70b5470f1df7ad7c7ba0d4ad",
+      "sha256": "76ef69e8858f3d17c652d92033a553db58296135a5810d1bd5e54f47b5aa40c4"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/bricks.glb",
+      "size": 13192,
+      "gitBlob": "6856c2e058880532e692d65edc98a9bf45713845",
+      "sha256": "fd1d2c033c7db8b7352ac1becdab447d09cabcc11c73adf9bb6790f9680eaa86"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/character-soldier.glb",
+      "size": 215704,
+      "gitBlob": "577db1a131ac343b0e08f97502428e1d40aa8ddf",
+      "sha256": "b0410b4a34068e56ac1af3a2571f4497f84f1e481cced895b618d1fe8136529c"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/column-damaged.glb",
+      "size": 14308,
+      "gitBlob": "8069736b635bb044198da2a00d53729e7a2a3133",
+      "sha256": "442a6856e7e2d042c9e3af155dabf6d394f7ba91b2e271ee6392da22555a072c"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/column.glb",
+      "size": 17140,
+      "gitBlob": "35994ba4a0c52a2b4bd5ca0082bee0ca06997eb5",
+      "sha256": "5c815b5fd43d613a21afddaaa90dc2f90b80e31f03dbdde98921cb7424e836c0"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/floor-detail.glb",
+      "size": 6484,
+      "gitBlob": "9073c839f71bd2fadffb9ed98d6b122031c13090",
+      "sha256": "804224caf3008fcdbd57d7ccc2c4734320c58ca880895699307670d2443e324b"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/floor.glb",
+      "size": 1796,
+      "gitBlob": "2a5987dc86579bf023748e9891f37302fe50624f",
+      "sha256": "15512c5ca6e9d3eb60efd237bbbf5b8010fdea63e0d8e6623f72b59de20279ab"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/stairs-corner-inner.glb",
+      "size": 7584,
+      "gitBlob": "bdac35b4c72677ac2b2d33b7462beaee343a6caa",
+      "sha256": "2e232cecda1d633acc1b78707ee50089fd40a167293c173536d61ef064697a5c"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/stairs-corner.glb",
+      "size": 8752,
+      "gitBlob": "b83aeabd33b1b49bb39afc6bbe06490a820c86a6",
+      "sha256": "af8eb87dc8826e184f585ebccf0592c909da7370559cd840b218593f4b1c8a38"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/stairs.glb",
+      "size": 5244,
+      "gitBlob": "6e9298e9566d16e658a8f9862d707611853115dc",
+      "sha256": "54a3f12c720f9cb83027b5429e330d7c50578f70771fd1bf9a2e521fe131ca6f"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/statue.glb",
+      "size": 51012,
+      "gitBlob": "595bad8a4d1da19bce22c82032e4a988702a5a0c",
+      "sha256": "5ba8ecba963f6b3ec974809e2bf0b615da7e2701cd0efc6a3c0e946efb147397"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/tree.glb",
+      "size": 34164,
+      "gitBlob": "46dec81db69d6af36d68b434a55115407f50c1c8",
+      "sha256": "f8632c9758a78f60aa4ca68bf0e5ac972770167a5608e179293a12552d8fc2ef"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/trophy.glb",
+      "size": 23752,
+      "gitBlob": "a08bb27ccee40a8522f20f61f5814fd90bb7af27",
+      "sha256": "253f6d5f321ab20f8f505dfe35b7404c98d2d492728e6df5f69dd29e936b8be5"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/wall-corner.glb",
+      "size": 22476,
+      "gitBlob": "10b9c1bef103fee152c3f12f9d634588f790fabb",
+      "sha256": "4dc0e770106a122885f41be0bb4024466a7f58bc29a13f07b6600c4babbeb777"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/wall-gate.glb",
+      "size": 31064,
+      "gitBlob": "aa6ea72183f7fe6f9e1e2034fcd7dff3ad0c3772",
+      "sha256": "f70a86344f202b3a8057e3a6ee9cd632ba51a5c16795cfde34cd10e906f14697"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/wall.glb",
+      "size": 16000,
+      "gitBlob": "c204eae9769d7b3f9e82308b0f9b0c72f33bab33",
+      "sha256": "b05ab8645136cc26e761ae2189f660a585dca88c11721771bca3fb4c1f7a807f"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/weapon-rack.glb",
+      "size": 20056,
+      "gitBlob": "961742f2dc10b718f61a9169b7e3e6548e9056de",
+      "sha256": "bb95da3746098e36f3d87a1e1036ca70ead7fe95860191871e02f7c58ff1efe5"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/weapon-spear.glb",
+      "size": 7152,
+      "gitBlob": "c9f09908c6257b4ce9aaa02456439c0820e03f0d",
+      "sha256": "9634e12abce01a07d40d5156454bfa1123eba72af6449fccf577980e331adbeb"
+    },
+    {
+      "path": "sample/Mini Arena/Models/GLB format/weapon-sword.glb",
+      "size": 9340,
+      "gitBlob": "88a40758562615ea29106913b92c54b91a4f0474",
+      "sha256": "e4d2219d954148dd8b04fccc7602726c34eafad58c0dc5a45268155fcf6cc8c4"
+    }
+  ]
+}

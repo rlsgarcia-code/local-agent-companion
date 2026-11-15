@@ -97,6 +97,9 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window.showErrorMessage(safeErrorMessage(error));
       }
     }),
+    vscode.commands.registerCommand("localAgentCompanion.openGameStudio",async()=>{
+      try{await provider.openGameStudio();}catch(error){void vscode.window.showErrorMessage(safeErrorMessage(error));}
+    }),
     vscode.commands.registerCommand("localAgentCompanion.configureMcpCatalogs", async () => {
       try {
         await provider.configureMcpCatalogs();

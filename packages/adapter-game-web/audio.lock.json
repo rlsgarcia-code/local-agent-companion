@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "module": "@companion/game-audio",
+  "version": "1.1.0",
+  "entry": "game-audio-1.1.0.mjs",
+  "files": {
+    "game-audio-1.1.0.mjs": "82d4e2422bf335fd8d2a040495c0f36965cfb59165e690a42d25abb9af1effcd",
+    "GAME-AUDIO-LICENSE.txt": "1126322e2cc8d165adc4c792eeb195717de2bcc7b39be1ce77959d78e87ef685"
+  }
+}

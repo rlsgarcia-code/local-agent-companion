@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 2,
+  "title": "Arco — Oficina de Luz",
+  "engine": "phaser",
+  "brief": {
+    "request": "Arcade original de tabelas e física com doze mesas, combos, discos e brisa, para teclado, mouse e toque.",
+    "audience": "Jogadores casuais a partir de 7 anos; adequação pendente de playtests.",
+    "genre": "arcade-physics",
+    "dimension": "2d",
+    "playMode": "single-player",
+    "players": {
+      "min": 1,
+      "max": 1
+    },
+    "devices": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "inputs": [
+      "keyboard",
+      "pointer",
+      "touch"
+    ]
+  },
+  "design": {
+    "schemaVersion": 2,
+    "structure": "levels",
+    "premise": "Uma pequena oficina de brinquedos cinéticos ganha luz a cada tabela.",
+    "coreLoop": {
+      "actions": [
+        "mirar",
+        "regular força",
+        "lançar",
+        "combinar tabelas"
+      ],
+      "feedback": "Lanternas florescem ao contato; discos devolvem impulso, combos fazem arpejos e pontos.",
+      "mastery": "Resolver mesas com menos lançamentos e combos maiores, usando bordas, discos e vento."
+    },
+    "mechanics": [
+      {
+        "id": "launch",
+        "name": "Mira e lançamento",
+        "description": "Arraste para mirar e solte; setas e força também permitem lançar por teclado."
+      },
+      {
+        "id": "rebound",
+        "name": "Tabelas e discos",
+        "description": "Colisões refletem a velocidade; discos devolvem impulso limitado."
+      },
+      {
+        "id": "combo",
+        "name": "Lanternas em sequência",
+        "description": "Cada nova lanterna no mesmo lançamento aumenta o bônus."
+      },
+      {
+        "id": "breeze",
+        "name": "Brisa",
+        "description": "Vento lateral sinalizado por setas aparece nas últimas quatro mesas."
+      }
+    ],
+    "rules": [
+      "Acender todas as lanternas dentro dos lançamentos disponíveis.",
+      "Tentativas ilimitadas; próximo desafio após concluir o atual.",
+      "Mais combos e lançamentos economizados rendem pontos e estrelas.",
+      "Sem rede, compras, anúncios ou IA durante o jogo."
+    ],
+    "controls": [
+      {
+        "action": "Mirar e lançar",
+        "input": "Arrastar e soltar; setas e Espaço; botão Lançar",
+        "feedback": "Previsão parcial da trajetória e bolinha em movimento."
+      },
+      {
+        "action": "Pausar",
+        "input": "P, Escape ou botão Pausa",
+        "feedback": "Simulação e áudio param; retorno explícito."
+      },
+      {
+        "action": "Recomeçar",
+        "input": "R ou menu de pausa",
+        "feedback": "Nova tentativa da mesma mesa."
+      }
+    ],
+    "camera": "Mesa frontal fixa com escala adaptada ao viewport, sem tremor de câmera.",
+    "progression": {
+      "description": "Três capítulos: Acender, Ressoar e Flutuar; doze mesas com geometria própria.",
+      "stages": [
+        {
+          "id": "first",
+          "objective": "Acender 3 lanternas em Um pequeno arco.",
+          "challenge": "Acerte as três lanternas. A bolinha rebate nas bordas.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "echo",
+          "objective": "Acender 4 lanternas em O outro lado.",
+          "challenge": "Uma boa tabela acende mais de uma lanterna.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "petals",
+          "objective": "Acender 4 lanternas em Quatro pétalas.",
+          "challenge": "Os discos azuis devolvem impulso à bolinha.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "bridge",
+          "objective": "Acender 5 lanternas em Entre as pontes.",
+          "challenge": "Procure o espaço entre os discos.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "orbit",
+          "objective": "Acender 6 lanternas em Órbita de bolso.",
+          "challenge": "A tangente de um disco muda completamente a viagem.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "garden",
+          "objective": "Acender 6 lanternas em Jardim de cerâmica.",
+          "challenge": "Passagens estreitas, caminhos grandes.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "stairs",
+          "objective": "Acender 6 lanternas em Escada de ecos.",
+          "challenge": "Use as bordas para chegar por trás.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "moon",
+          "objective": "Acender 7 lanternas em A lua no meio.",
+          "challenge": "Você tem seis lançamentos; cada combo deixa uma assinatura.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "breeze",
+          "objective": "Acender 6 lanternas em Brisa de papel.",
+          "challenge": "A brisa puxa para a direita. A previsão da mira já sente o vento.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo",
+            "breeze"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "return",
+          "objective": "Acender 7 lanternas em Vento de volta.",
+          "challenge": "Agora a brisa vem do outro lado.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo",
+            "breeze"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "constellation",
+          "objective": "Acender 7 lanternas em Uma constelação.",
+          "challenge": "Rebater não custa outro lançamento. Faça os discos trabalharem.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo",
+            "breeze"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        },
+        {
+          "id": "workshop",
+          "objective": "Acender 8 lanternas em A oficina acesa.",
+          "challenge": "A última mesa reúne tudo: mira, tabelas, discos e brisa.",
+          "mechanicIds": [
+            "launch",
+            "rebound",
+            "combo",
+            "breeze"
+          ],
+          "completion": "Todas as lanternas acesas antes de esgotar os lançamentos."
+        }
+      ],
+      "completion": {
+        "type": "ending",
+        "description": "A oficina inteira acesa, com mesas disponíveis para buscar novos resultados."
+      }
+    },
+    "art": {
+      "direction": "Papel marfim, cerâmica azul e latão; oficina cinética ilustrada.",
+      "palette": [
+        "#f2e8d4",
+        "#237477",
+        "#d99d41"
+      ],
+      "animation": "Rastro da bolinha, flores de luz e partículas; efeitos reduzidos opcionais."
+    },
+    "audio": {
+      "music": "Partitura original de quatro acordes, marimba senoidal e baixo triangular.",
+      "effects": "Notas ascendentes em combos, impacto grave de cerâmica e acorde de conclusão.",
+      "mix": "Música discreta, efeitos limitados, mute persistente e pausa por foco."
+    },
+    "content": [
+      {
+        "id": "first",
+        "kind": "level",
+        "description": "Um pequeno arco — Acerte as três lanternas. A bolinha rebate nas bordas."
+      },
+      {
+        "id": "echo",
+        "kind": "level",
+        "description": "O outro lado — Uma boa tabela acende mais de uma lanterna."
+      },
+      {
+        "id": "petals",
+        "kind": "level",
+        "description": "Quatro pétalas — Os discos azuis devolvem impulso à bolinha."
+      },
+      {
+        "id": "bridge",
+        "kind": "level",
+        "description": "Entre as pontes — Procure o espaço entre os discos."
+      },
+      {
+        "id": "orbit",
+        "kind": "level",
+        "description": "Órbita de bolso — A tangente de um disco muda completamente a viagem."
+      },
+      {
+        "id": "garden",
+        "kind": "level",
+        "description": "Jardim de cerâmica — Passagens estreitas, caminhos grandes."
+      },
+      {
+        "id": "stairs",
+        "kind": "level",
+        "description": "Escada de ecos — Use as bordas para chegar por trás."
+      },
+      {
+        "id": "moon",
+        "kind": "level",
+        "description": "A lua no meio — Você tem seis lançamentos; cada combo deixa uma assinatura."
+      },
+      {
+        "id": "breeze",
+        "kind": "level",
+        "description": "Brisa de papel — A brisa puxa para a direita. A previsão da mira já sente o vento."
+      },
+      {
+        "id": "return",
+        "kind": "level",
+        "description": "Vento de volta — Agora a brisa vem do outro lado."
+      },
+      {
+        "id": "constellation",
+        "kind": "level",
+        "description": "Uma constelação — Rebater não custa outro lançamento. Faça os discos trabalharem."
+      },
+      {
+        "id": "workshop",
+        "kind": "level",
+        "description": "A oficina acesa — A última mesa reúne tudo: mira, tabelas, discos e brisa."
+      }
+    ],
+    "save": {
+      "mode": "persistent",
+      "version": 1,
+      "strategy": "Mesas, pontuação, estrelas, preferências e checkpoint de voo; arquivo incompatível preservado, fallback de sessão informado."
+    },
+    "playtests": [
+      {
+        "id": "launch-response",
+        "category": "gameplay",
+        "description": "Lançar produz movimento observável e muda o tabuleiro.",
+        "steps": [
+          {
+            "action": "Lançar por teclado",
+            "expected": "Bolinha viaja e a imagem do tabuleiro muda."
+          }
+        ]
+      },
+      {
+        "id": "pause-focus",
+        "category": "technical",
+        "description": "Pausa congela simulação e permite retorno explícito.",
+        "steps": [
+          {
+            "action": "Pausar",
+            "expected": "Painel de pausa visível, sem avanços da bolinha."
+          }
+        ]
+      }
+    ]
+  },
+  "files": [],
+  "assets": []
+}

@@ -8,6 +8,17 @@
     "packages/contracts/**/*.ts",
     "packages/agent-core/**/*.ts",
     "packages/agent-service/**/*.ts",
-    "packages/adapter-workspace/**/*.ts"
+    "packages/adapter-workspace/**/*.ts",
+    "packages/game-design/**/*.ts",
+    "packages/game-production/**/*.ts",
+    "packages/adapter-game-web/**/*.ts",
+    "packages/adapter-game-browser/**/*.ts",
+    "packages/adapter-game-godot/**/*.ts",
+    "packages/adapter-game-unity/**/*.ts",
+    "packages/adapter-game-assets/**/*.ts",
+    "packages/adapter-game-library/**/*.ts",
+    "packages/adapter-game-blender/**/*.ts",
+    "packages/adapter-game-audio-codec/**/*.ts",
+    "packages/adapter-game-container/**/*.ts"
   ]
 }

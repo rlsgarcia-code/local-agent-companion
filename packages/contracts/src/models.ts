@@ -1,3 +1,4 @@
+import {modelContextWindows} from './model-context';
 import { z } from "zod";
 import { identifier } from "./schema";
 
@@ -7,7 +8,7 @@ export const ollamaRoleConfiguration = z.object({
   vision: z.string().max(200).optional(), embedding: z.string().max(200).optional(),
 }).strict();
 export const modelConfiguration = z.object({
-  revision: z.number().int().nonnegative(), roles: ollamaRoleConfiguration,
+  revision: z.number().int().nonnegative(), roles: ollamaRoleConfiguration, contextWindows:modelContextWindows.optional(),
 }).strict();
 export const modelDownload = z.object({ key: identifier, model: ollamaRoleConfiguration.shape.executor }).strict();
 export const modelRecommendation = z.object({

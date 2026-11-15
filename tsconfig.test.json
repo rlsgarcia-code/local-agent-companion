@@ -7,5 +7,5 @@
     "rootDir": ".",
     "sourceMap": true
   },
-  "include": ["src/litellm.ts", "desktop/docker-sandbox.ts", "test/**/*.ts"]
+  "include": ["src/litellm.ts", "desktop/docker-sandbox.ts", "packages/adapter-game-assets/src/worker.ts", "packages/adapter-game-browser/src/worker.ts", "test/**/*.ts"]
 }

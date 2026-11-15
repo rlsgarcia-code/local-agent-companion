@@ -13,6 +13,7 @@ import { completionGateResult, createTaskCompletionMiddleware, parseTaskContract
 import type { ChangeTracker } from "../src/change-tracker";
 import { ChangeTracker as RealChangeTracker } from "../src/change-tracker";
 import { ReviewableFilesystemBackend } from "../src/reviewable-backend";
+import { gameTaskProjectContext } from "../packages/contracts/src/game-agent";
 
 const contractModel = (outcome: string, verdict = "needs_work"): BaseChatModel => {
   let calls = 0;
@@ -26,6 +27,53 @@ const contractModel = (outcome: string, verdict = "needs_work"): BaseChatModel =
 const tracker = (changes: number): ChangeTracker => ({
   finalize: () => ({ changes: Array.from({ length: changes }, () => ({ path: "src/example.ts", kind: "modified" })), omitted: 0 })
 }) as unknown as ChangeTracker;
+
+test("saved game metadata reaches intent classification without forcing its outcome or satisfying production", async () => {
+  const project = { projectId: "saved-game", engine: "phaser" as const, revision: 23, sourceHash: "a".repeat(64), fileCount: 14, assetCount: 0, hasDesign: true };
+  for (const runtime of ["standard", "deep"] as const) for (const outcome of ["answer", "uncertain", "game_delivery"] as const) {
+    let calls = 0;
+    const classifier = { invoke: async (messages: BaseMessage[]) => {
+      if (calls++ === 0) {
+        const systems = messages.filter(message => message.getType() === "system").map(message => message.text).join("\n");
+        assert.ok(systems.includes(JSON.stringify({ linkedGameProject: project })));
+        assert.match(systems, /Source files need not be pasted/);
+        assert.match(systems, /does not describe file contents/);
+        return { text: JSON.stringify({ outcome, objective: "The user's current request", reason: "Semantic fixture", acceptanceCriteria: [] }) };
+      }
+      return { text: JSON.stringify({ verdict: "blocked", reason: "No game quality or change has been observed." }) };
+    } } as unknown as BaseChatModel;
+    const executor = new FakeToolCallingModel();
+    const middleware = createTaskCompletionMiddleware({ model: classifier, mode: "execute", currentGameProject: project,
+      conversation: [{ role: "user", content: "The user's current request" }], signal: AbortSignal.timeout(10_000), onRetry: async () => assert.fail("No automatic repair after blocked verdict") });
+    const graph = runtime === "deep" ? createDeepAgent({ model: executor, tools: [], middleware: [middleware] }) : createAgent({ model: executor, tools: [], middleware: [middleware] });
+    const state = await graph.invoke({ messages: [{ role: "user", content: "The user's current request" }] });
+    assert.equal(completionGateResult(state).completionOutcome, outcome === "answer" ? "complete" : "incomplete");
+    assert.equal(calls, outcome === "game_delivery" ? 2 : 1, "metadata cannot cause a second classifier call");
+    if (outcome === "uncertain") assert.equal(executor.index, 0);
+    assert.ok(state.messages.every(message => !message.text.includes(project.sourceHash)), "private snapshot is not added to conversation/checkpoints");
+  }
+});
+
+test("project context is optional, strictly metadata-only, and never bypasses Plan mode", async () => {
+  const project = { projectId: "empty-game", engine: "phaser" as const, revision: 1, sourceHash: "b".repeat(64), fileCount: 0, assetCount: 0, hasDesign: false };
+  for (const context of [undefined, null, project]) {
+    const model = { invoke: async (messages: BaseMessage[]) => {
+      const systems = messages.filter(message => message.getType() === "system").map(message => message.text).join("\n");
+      assert.ok(systems.includes(JSON.stringify(context === undefined ? { projectContext: "not-supplied" } : { linkedGameProject: context })));
+      return { text: JSON.stringify({ outcome: "game_delivery", objective: "Continue the game", reason: "Clear request", acceptanceCriteria: [] }) };
+    } } as unknown as BaseChatModel;
+    const executor = new FakeToolCallingModel();
+    const middleware = createTaskCompletionMiddleware({ model, mode: "plan", currentGameProject: context, conversation: [{ role: "user", content: "Continue the game" }], signal: AbortSignal.timeout(10_000), onRetry: async () => assert.fail() });
+    const state = await createAgent({ model: executor, tools: [], middleware: [middleware] }).invoke({ messages: [{ role: "user", content: "Continue the game" }] });
+    assert.equal(executor.index, 0);assert.equal(completionGateResult(state).completionOutcome, "incomplete");
+  }
+  for (const extra of [{ title: "Untrusted instructions" }, { source: "private source" }, { ready: true }, { approved: true }, { fileCount: -1 }, { sourceHash: "bad" }]) {
+    const value = { ...project, ...extra };
+    assert.equal(gameTaskProjectContext.safeParse(value).success, false);
+    assert.throws(() => createTaskCompletionMiddleware({ model: contractModel("answer"), mode: "execute", currentGameProject: value,
+      conversation: [], signal: new AbortController().signal, onRetry: async () => undefined }));
+  }
+});
 
 test("parses a semantic task contract, rejecting malformed model output", () => {
   assert.equal(parseTaskContract('```json\n{"outcome":"workspace_change","objective":"Apply review","reason":"Follow-up","acceptanceCriteria":[]}\n```').outcome, "workspace_change");
@@ -240,7 +288,7 @@ test("the intent model sees attached images instead of classifying text alone", 
 test("uncertain context asks for clarification before the executor can use tools", async () => {
   const executor = new FakeToolCallingModel();
   const middleware = createTaskCompletionMiddleware({
-    model: contractModel("uncertain"), mode: "execute",
+    model: contractModel("uncertain"), mode: "execute", availableTools: ["game_studio", "game_build"],
     conversation: [{ role: "user", content: "Do that" }],
     tracker: tracker(0), signal: new AbortController().signal,
     onRetry: async () => undefined

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "libraries": [
+    {
+      "id": "kenney-mini-arena",
+      "manifestSha256": "d3dc09403c382dc93dc1f09c1c4b74643e72885f8957098d93b07f1ff7533adf"
+    }
+  ]
+}

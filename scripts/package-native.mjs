@@ -92,18 +92,59 @@ export function verifyProviderVariant(projectRoot, expectedVariant) {
   return markerPath;
 }
 
-export async function verifyPackagedEngine(archive,manifest){
-  const {createHash}=await import("node:crypto");const yauzl=require("yauzl");
-  const expected=new Set([...Object.keys(manifest.files),"manifest.json","manifest.sig"]);const seen=new Set();
-  await new Promise((resolve,reject)=>yauzl.open(archive,{lazyEntries:true},(error,zip)=>{
-    if(error)return reject(error);zip.on("error",reject);zip.on("end",()=>{if(seen.size!==expected.size)return reject(new Error("The VSIX omitted signed engine files."));resolve();});
+/** Compare the archive with metadata captured before VSCE runs, not metadata
+ * re-read from a staging tree it could have changed. The caller first uses the
+ * product bootstrap verifier for compatibility and the pinned release key. */
+export async function verifyPackagedEngine(archive,manifest,metadata){
+  const {createHash,verify}=await import("node:crypto"),yauzl=require("yauzl");
+  const {manifestBytes,signatureBytes,publicKey}=metadata??{};
+  if(!Buffer.isBuffer(manifestBytes)||!manifestBytes.length||manifestBytes.length>8*1024*1024||
+      !Buffer.isBuffer(signatureBytes)||signatureBytes.length!==64||!publicKey||!verify(null,manifestBytes,publicKey,signatureBytes))
+    throw Error("The VSIX requires the exact trusted signed engine metadata.");
+  if(JSON.stringify(JSON.parse(manifestBytes.toString("utf8")))!==JSON.stringify(manifest)||!manifest.files||typeof manifest.files!=="object"||Array.isArray(manifest.files))
+    throw Error("The expected engine manifest differs from its signed bytes.");
+  const sha=bytes=>createHash("sha256").update(bytes).digest("hex"),expected=new Map(),directories=new Set([""]);
+  for(const [name,digest]of Object.entries(manifest.files)){
+    if(!name||name.includes("\\")||name.includes(":")||name.split("/").some(part=>!part||part==="."||part==="..")||
+        ["manifest.json","manifest.sig"].includes(name)||!/^[a-f0-9]{64}$/.test(digest))throw Error("Unsafe signed engine manifest entry.");
+    expected.set(name,digest);const parts=name.split("/");while(parts.length>1){parts.pop();directories.add(parts.join("/")+"/");}
+  }
+  expected.set("manifest.json",sha(manifestBytes));expected.set("manifest.sig",sha(signatureBytes));
+  const seen=new Set(),seenDirectories=new Set();let payloadBytes=0;
+  await new Promise((resolve,reject)=>yauzl.open(archive,{lazyEntries:true,strictFileNames:true},(error,zip)=>{
+    if(error)return reject(error);
+    let settled=false,active;
+    const fail=error=>{if(settled)return;settled=true;active?.destroy();zip.close();reject(error);};
+    zip.on("error",fail);zip.on("end",()=>{
+      if(seen.size!==expected.size)return fail(Error("The VSIX omitted signed engine files."));
+      settled=true;resolve();
+    });
     zip.on("entry",entry=>{
-      const prefix="extension/dist/engine/";if(!entry.fileName.startsWith(prefix)||entry.fileName.endsWith("/"))return zip.readEntry();
-      const name=entry.fileName.slice(prefix.length);if(!expected.has(name)||seen.has(name))return reject(new Error("The VSIX contains an undeclared engine entry."));seen.add(name);
-      zip.openReadStream(entry,(error,stream)=>{if(error)return reject(error);const hash=createHash("sha256");stream.on("data",chunk=>hash.update(chunk));stream.on("error",reject);stream.on("end",()=>{
-        const digest=hash.digest("hex");if(manifest.files[name]&&digest!==manifest.files[name])return reject(new Error("The VSIX changed a signed engine file."));zip.readEntry();});});
+      const prefix="extension/dist/engine/",file=entry.fileName;
+      if(file.toLowerCase().startsWith(prefix)&&!file.startsWith(prefix))return fail(Error("The VSIX contains an aliased signed engine path."));
+      if(file.toLowerCase()==="extension/dist/engine")return fail(Error("The VSIX contains an invalid engine root entry."));
+      if(!file.startsWith(prefix))return zip.readEntry();
+      const name=file.slice(prefix.length),mode=(entry.externalFileAttributes>>>16)&0xffff,type=mode&0o170000;
+      if(entry.generalPurposeBitFlag&1)return fail(Error("The VSIX contains an encrypted engine entry."));
+      if(file.endsWith("/")){
+        if(!directories.has(name)||seenDirectories.has(name)||(type&&type!==0o040000))return fail(Error("The VSIX contains an undeclared/invalid engine directory."));
+        seenDirectories.add(name);return zip.readEntry();
+      }
+      if(!expected.has(name)||seen.has(name)||(type&&type!==0o100000))return fail(Error("The VSIX contains an undeclared/duplicate/invalid signed engine entry."));
+      if(name==="node"&&!String(manifest.target).startsWith("win32-")&&!(mode&0o111))return fail(Error("The VSIX removed the signed engine Node executable mode."));
+      seen.add(name);
+      zip.openReadStream(entry,(error,stream)=>{
+        if(error)return fail(error);active=stream;
+        void (async()=>{
+          const hash=createHash("sha256");for await(const chunk of stream){hash.update(chunk);payloadBytes+=chunk.length;}
+          active=undefined;
+          if(hash.digest("hex")!==expected.get(name))throw Error("The VSIX changed a signed engine file, manifest or signature.");
+          if(!settled)zip.readEntry();
+        })().catch(fail);
+      });
     });zip.readEntry();
   }));
+  return {files:seen.size,bytes:payloadBytes,manifestSha256:sha(manifestBytes),signatureSha256:sha(signatureBytes)};
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : "";
@@ -126,6 +167,9 @@ if (import.meta.url === invokedPath) {
   await verifier.exports.verifyBundle(destination,key,false,target);
   verifyPackagedBrowserRuntime(projectRoot);
   verifyProviderVariant(projectRoot, providerVariant);
+  const manifestBytes=readFileSync(path.join(destination,"manifest.json"));
+  const signatureBytes=readFileSync(path.join(destination,"manifest.sig"));
+  const expectedManifest=JSON.parse(manifestBytes.toString("utf8"));
   const invocation = packageInvocation(version, target, { providerVariant });
   const result = spawnSync(invocation.executable, invocation.args, {
     cwd: projectRoot,
@@ -134,5 +178,5 @@ if (import.meta.url === invokedPath) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exitCode = result.status ?? 1;
-  else {await verifyPackagedEngine(path.join(projectRoot,output),JSON.parse(readFileSync(path.join(destination,"manifest.json"),"utf8")));process.stdout.write(`NATIVE_VSIX_READY ${target} ${path.join(projectRoot, output)}\n`);}
+  else {await verifyPackagedEngine(path.join(projectRoot,output),expectedManifest,{manifestBytes,signatureBytes,publicKey:key});process.stdout.write(`NATIVE_VSIX_READY ${target} ${path.join(projectRoot, output)}\n`);}
 }

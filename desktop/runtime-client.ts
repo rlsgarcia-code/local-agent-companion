@@ -1,3 +1,5 @@
+import {modelContextWindows,modelContextWindow,type ModelContextWindows} from '../packages/contracts/src/model-context';
+import {modelConfiguration} from '../packages/contracts/src/models';
 import * as path from "node:path";
 import { AgentClient, type HostResponses } from "../packages/client-ts/src/index";
 import { COMPANION_RELEASE_PUBLIC_KEY } from "../packages/client-ts/src/release-key";
@@ -54,6 +56,11 @@ export class OllamaDesktopRuntime {
   get running(): boolean {
     return this.preparing || Boolean(this.active);
   }
+  async gameStudioConnection(thread:{id:string;title:string;messages:unknown[]},workspace:string){
+    const client=await this.connect(workspace),key=`desktop:${thread.id}`;
+    const session=(await client.call<Session[]>("sessions.list")).find((session)=>session.importedFrom===key)??await client.importSession(key,{thread});
+    return {client,session,reconnect:()=>this.connect(workspace)};
+  }
   private async connect(workspace = ""): Promise<AgentClient> {
     let pending = this.clients.get(workspace);
     if (!pending) {
@@ -102,6 +109,15 @@ export class OllamaDesktopRuntime {
     const saved = await client.call<{ revision: number; roles: OllamaRoleConfiguration } | null>("models.configuration");
     if (saved) return saved.roles;
     if (initial?.executor) return (await client.call<{ roles: OllamaRoleConfiguration }>("models.configure", { revision: 0, roles: initial })).roles;
+  }
+  async modelContextWindows():Promise<ModelContextWindows|undefined>{
+    const client=await this.connect();const info=await client.call<{capabilities:string[]}>("engine.info");if(!info.capabilities.includes("model-context-window-v1"))return undefined;
+    const saved=await client.call("models.configuration");return modelContextWindows.parse(saved?modelConfiguration.parse(saved).contextWindows??{}:{});
+  }
+  async configureModelContextWindow(alias:string,tokens:number|null):Promise<void>{
+    const client=await this.connect();const info=await client.call<{capabilities:string[]}>("engine.info");if(!info.capabilities.includes("model-context-window-v1"))throw Error("Atualize o motor para configurar a janela de contexto.");
+    const saved=modelConfiguration.parse(await client.call("models.configuration"));const windows={...(saved.contextWindows??{})};if(tokens===null)delete windows[alias];else windows[alias]=modelContextWindow.parse(tokens);
+    await client.call("models.configure",{...saved,contextWindows:modelContextWindows.parse(windows)});
   }
   async configureModelRoles(roles: OllamaRoleConfiguration): Promise<void> {
     const client = await this.connect();

@@ -1,3 +1,4 @@
+import { CONNECTION_FAILURE_KINDS, type ConnectionFailureKind } from "./connection-test-log";
 import type { LiteLlmAuthHeader, LiteLlmModelPreset, LiteLlmReasoningEffort } from "./litellm";
 import type { AgentRuntime, RunMode } from "./types";
 import type { ModelProvider } from "./model-provider";
@@ -85,6 +86,9 @@ export type SupportBundle = {
     id: string;
     status: "passed" | "failed" | "skipped";
     durationMs?: number;
+    testId?: string;
+    failureKind?: ConnectionFailureKind;
+    httpStatus?: number;
     suggestedFixKinds: string[];
   }>;
 };
@@ -165,7 +169,11 @@ function safeDiagnostics(value: unknown): SupportBundle["diagnostics"] {
       const kind = (fix as Record<string, unknown>).kind;
       return typeof kind === "string" && /^[a-z][a-z0-9-]{0,40}$/i.test(kind) ? [kind] : [];
     }))].slice(0, 10);
-    return [{ id, status, ...(durationMs === undefined ? {} : { durationMs }), suggestedFixKinds }];
+    const testId = typeof record.testId === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(record.testId) ? record.testId : undefined;
+    const failureKind = CONNECTION_FAILURE_KINDS.includes(record.failureKind as ConnectionFailureKind) ? record.failureKind as ConnectionFailureKind : undefined;
+    const httpStatus = typeof record.httpStatus === "number" && Number.isInteger(record.httpStatus) && record.httpStatus >= 400 && record.httpStatus <= 599 ? record.httpStatus : undefined;
+    return [{ id, status, ...(durationMs === undefined ? {} : { durationMs }), ...(testId ? { testId } : {}),
+      ...(failureKind ? { failureKind } : {}), ...(httpStatus ? { httpStatus } : {}), suggestedFixKinds }];
   });
 }
 

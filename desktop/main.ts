@@ -1,3 +1,4 @@
+import {modelContextWindow} from '../packages/contracts/src/model-context';
 import { needsDesktopRecovery } from "./recovery";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
@@ -19,6 +20,7 @@ import type {
 } from "./contracts";
 import { redactSensitiveText } from "../src/redaction";
 import { OllamaDesktopRuntime } from "./runtime-client";
+import { openDesktopGameStudio } from "./game-studio";
 import { formatDesktopRunFailure } from "./run-failure";
 import { resolveInstalledModelRoles, sameModelRoles } from "./model-roles";
 import { DesktopStateStore } from "./state-store";
@@ -166,6 +168,11 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
+  ipcMain.handle("companion:game-studio-open",async(event)=>{
+    if(event.sender!==window?.webContents||event.senderFrame!==event.sender.mainFrame)throw new Error("Janela não autorizada.");
+    const snapshot=store.snapshot(),thread=store.thread(snapshot.activeThreadId);
+    await openDesktopGameStudio({runtime,workspace:snapshot.workspacePath,thread,canWrite:()=>store.snapshot().mode!=="plan"});
+  });
   ipcMain.handle("companion:snapshot", async () => snapshot(true));
   ipcMain.handle("companion:choose-workspace", async () => {
     const result = await dialog.showOpenDialog(window!, {
@@ -207,6 +214,12 @@ function registerIpc(): void {
     if (typeof threadId !== "string") throw new Error("Invalid conversation.");
     await store.toggleThreadPinned(threadId);
     return publishSnapshot();
+  });
+  ipcMain.handle("companion:set-model-context-window",async(_event,alias:unknown,tokens:unknown)=>{
+    if(typeof alias!=="string"||!alias||alias.trim()!==alias||alias.length>200||["__proto__","constructor","prototype"].includes(alias))throw Error("Modelo inválido.");
+    if(tokens!==null)modelContextWindow.parse(tokens);
+    await runtime.modelRoles(store.snapshot().modelRoles);
+    await runtime.configureModelContextWindow(alias,tokens as number|null);return publishSnapshot();
   });
   ipcMain.handle("companion:refresh-ollama", async () => publishSnapshot(true));
   ipcMain.handle("companion:recommend-models", async () => recommendModels());
@@ -553,6 +566,7 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
   }
   return {
     ...store.snapshot(),
+    modelContextWindows:await runtime.modelContextWindows(),
     ollama: cachedOllama,
     context: contextBrowser.snapshot(),
     ollamaPublicCatalogLoaded: Boolean(publicOllamaCatalog),

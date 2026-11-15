@@ -1,0 +1,29 @@
+config_version=5
+
+[application]
+config/name="Farol — caminhos de luz"
+config/icon="res://icon.svg"
+boot_splash/show_image=true
+boot_splash/image="res://icon.png"
+boot_splash/bg_color=Color(0.04, 0.125, 0.17, 1)
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+window/size/viewport_width=960
+window/size/viewport_height=640
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.04, 0.11, 0.15, 1)
+textures/default_filters/use_nearest_mipmap_filter=false
+
+[input_devices]
+pointing/emulate_mouse_from_touch=true
+pointing/emulate_touch_from_mouse=false
+
+[audio]
+driver/enable_input=false

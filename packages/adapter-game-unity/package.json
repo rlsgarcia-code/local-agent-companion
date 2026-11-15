@@ -1,0 +1,6 @@
+{
+  "name": "@companion/adapter-game-unity",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Controlled Unity project preflight and editor export source; production registration requires separate license/isolation qualification."
+}

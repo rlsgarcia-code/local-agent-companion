@@ -1,0 +1,893 @@
+{
+  "schemaVersion": 1,
+  "chapters": [
+    "A costa",
+    "Marés",
+    "Duas margens",
+    "Noite clara"
+  ],
+  "levels": [
+    {
+      "id": 1,
+      "title": "Primeira luz",
+      "chapter": 0,
+      "width": 6,
+      "height": 5,
+      "source": {
+        "x": 0,
+        "y": 3,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 3,
+          "y": 0
+        }
+      ],
+      "tiles": [
+        {
+          "x": 3,
+          "y": 3,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        }
+      ],
+      "tip": "Toque no espelho para girar. Leve a luz ao farol.",
+      "par": 1
+    },
+    {
+      "id": 2,
+      "title": "Duas curvas",
+      "chapter": 0,
+      "width": 7,
+      "height": 6,
+      "source": {
+        "x": 0,
+        "y": 1,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 6,
+          "y": 4
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 1,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 2,
+          "y": 4,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        }
+      ],
+      "tip": "Cada espelho muda o caminho em um quarto de volta.",
+      "par": 2
+    },
+    {
+      "id": 3,
+      "title": "A enseada",
+      "chapter": 0,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 5,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 5,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 1,
+          "y": 5,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        }
+      ],
+      "tip": "Siga o feixe a partir da pequena estrela.",
+      "par": 3
+    },
+    {
+      "id": 4,
+      "title": "Vidro do mar",
+      "chapter": 0,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 4,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 5,
+          "y": 0
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 4,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 5,
+          "y": 4,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "kind": "wall",
+          "rotation": 0,
+          "locked": true
+        }
+      ],
+      "tip": "A lente só deixa passar a luz na direção da abertura.",
+      "par": 2
+    },
+    {
+      "id": 5,
+      "title": "Luz partilhada",
+      "chapter": 1,
+      "width": 7,
+      "height": 6,
+      "source": {
+        "x": 0,
+        "y": 2,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 6,
+          "y": 2
+        },
+        {
+          "id": "beacon-1",
+          "x": 3,
+          "y": 5
+        }
+      ],
+      "tiles": [
+        {
+          "x": 3,
+          "y": 2,
+          "kind": "split",
+          "rotation": 2
+        }
+      ],
+      "tip": "O divisor tem três entradas. Acenda os dois faróis.",
+      "par": 2
+    },
+    {
+      "id": 6,
+      "title": "Outra margem",
+      "chapter": 1,
+      "width": 7,
+      "height": 6,
+      "source": {
+        "x": 0,
+        "y": 2,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 6,
+          "y": 2
+        },
+        {
+          "id": "beacon-1",
+          "x": 0,
+          "y": 5
+        }
+      ],
+      "tiles": [
+        {
+          "x": 3,
+          "y": 2,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 3,
+          "y": 5,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        }
+      ],
+      "tip": "Girar uma peça pode mudar mais de um caminho.",
+      "par": 3
+    },
+    {
+      "id": 7,
+      "title": "O desvio",
+      "chapter": 1,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 1,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 6,
+          "y": 1
+        },
+        {
+          "id": "beacon-1",
+          "x": 5,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 1,
+          "y": 1,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 3,
+          "y": 1,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 3,
+          "y": 4,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 5,
+          "y": 4,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        }
+      ],
+      "tip": "Uma lente fechada interrompe todo o caminho que vem depois.",
+      "par": 5
+    },
+    {
+      "id": 8,
+      "title": "Duas alturas",
+      "chapter": 1,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 5,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 1,
+          "y": 0
+        },
+        {
+          "id": "beacon-1",
+          "x": 5,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 1,
+          "y": 5,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        },
+        {
+          "x": 1,
+          "y": 2,
+          "kind": "split",
+          "rotation": 1
+        },
+        {
+          "x": 5,
+          "y": 2,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        }
+      ],
+      "tip": "Os divisores também recebem luz de cima ou de baixo.",
+      "par": 4
+    },
+    {
+      "id": 9,
+      "title": "Pedra antiga",
+      "chapter": 2,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 3,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 5,
+          "y": 0
+        },
+        {
+          "id": "beacon-1",
+          "x": 6,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 3,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 5,
+          "y": 3,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": true
+        },
+        {
+          "x": 2,
+          "y": 6,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        }
+      ],
+      "tip": "Peças com ponto de cobre são fixas. Use o caminho que elas oferecem.",
+      "par": 4
+    },
+    {
+      "id": 10,
+      "title": "Três ilhas",
+      "chapter": 2,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 1,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 6,
+          "y": 1
+        },
+        {
+          "id": "beacon-1",
+          "x": 1,
+          "y": 5
+        },
+        {
+          "id": "beacon-2",
+          "x": 2,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 1,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 5,
+          "y": 5,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        }
+      ],
+      "tip": "Um divisor pode alimentar outro divisor.",
+      "par": 5
+    },
+    {
+      "id": 11,
+      "title": "Volta ao mar",
+      "chapter": 2,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 3,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 2,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 3,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": true
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": true
+        },
+        {
+          "x": 5,
+          "y": 3,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": true
+        },
+        {
+          "x": 2,
+          "y": 5,
+          "kind": "lens",
+          "rotation": 0
+        }
+      ],
+      "tip": "Um circuito pode devolver a luz. Nem todo caminho chega a um farol.",
+      "par": 2
+    },
+    {
+      "id": 12,
+      "title": "Portas de vidro",
+      "chapter": 2,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 3,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 6,
+          "y": 0
+        },
+        {
+          "id": "beacon-1",
+          "x": 6,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 3,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 6,
+          "y": 3,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        },
+        {
+          "x": 2,
+          "y": 5,
+          "kind": "lens",
+          "rotation": 0
+        },
+        {
+          "x": 2,
+          "y": 6,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "kind": "wall",
+          "rotation": 0,
+          "locked": true
+        },
+        {
+          "x": 5,
+          "y": 5,
+          "kind": "wall",
+          "rotation": 0,
+          "locked": true
+        }
+      ],
+      "tip": "Observe o último lugar onde a luz parou.",
+      "par": 6
+    },
+    {
+      "id": 13,
+      "title": "Arquipélago",
+      "chapter": 3,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 5,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 1,
+          "y": 0
+        },
+        {
+          "id": "beacon-1",
+          "x": 6,
+          "y": 2
+        },
+        {
+          "id": "beacon-2",
+          "x": 5,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 1,
+          "y": 5,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        },
+        {
+          "x": 1,
+          "y": 2,
+          "kind": "split",
+          "rotation": 1
+        },
+        {
+          "x": 3,
+          "y": 2,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 5,
+          "y": 2,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 5,
+          "y": 4,
+          "kind": "lens",
+          "rotation": 0
+        }
+      ],
+      "tip": "Primeiro divida a luz; depois ajuste cada ramificação.",
+      "par": 7
+    },
+    {
+      "id": 14,
+      "title": "Caminhos cruzados",
+      "chapter": 3,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 1,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 5,
+          "y": 6
+        },
+        {
+          "id": "beacon-1",
+          "x": 2,
+          "y": 6
+        },
+        {
+          "id": "beacon-2",
+          "x": 0,
+          "y": 4
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 1,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 5,
+          "y": 3,
+          "kind": "lens",
+          "rotation": 0
+        },
+        {
+          "x": 5,
+          "y": 4,
+          "kind": "split",
+          "rotation": 3
+        },
+        {
+          "x": 3,
+          "y": 4,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 2,
+          "y": 4,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        }
+      ],
+      "tip": "Dois feixes podem cruzar a mesma peça em direções diferentes.",
+      "par": 8
+    },
+    {
+      "id": 15,
+      "title": "Última maré",
+      "chapter": 3,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 3,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 1,
+          "y": 1
+        },
+        {
+          "id": "beacon-1",
+          "x": 4,
+          "y": 2
+        },
+        {
+          "id": "beacon-2",
+          "x": 6,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 3,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 6,
+          "y": 3,
+          "kind": "mirror",
+          "rotation": 1,
+          "locked": false
+        },
+        {
+          "x": 6,
+          "y": 1,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 2,
+          "y": 6,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 3,
+          "y": 6,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 4,
+          "y": 6,
+          "kind": "split",
+          "rotation": 0
+        },
+        {
+          "x": 4,
+          "y": 4,
+          "kind": "lens",
+          "rotation": 0
+        }
+      ],
+      "tip": "Um bom caminho mantém todas as ilhas acesas ao mesmo tempo.",
+      "par": 9
+    },
+    {
+      "id": 16,
+      "title": "Noite clara",
+      "chapter": 3,
+      "width": 7,
+      "height": 7,
+      "source": {
+        "x": 0,
+        "y": 3,
+        "direction": 0
+      },
+      "targets": [
+        {
+          "id": "beacon-0",
+          "x": 6,
+          "y": 3
+        },
+        {
+          "id": "beacon-1",
+          "x": 2,
+          "y": 0
+        },
+        {
+          "id": "beacon-2",
+          "x": 5,
+          "y": 4
+        },
+        {
+          "id": "beacon-3",
+          "x": 6,
+          "y": 6
+        }
+      ],
+      "tiles": [
+        {
+          "x": 2,
+          "y": 3,
+          "kind": "split",
+          "rotation": 2
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 5,
+          "y": 3,
+          "kind": "split",
+          "rotation": 0
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "kind": "lens",
+          "rotation": 0
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 2,
+          "y": 6,
+          "kind": "mirror",
+          "rotation": 0,
+          "locked": false
+        },
+        {
+          "x": 4,
+          "y": 6,
+          "kind": "lens",
+          "rotation": 1
+        },
+        {
+          "x": 5,
+          "y": 6,
+          "kind": "split",
+          "rotation": 0
+        },
+        {
+          "x": 3,
+          "y": 1,
+          "kind": "wall",
+          "rotation": 0,
+          "locked": true
+        },
+        {
+          "x": 1,
+          "y": 5,
+          "kind": "wall",
+          "rotation": 0,
+          "locked": true
+        }
+      ],
+      "tip": "Todo o arquipélago espera a sua luz. Experimente, desfaça, encontre o caminho.",
+      "par": 11
+    }
+  ]
+}

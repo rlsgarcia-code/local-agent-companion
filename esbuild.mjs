@@ -2,6 +2,7 @@ import * as esbuild from "esbuild";
 import { copyFile, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { generateThirdPartyNotices } from "./scripts/generate-third-party-notices.mjs";
+import {copyGameModelRuntime} from "./scripts/copy-game-model-runtime.mjs";
 
 const watch = process.argv.includes("--watch");
 const providerArgument = process.argv.find((argument) => argument.startsWith("--provider="));
@@ -27,6 +28,8 @@ const context = await esbuild.context({
 });
 
 const result = await context.rebuild();
+await cp("packages/game-studio-ui",path.join("dist","game-studio"),{recursive:true});
+await copyGameModelRuntime(path.join("dist","game-model-runtime"));
 const nativePackage = await copyNativeAssets();
 await writeFile(
   path.join("dist", "provider-variant.json"),

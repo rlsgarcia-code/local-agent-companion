@@ -1,3 +1,4 @@
+import type {ModelContextWindows} from './model-context';
 import type {
   OllamaRecommendationPlan,
   OllamaRoleConfiguration,
@@ -161,6 +162,7 @@ export type DesktopContextPage = {
 };
 
 export type DesktopSnapshot = DesktopState & {
+  modelContextWindows?:ModelContextWindows;
   ollama: {
     connected: boolean;
     version?: string;

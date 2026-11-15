@@ -1,3 +1,4 @@
+import type {ModelContextWindows} from '../../contracts/src/model-context';
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
@@ -9,6 +10,9 @@ import {
 } from "@langchain/core/messages";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { executePreparedGraph } from "./graph-executor";
+import { gameProductionProfile, type GameAgentPort } from "./game-production-profile";
+import { InferenceBudgetCallback, type InferenceBudgetPort } from "./inference-budget";
+import { ModelFailureCallback } from "./model-failure";
 import { operationMiddleware, type OperationExecutor } from "./operations";
 import { OllamaModels, MODEL_NAME } from "./ollama-models";
 export { pullOllamaModel } from "./ollama-models";
@@ -127,6 +131,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
     request: string;
     workspacePath: string;
     modelRoles: OllamaRoleConfiguration;
+    modelContextWindows?:ModelContextWindows;
+    contextWorkingBudget?:import('../../contracts/src/model-context').ContextWorkingBudget;
     dockerSandboxEnabled: boolean;
     mode: DesktopRunMode;
     agentRuntime: DesktopAgentRuntime;
@@ -135,6 +141,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
     contextPages: DesktopContextPage[];
     openPreview: (url: string) => Promise<void>;
     callbacks: RuntimeCallbacks;
+    gameProduction?: GameAgentPort;
+    inferenceBudget?: InferenceBudgetPort;
     execution?: {
       threadId: string;
       signal: AbortSignal;
@@ -150,6 +158,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
     const signal = options.execution
       ? AbortSignal.any([options.execution.signal, this.controller.signal])
       : this.controller.signal;
+    const modelFailures = new ModelFailureCallback();
+    const callbacks = [modelFailures, ...(options.inferenceBudget ? [new InferenceBudgetCallback(options.inferenceBudget)] : [])];
     const tracker = new ChangeTracker(options.workspacePath);
     let observedRead = false;
     let approvalDenied = false;
@@ -173,10 +183,11 @@ export class OllamaDesktopRuntime extends OllamaModels {
       options.callbacks.step(options.assistantMessageId, step);
     };
     try {
-      const model = this.createModel(options.modelRoles.executor, true);
+      const model = this.createModel(options.modelRoles.executor, true, undefined,options.modelContextWindows?.[options.modelRoles.executor]);
       const evaluatorModel = this.createModel(
         options.modelRoles.evaluator || options.modelRoles.executor,
         false,
+        undefined,options.modelContextWindows?.[options.modelRoles.evaluator || options.modelRoles.executor],
       );
       const publishActivity = (value: DesktopActivity): void => {
         if (!countedActivityIds.has(value.id)) {
@@ -249,9 +260,12 @@ export class OllamaDesktopRuntime extends OllamaModels {
       });
       const completionGate = createTaskCompletionMiddleware({
         model: evaluatorModel,
+        callbacks,
         structuredOutput: true,
         mode: options.mode,
         responseLanguage: "pt-BR",
+        currentGameProject: options.gameProduction?.currentProject?.(),
+        availableTools: [...tools.map(tool => tool.name), ...(options.gameProduction?.catalog ?? []).filter(tool => options.mode !== "plan" || tool.effect === "read").map(tool => tool.name)],
         conversation: [
           ...options.thread.messages.map((message) => ({
             role: message.role,
@@ -264,6 +278,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
         hasObservedRead: () => observedRead,
         approvalWasDenied: () => approvalDenied,
         executionEvidence: () => executionEvidence,
+        gameEvidence: () => options.gameProduction?.evidence() ?? { changes: [], projects: [] },
         onContract: (contract) =>
           activity(
             "thinking",
@@ -306,7 +321,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
           options.modelRoles.planner,
           "active",
         );
-        const planner = this.createModel(options.modelRoles.planner, false);
+        const planner = this.createModel(options.modelRoles.planner, false,undefined,options.modelContextWindows?.[options.modelRoles.planner]);
         const planned = await planner.invoke(
           [
             new SystemMessage(
@@ -316,7 +331,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
               `Autonomy mode: ${options.mode}\nUser request:\n${requestWithContext.slice(0, 24_000)}`,
             ),
           ],
-          { signal },
+          { signal, callbacks },
         );
         const guidance = planned.text.trim().slice(0, 8_000);
         if (guidance)
@@ -409,18 +424,32 @@ export class OllamaDesktopRuntime extends OllamaModels {
           : "Agente padrão conectado",
         path.basename(options.workspacePath),
       );
+      const gameProfile = gameProductionProfile(options.gameProduction, {
+        mode: options.mode, signal,
+        modelForRole: (role) => role === "executor" ? model : role === "evaluator" ? evaluatorModel
+          : this.createModel(options.modelRoles.planner || options.modelRoles.executor, false,undefined,options.modelContextWindows?.[options.modelRoles.planner || options.modelRoles.executor]),
+        imageModel:()=>{
+          const alias=options.modelRoles.vision;if(!alias)throw new Error("Configure o papel visual nos modelos do produto; nenhuma alternativa será escolhida.");
+          return {model:this.createModel(alias,false,undefined,options.modelContextWindows?.[alias]),alias};
+        },
+        readTools: tools.filter((entry) => ["list_files", "read_file", "search_text"].includes(entry.name)),
+        onToolRejected: value => { activity("verification", `Argumentos rejeitados · ${value.tool}`, value.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("\n"), "failed"); },
+      });
+      if (gameProfile) systemPrompt += `\n\n${gameProfile.systemPrompt}`;
       const durable = options.execution ? [operationMiddleware(options.execution.operation)] : [];
       const graph = {
         model,
-        tools: options.agentRuntime === "deep" && workspaceBackend
+        contextWorkingBudget:options.contextWorkingBudget,
+        tools: [...(options.agentRuntime === "deep" && workspaceBackend
           ? tools.filter((candidate) => ["list_sandbox_images", "run_sandbox_command", "start_sandbox_application",
               "inspect_sandbox_application", "wait_for_sandbox_application", "open_sandbox_preview", "stop_sandbox_application"].includes(candidate.name))
-          : tools,
+          : tools), ...(gameProfile?.tools ?? [])],
         systemPrompt,
         ...(options.agentRuntime === "deep" && workspaceBackend ? {
           backend: new CompositeBackend(new StateBackend(), { "/workspace/": workspaceBackend }), permissions,
         } : {}),
-        middleware: [modelRetry, modelActivity, ...durable, recoverableToolErrors, completionGate],
+        middleware: [modelRetry, modelActivity, ...durable, recoverableToolErrors, completionGate, ...(gameProfile?.middleware ?? [])],
+        ...(options.agentRuntime === "deep" && gameProfile ? { subagents: gameProfile.specialists } : {}),
         checkpointer: this.checkpointer,
       };
       const publishDelta = async (delta: string) => {
@@ -440,6 +469,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
       const resultState = await executePreparedGraph({
         runtime: options.agentRuntime, graph,
         threadId: runtimeThreadId, signal,
+        callbacks,
         recursionLimit: options.agentRuntime === "deep" ? 1_000 : 240,
         initial: { messages }, reconciliations: options.execution?.reconciliations,
         resume: Boolean(options.execution),
@@ -491,6 +521,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
         },
         changes,
       };
+    } catch (error) {
+      throw modelFailures.terminalError(error, signal);
     } finally {
       this.controller = undefined;
     }

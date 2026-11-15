@@ -39,12 +39,13 @@ export class Models {
   configuration(reg: Registration): z.infer<typeof modelConfiguration> | null {
     this.authorize(reg);
     const row = this.store.db.prepare("SELECT value FROM model_configurations WHERE namespace=?").get(namespace(reg)) as { value: string } | undefined;
-    return row ? JSON.parse(row.value) : null;
+    return row ? modelConfiguration.parse(JSON.parse(row.value)) : null;
   }
   configure(reg: Registration, input: unknown) {
     this.authorize(reg); const value = modelConfiguration.parse(input);
     if (value.revision !== (this.configuration(reg)?.revision ?? 0)) throw new AgentError(errors.conflict, "Refresh model settings before changing them.");
-    const next = { ...value, revision: value.revision + 1 };
+    const previous=this.configuration(reg);
+    const next = { ...value, ...((value.contextWindows??previous?.contextWindows)!==undefined?{contextWindows:value.contextWindows??previous?.contextWindows}:{}), revision: value.revision + 1 };
     this.store.db.prepare("INSERT INTO model_configurations VALUES(?,?) ON CONFLICT(namespace) DO UPDATE SET value=excluded.value").run(namespace(reg), JSON.stringify(next));
     return next;
   }

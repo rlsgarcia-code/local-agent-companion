@@ -72,3 +72,71 @@ test("retired enrollment files do not prevent loading the currently provisioned 
   await loadProvisionedClients(store,root);assert.deepEqual(registered,["current"]);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test("signed production hooks expose only Core ports for KidOS and receive the exact integration API",{skip:process.platform==="win32"},async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),"signed-game-port-"));const keys=generateKeyPairSync("ed25519");
+ const key=path.join(root,"key.pub");await writeFile(key,keys.publicKey.export({type:"spki",format:"pem"}),{mode:0o600});
+ try{
+  for(const variant of ["protected","workspace","other-product","not-array","admission","bad-admission","missing-inspector"]){
+   const directory=path.join(root,variant);await mkdir(directory,{mode:0o700});
+   const hooks=variant==='admission'?",admission:{async reserve(){},async cancel(){}},async reconcile(){return {state:'missing',detail:'Fixture original closed'}}":variant==='bad-admission'?",admission:{reserve:1,async cancel(){}}":variant==='missing-inspector'?",admission:{async reserve(){},async cancel(){}}":"";
+   const port=`{id:'fixture',engine:'phaser',authority:'${variant==="workspace"?"workspace":"kidos-core"}',products:['${variant==="other-product"?"companion-mac":"kidos"}'],toolchain:{id:'fixture',version:'1',sha256:'${"a".repeat(64)}'},async probe(){return {available:true}},async build(){return {entrypoint:'index.html',files:[]}}${hooks}}`;
+   const source=`module.exports.createAdapter=api=>{if(api.installedGameProductionVersion!==1||!api.coreBuildSchemas||!api.GameProductionUncertain)throw Error('Missing integration kit');return {product:'kidos',validate(){},async execute(){},prepareTool(r,d,a){return a},async invokeTool(){},gameAdapters:${variant==="not-array"?"{}":`[${port}]`}}}`;
+   await writeFile(path.join(directory,"adapter.cjs"),source,{mode:0o600});
+   const bytes=Buffer.from(JSON.stringify({schema:1,product:"kidos",protocol:"1.0",entry:"adapter.cjs",files:{"adapter.cjs":createHash("sha256").update(source).digest("hex")}}));
+   await writeFile(path.join(directory,"manifest.json"),bytes,{mode:0o600});await writeFile(path.join(directory,"manifest.sig"),sign(null,bytes,keys.privateKey),{mode:0o600});
+   const descriptor=path.join(root,variant+".json");await writeFile(descriptor,JSON.stringify({schema:1,directory,manifestSha256:createHash("sha256").update(bytes).digest("hex")}),{mode:0o600});
+   const result=loadSignedAdapter(descriptor,key,{owner:process.getuid?.()??0,boundary:root});
+   if(variant==="protected"||variant==='admission')assert.equal((await result).gameAdapters?.length,1);
+   else await assert.rejects(result,/protected|ports.*array|admission/i);
+  }
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test("signed media hooks require exclusive Core authority and durable admission/inspection",{skip:process.platform==="win32"},async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'signed-media-port-')),keys=generateKeyPairSync('ed25519'),key=path.join(root,'key.pub');
+ await writeFile(key,keys.publicKey.export({type:'spki',format:'pem'}),{mode:0o600});
+ try{
+  for(const variant of ['protected','workspace','other-product','not-array','no-reserve','no-cancel','no-inspector']){
+   const directory=path.join(root,variant);await mkdir(directory,{mode:0o700});
+   const port=`{id:'fixture',authority:'${variant==='workspace'?'workspace':'kidos-core'}',products:['${variant==='other-product'?'companion-mac':'kidos'}'],async probe(){},async process(){},${variant==='no-inspector'?'':'async reconcile(){},'}admission:{${variant==='no-reserve'?'':'async reserve(){},'}${variant==='no-cancel'?'':'async cancel(){},'}}}`;
+   const source=`module.exports.createAdapter=api=>{if(api.installedCoreGameMediaVersion!==1||!api.coreMediaSchemas||!api.gameMediaProcessRequest)throw Error('Missing media kit');return {product:'kidos',validate(){},async execute(){},prepareTool(r,d,a){return a},async invokeTool(){},gameAssetProcessors:${variant==='not-array'?'{}':`[${port}]`}}}`;
+   await writeFile(path.join(directory,'adapter.cjs'),source,{mode:0o600});
+   const bytes=Buffer.from(JSON.stringify({schema:1,product:'kidos',protocol:'1.0',entry:'adapter.cjs',files:{'adapter.cjs':createHash('sha256').update(source).digest('hex')}}));
+   await writeFile(path.join(directory,'manifest.json'),bytes,{mode:0o600});await writeFile(path.join(directory,'manifest.sig'),sign(null,bytes,keys.privateKey),{mode:0o600});
+   const descriptor=path.join(root,variant+'.json');await writeFile(descriptor,JSON.stringify({schema:1,directory,manifestSha256:createHash('sha256').update(bytes).digest('hex')}),{mode:0o600});
+   const result=loadSignedAdapter(descriptor,key,{owner:process.getuid?.()??0,boundary:root});
+   if(variant==='protected')assert.equal((await result).gameAssetProcessors?.length,1);
+   else await assert.rejects(result,/protected|ports.*array/i);
+  }
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('signed observation ports require exact KidOS authority, pre-queue admission and original inspection', {skip:process.platform==='win32'},async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'signed-observation-port-')),keys=generateKeyPairSync('ed25519'),key=path.join(root,'key.pub');
+ await writeFile(key,keys.publicKey.export({type:'spki',format:'pem'}),{mode:0o600});
+ try{
+  for(const variant of ['protected','protected-format','bad-format','workspace','other-product','not-array','no-probe','no-reserve','no-cancel','no-inspector','bad-dispose']){
+   const directory=path.join(root,variant);await mkdir(directory,{mode:0o700});
+   const port=`{${variant==='protected-format'?"testSuiteFormat:'browser-v1',":variant==='bad-format'?"testSuiteFormat:'unknown',":''}id:'fixture-observer',engines:['phaser'],categories:['runtime'],toolchain:{id:'fixture',version:'1',sha256:'${'a'.repeat(64)}'},authority:'${variant==='workspace'?'workspace':'kidos-core'}',products:['${variant==='other-product'?'companion-mac':'kidos'}'],${variant==='no-probe'?'':'async probe(){return {available:true}},'}async validate(){return []},${variant==='no-inspector'?'':'async reconcile(){return {state:"missing",detail:"Fixture closed"}},'}${variant==='bad-dispose'?'dispose:1,':''}admission:{${variant==='no-reserve'?'':'async reserve(){},'}${variant==='no-cancel'?'':'async cancel(){},'}}}`;
+   const source=`module.exports.createAdapter=api=>{if(api.installedCoreGameValidationVersion!==1)throw Error('Missing validation admission ABI');return {product:'kidos',validate(){},async execute(){},prepareTool(r,d,a){return a},async invokeTool(){},gameValidationCollectors:${variant==='not-array'?'{}':`[${port}]`}}}`;
+   await writeFile(path.join(directory,'adapter.cjs'),source,{mode:0o600});
+   const bytes=Buffer.from(JSON.stringify({schema:1,product:'kidos',protocol:'1.0',entry:'adapter.cjs',files:{'adapter.cjs':createHash('sha256').update(source).digest('hex')}}));
+   await writeFile(path.join(directory,'manifest.json'),bytes,{mode:0o600});await writeFile(path.join(directory,'manifest.sig'),sign(null,bytes,keys.privateKey),{mode:0o600});
+   const descriptor=path.join(root,variant+'.json');await writeFile(descriptor,JSON.stringify({schema:1,directory,manifestSha256:createHash('sha256').update(bytes).digest('hex')}),{mode:0o600});
+   const pending=loadSignedAdapter(descriptor,key,{owner:process.getuid?.()??0,boundary:root});
+   if(variant==='protected'||variant==='protected-format'){
+     const installed=await pending;assert.equal(installed.gameValidationCollectors?.length,1);
+     assert.equal(installed.gameValidationCollectors?.[0]?.testSuiteFormat,variant==='protected-format'?'browser-v1':undefined);
+     const dir=path.join(root,'state-'+variant);await mkdir(dir);const service=new AgentService(new Store(path.join(dir,'state.sqlite')),dir,undefined,{}, {adapter:installed});
+     try{
+       const kid:Registration={id:'fixture-child',product:'kidos',profile:'child',workspace:'',providers:['kidos-gateway'],hostTools:[]};
+       const caps=await service.dispatch(kid,'games.production.capabilities',{},'fixture') as {collectors:{id:string}[]};
+       assert.deepEqual(caps.collectors.map(row=>row.id),['fixture-observer']);
+       const mac={...kid,id:'mac',product:'companion-mac' as const,providers:['ollama' as const]};
+       assert.deepEqual((await service.dispatch(mac,'games.production.capabilities',{},'fixture') as {collectors:unknown[]}).collectors,[]);
+     }finally{await service.close();}
+   }else await assert.rejects(pending,/protected|ports.*array/i);
+  }
+ }finally{await rm(root,{recursive:true,force:true});}
+});

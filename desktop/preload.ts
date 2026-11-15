@@ -12,8 +12,10 @@ import type {
 } from "./contracts";
 
 const api = {
+  openGameStudio:():Promise<void>=>ipcRenderer.invoke("companion:game-studio-open"),
   snapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:snapshot"),
   chooseWorkspace: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:choose-workspace"),
+  setModelContextWindow:(alias:string,tokens:number|null):Promise<DesktopSnapshot>=>ipcRenderer.invoke("companion:set-model-context-window",alias,tokens),
   setModel: (model: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-model", model),
   setMode: (mode: DesktopRunMode): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-mode", mode),
   setAgentRuntime: (runtime: DesktopAgentRuntime): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-agent-runtime", runtime),

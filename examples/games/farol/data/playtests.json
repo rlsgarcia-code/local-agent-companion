@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "viewport": {
+    "width": 960,
+    "height": 640
+  },
+  "scenarios": [
+    {
+      "id": "first-island-keyboard",
+      "steps": [
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "title"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 500
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "title",
+          "comparison": "changed",
+          "threshold": 0.003
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "board"
+        },
+        {
+          "action": "press",
+          "key": "Space"
+        },
+        {
+          "action": "wait",
+          "ms": 500
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "board",
+          "comparison": "changed",
+          "threshold": 0.01
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "lit"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "lit",
+          "comparison": "changed",
+          "threshold": 0.01
+        }
+      ]
+    },
+    {
+      "id": "pause-hint-undo",
+      "steps": [
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "title"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 500
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "title",
+          "comparison": "changed",
+          "threshold": 0.003
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "paused"
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "paused",
+          "comparison": "changed",
+          "threshold": 0.01
+        },
+        {
+          "action": "press",
+          "key": "H"
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "hint"
+        },
+        {
+          "action": "press",
+          "key": "R"
+        },
+        {
+          "action": "press",
+          "key": "Z"
+        }
+      ]
+    },
+    {
+      "id": "portrait-tap",
+      "steps": [
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "resize",
+          "width": 390,
+          "height": 844
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "tap",
+          "x": 0.5,
+          "y": 0.64
+        },
+        {
+          "action": "wait",
+          "ms": 400
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "portrait-board"
+        },
+        {
+          "action": "tap",
+          "x": 0.575,
+          "y": 0.56
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "portrait-board",
+          "comparison": "changed",
+          "threshold": 0.005
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "portrait-after-tap"
+        }
+      ]
+    },
+    {
+      "id": "reload-progress",
+      "steps": [
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "title"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 500
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "title",
+          "comparison": "changed",
+          "threshold": 0.003
+        },
+        {
+          "action": "press",
+          "key": "Space"
+        },
+        {
+          "action": "wait",
+          "ms": 1000
+        },
+        {
+          "action": "reload"
+        },
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 500
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "restored-second-island"
+        }
+      ]
+    }
+  ]
+}

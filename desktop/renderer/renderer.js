@@ -32,7 +32,7 @@ const el = Object.fromEntries([
   "context-address", "context-include", "context-browser-host", "context-empty",
   "privacy-title", "privacy-copy",
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "theme-control",
-  "active-model-roles", "active-model-status",
+  "active-model-roles", "active-model-status", "model-context-form", "model-context-alias", "model-context-tokens", "model-context-save", "model-context-status",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
   "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
@@ -42,6 +42,7 @@ const el = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 initialize().catch(showError);
+document.getElementById("open-game-studio").addEventListener("click",async(event)=>{const button=event.currentTarget;button.disabled=true;try{await window.companion.openGameStudio();}catch(error){showError(error);}finally{button.disabled=false;}});
 
 async function initialize() {
   applyUiPreferences();
@@ -533,6 +534,7 @@ function renderInspector() {
   }) : [paragraph(commandCount ? "O resumo foi preservado, mas esta execução antiga não possui detalhes dos comandos." : "Nenhum comando foi executado.", "surface-empty")]));
 }
 
+let contextWindowEditing=false,contextWindowSaving=false;
 function renderRecommendation() {
   const snapshot = appState.snapshot;
   const plan = snapshot.lastRecommendation;
@@ -546,6 +548,16 @@ function renderRecommendation() {
     row.append(label, value);
     return row;
   }));
+  if(!contextWindowEditing&&!contextWindowSaving){
+    const alias=el["model-context-alias"].value||snapshot.modelRoles?.executor||"";
+    const aliases=[...new Set([...(snapshot.ollama.models||[]).map(m=>m.name),...Object.values(snapshot.modelRoles||{}),...Object.keys(snapshot.modelContextWindows||{})].filter(Boolean))];
+    el["model-context-alias"].replaceChildren(...aliases.map(name=>{const option=document.createElement("option");option.value=name;option.textContent=name;return option;}));
+    el["model-context-alias"].value=aliases.includes(alias)?alias:aliases[0]||"";
+    el["model-context-tokens"].value=snapshot.modelContextWindows?.[el["model-context-alias"].value]??"";
+  }
+  const contextAvailable=snapshot.modelContextWindows!==undefined&&Boolean(el["model-context-alias"].value);
+  for(const id of ["model-context-save","model-context-alias","model-context-tokens"])el[id].disabled=contextWindowSaving||!contextAvailable;
+  if(!contextAvailable)el["model-context-status"].textContent="Esta configuração exige motor compatível e um modelo selecionado.";
   el["active-model-status"].textContent = snapshot.modelRoleNotices?.length
     ? snapshot.modelRoleNotices.join(" ")
     : "Somente modelos instalados entram na configuração ativa.";
@@ -894,6 +906,12 @@ el["thread-search"].addEventListener("input", () => { appState.threadQuery = el[
 el["sidebar-collapse"].addEventListener("click", () => setSidebarCollapsed(true));
 el["sidebar-reveal"].addEventListener("click", () => setSidebarCollapsed(false));
 el["workspace-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.chooseWorkspace(); render(); });
+el["model-context-tokens"].addEventListener("input",()=>{contextWindowEditing=true;el["model-context-status"].textContent="";});
+el["model-context-alias"].addEventListener("change",()=>{contextWindowEditing=true;el["model-context-tokens"].value=appState.snapshot.modelContextWindows?.[el["model-context-alias"].value]??"";el["model-context-status"].textContent="";});
+el["model-context-form"].addEventListener("submit",async event=>{
+ event.preventDefault();if(contextWindowSaving)return;const alias=el["model-context-alias"].value,text=el["model-context-tokens"].value;contextWindowSaving=true;for(const id of ["model-context-save","model-context-alias","model-context-tokens"])el[id].disabled=true;
+ try{appState.snapshot=await window.companion.setModelContextWindow(alias,text===""?null:Number(text));if(el["model-context-alias"].value===alias)contextWindowEditing=false;el["model-context-status"].textContent="Janela salva para as próximas execuções. A execução atual conserva sua configuração.";}catch(error){el["model-context-status"].textContent=String(error.message||error);}finally{contextWindowSaving=false;render();}
+});
 el["refresh-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.refreshOllama(); render(); });
 el["context-button"].addEventListener("click", () => {
   if (appState.inspectorOpen) {

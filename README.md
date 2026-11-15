@@ -1,29 +1,35 @@
 # Local Agent Companion
 
-> **Motor 1.0.2 + clientes Mac/VS Code 0.12.4 instalados e validados**, com Ollama local.
-> A entrega aguarda revisão para merge e publicação no
-> [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15).
-> KidOS permanece em espera e não condiciona esta entrega.
->
-> A [matriz assinada](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/42606762627)
-> passou nas cinco plataformas. Motor independente, aplicativo Mac e extensão
-> instalados compartilham o mesmo artefato, com Node 22.23.4 empacotado.
-> Passaram 325 testes da aplicação, 27 verificações, inferência real Ollama e
-> recuperação após desconexão do cliente e reinício do serviço.
->
-> As duas interfaces foram exercitadas em Standard e Deep. O VS Code manteve
-> um único indicador durante 40 segundos de inferência; a resposta apareceu
-> uma vez após fechar e reabrir o editor. O Mac também recuperou os resultados.
-> O rollback conjunto 0.12.4/1.0.2 → 0.12.3/1.0.1 → 0.12.4/1.0.2 preservou
-> os históricos e exibiu as respostas novas nas interfaces anteriores.
-> O [relatório de aceite](docs/desktop-final-acceptance.json) distingue as provas
-> visuais da conferência dos arquivos e dados após a última reativação.
->
-> LangChain/DeepAgents e o saver SQLite oficial controlam execução/checkpoints.
-> O serviço mantém planejamento, evidências, memória, objetivos, recomendações e
-> diagnósticos; interfaces mantêm apresentação, contexto e ferramentas autorizadas.
-> Recursos dependentes do editor aguardam sua reconexão. Provedores e históricos
-> continuam separados por produto, e as versões anteriores permanecem para rollback.
+O módulo compartilhado de [Game Design](docs/GAME_DESIGN.md) fica no mesmo
+repositório, em `packages/game-design`. A extração está no código-fonte; ativação
+nas interfaces e adaptadores Unity/Godot ainda não foram distribuídos.
+O [plano Game Design 1.0](docs/GAME_DESIGN_IMPLEMENTATION_PLAN.md) especifica a
+produção completa, os quatro adaptadores e o aceite de qualidade pretendido.
+O desenvolvimento atual de [projetos e produção](docs/GAME_PRODUCTION_API.md)
+inclui jobs recuperáveis, compiladores web offline e o
+[caminho Godot isolado](docs/GAME_GODOT_ADAPTER.md) em desenvolvimento; o
+[acompanhamento](docs/GAME_DESIGN_IMPLEMENTATION_STATUS.md) registra o que ainda
+falta antes da entrega integral.
+
+O [Game Studio](docs/GAME_STUDIO_UI.md) acrescenta superfícies de projeto Mac/VS Code
+em desenvolvimento, usando o SDK para design, mídia, builds, testes, revisões e
+exportações. Os ensaios de renderer, Electron e VS Code real em perfil temporário
+não substituem o aceite das instalações distribuídas.
+
+A [arquitetura da suíte](docs/SUITE_ARCHITECTURE.md) é a referência canônica para
+motor, contratos, SDKs, adaptadores e interfaces. Agentes devem começar pelo
+[guia de desenvolvimento](AGENTS.md).
+
+Referência versionada: motor **1.0.2**, clientes Mac/VSIX **0.12.4**, Node
+**22.23.4**, protocolo **1.0**. O [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15)
+foi integrado e registra a publicação final aprovada em 2026-11-09. O
+[relatório de aceite](docs/desktop-final-acceptance.json) e o
+[relato anterior](docs/history/COMPANION_ACCEPTANCE_1_0_2.md) são fotografias datadas;
+a indicação de revisão pendente nesses registros antecede a publicação.
+
+KidOS/Navi consome o motor em seu repositório separado. Sua integração foi
+retomada e sua revisão/distribuição são independentes desta release Companion.
+Não presumir estado instalado a partir de alterações no checkout.
 
 O kit é montado por `scripts/assemble-desktop-delivery.mjs` a partir de um
 índice assinado e dos artefatos exatos. `node verify-delivery.mjs` verifica sua
@@ -49,7 +55,7 @@ Os SDKs transferem anexos em partes e enviam apenas referências de credenciais.
 O diagnóstico de tools publica o schema, sem executar chamadas devolvidas pelo
 modelo. O KidOS não pode usar essa rota para contornar seu gateway protegido.
 
-Candidate recovery behavior: cancellation remains `cancelling` until execution
+Service recovery behavior: cancellation remains `cancelling` until execution
 settles; disconnected UI tools wait, while unknown dispatched effects require
 explicit reconciliation. Provider call IDs are bound to persisted graph
 invocations and exact arguments. Missing checkpoints with recorded effects never
@@ -89,13 +95,13 @@ payloads are also redacted.
 
 [![CI](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/rlsgarcia-code/local-agent-companion/actions/workflows/ci.yml)
 
-Uma extensão de Visual Studio Code com dois runtimes de agente construídos exclusivamente sobre primitivas do **LangChain**, executados localmente. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
+Uma suíte com motor local independente e interfaces macOS/VS Code. Os dois modos de agente, construídos sobre primitivas do **LangChain**, executam no serviço comum, e a extensão é um cliente desse serviço. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
 
 ### Objetivos persistentes
 
 Use o botão **Goal** no compositor para transformar uma solicitação em um objetivo de longo prazo. O objetivo fica ligado à sessão do produto no serviço. O arquivo `.local-agent/goals/<goal-id>.json` permanece como projeção local legível e fonte de importação legada, com backup antes da migração. O registro mantém critérios, marcos, evidências, próximo passo e um histórico resumido. Depois de ativar o rascunho, objetivos ativos com retomada automática podem continuar após reiniciar o VS Code; cada iteração usa o runtime e o modo de autonomia salvos e passa por uma avaliação estruturada antes de marcar critérios como concluídos. Sem evidência suficiente, o objetivo continua; após duas iterações sem progresso ou 20 iterações, ele é pausado com diagnóstico.
 
-O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), checkpoints (saver SQLite oficial no serviço), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As únicas chamadas externas feitas pela extensão são:
+O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), checkpoints (saver SQLite oficial no serviço), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As rotas externas permitidas para o produto VS Code, realizadas pelo serviço ou pelos adaptadores autorizados conforme a operação, são:
 
 ```text
 POST <LITELLM_BASE_URL>/chat/completions
@@ -257,15 +263,34 @@ O desktop é uma superfície Ollama dedicada. Ele não expõe LiteLLM, OpenAI, M
 
 ## Gerar e instalar a partir do repositório
 
-Requer Node.js 22 ou superior. Este fluxo apenas instala as dependências locais, constrói a extensão e gera o VSIX da plataforma atual; ele não lê a configuração do VS Code, não exige que o LiteLLM já esteja configurado e não faz chamada de validação ao gateway:
+Para apenas instalar a extensão, use o VSIX pronto da seção [Instalação para usuários](#instalação-para-usuários). Ele já inclui o motor assinado da plataforma; não é necessário executar `npm run package`.
+
+Para gerar um VSIX a partir do código-fonte, é necessário Node.js 22 ou superior **e o bundle assinado do motor para a plataforma atual**, compatível com a revisão do cliente. Baixe o `companion-engine-<versão-do-motor>-<plataforma>.tar.gz` da release correspondente e extraia-o. A pasta `engine-dist` extraída deve conter `manifest.json`, `manifest.sig`, o Node empacotado e os arquivos do serviço. A versão do motor é independente da versão da extensão.
+
+Prepare o repositório:
 
 ```bash
 git clone https://github.com/rlsgarcia-code/local-agent-companion.git
 cd local-agent-companion
 npm ci --ignore-scripts
-npm run package
-code --install-extension ./local-agent-companion-<versao>-<plataforma>.vsix --force
 ```
+
+Antes de empacotar, informe o caminho absoluto da pasta **extraída**, e não do arquivo `.tar.gz`. No PowerShell do Windows:
+
+```powershell
+$env:COMPANION_ENGINE_BUNDLE = 'C:\caminho\do\motor\engine-dist'
+npm run package
+```
+
+Em macOS/Linux:
+
+```bash
+COMPANION_ENGINE_BUNDLE=/caminho/do/motor/engine-dist npm run package
+```
+
+Depois instale o VSIX gerado com **Install from VSIX…** no VS Code ou com `code --install-extension <caminho-do-vsix> --force`. O empacotamento verifica assinatura, arquivos, versão, protocolo e plataforma do motor. Não use um bundle de outra plataforma nem desabilite essa verificação. `npm run engine:build` sozinho produz um artefato de desenvolvimento e não substitui o bundle assinado de distribuição.
+
+O processo não lê a configuração do VS Code, não exige que o LiteLLM já esteja configurado e não faz chamada de validação ao gateway. Se aparecer `Set COMPANION_ENGINE_BUNDLE to the exact signed native engine before packaging this client`, a variável não foi definida no terminal usado para empacotar; defina-a conforme acima ou instale o VSIX pronto.
 
 `npm run package` detecta sistema e arquitetura, grava o `TargetPlatform` no manifesto e gera um nome explícito como `local-agent-companion-<versao>-win32-x64.vsix`. Substitua `<versao>` pelo número da release que você gerou ou baixou. Use `--force` durante o piloto quando estiver substituindo outro build com o mesmo número de versão; depois execute **Developer: Reload Window** para carregar a cópia instalada. O VSIX contém o binário local do ChromaDB para a plataforma em que foi gerado. Gere o pacote no mesmo sistema/arquitetura em que ele será instalado (macOS arm64/x64, Linux arm64/x64 ou Windows x64). Hosts não suportados são recusados em vez de gerar um pacote incorretamente identificado como universal. Não é necessário Docker nem instalar um servidor Chroma separadamente. Os binários necessários são fornecidos por pacotes npm específicos da plataforma e o projeto desabilita scripts de lifecycle durante a instalação de dependências.
 
@@ -274,6 +299,8 @@ code --install-extension ./local-agent-companion-<versao>-<plataforma>.vsix --fo
 ### Variantes opcionais de provedor
 
 O equivalente aos extras de um pacote Python é um VSIX alternativo, instalado deliberadamente. Não há download de plugin nem instalação de dependência durante a execução:
+
+As três variantes abaixo exigem o mesmo `COMPANION_ENGINE_BUNDLE` assinado, configurado no terminal conforme a seção anterior.
 
 ```bash
 # padrão: somente LiteLLM
@@ -443,7 +470,7 @@ Clique em **Memory** para abrir a central local de conhecimento do projeto. Ela 
 
 Se for informada uma URL base, a extensão acrescenta `/chat/completions`. Se a rota completa já for informada, ela será usada sem duplicação. Caminhos corporativos intermediários são aceitos; query parameters são recusados para evitar que segredos sejam gravados em settings. Gateways que exigem o alias no caminho também são suportados: informe a rota completa de chat (`…/<chat-alias>/chat/completions`) ou use o marcador literal `…/{model}/chat/completions`; para embeddings, a extensão substitui esse segmento pelo alias escolhido e chama `…/<embedding-alias>/embeddings`.
 
-Também é possível trocar o runtime e a autonomia diretamente nos dois seletores do compositor. **Ask first** pede confirmação antes de cada edição, atualização de memória ou comando; **Auto edits** aplica edições de arquivo e memória automaticamente, mas continua pedindo confirmação para comandos e exclusões; **Plan only** disponibiliza somente leitura e planejamento. A escolha de autonomia vale para o workspace atual. Clique no nome do provedor no rodapé para alterar conexão, modelo ou chave. No LiteLLM, informe **Models URL** e clique em **Load** para preencher os aliases; essa consulta usa `GET`, `Cache-Control: no-cache` e `api-key: <chave>`. Ollama e OpenAI usam o nome de modelo informado explicitamente. As opções de reasoning, temperatura, Top P e perfil de compatibilidade ficam recolhidas em **Advanced model settings** e são lembradas separadamente para cada alias exato. Se uma chave aplicável ficar vazia, o valor já armazenado no Secret Storage é preservado. **Corporate CA…** aparece somente para LiteLLM.
+Também é possível trocar o runtime e a autonomia diretamente nos dois seletores do compositor. **Ask first** pede confirmação antes de cada edição, atualização de memória ou comando; **Auto edits** aplica edições de arquivo e memória automaticamente, mas continua pedindo confirmação para comandos e exclusões; **Plan only** disponibiliza somente leitura e planejamento. A escolha de autonomia vale para o workspace atual. Clique no nome do provedor no rodapé para alterar conexão, modelo ou chave. No LiteLLM, informe **Models URL** e clique em **Load** para preencher os aliases; essa consulta usa `GET`, `Cache-Control: no-cache` e `api-key: <chave>`. Ollama e OpenAI usam o nome de modelo informado explicitamente. Os recursos do modelo são declarados em oito checkboxes na etapa **Models** e ficam salvos por alias exato. A declaração explícita tem prioridade sobre o catálogo. API, reasoning, temperatura e Top P ficam em **Advanced model settings**; o nome do alias não bloqueia mais uma declaração manual. Leia [capacidades e diagnóstico de modelos](docs/MODEL_CAPABILITIES.md). Se uma chave aplicável ficar vazia, o valor já armazenado no Secret Storage é preservado. **Corporate CA…** aparece somente para LiteLLM.
 
 Na variante Ollama, **Recommend for this machine** substitui o antigo preset aplicado diretamente. A análise combina o snapshot incorporado, `/api/tags` e `/api/show`; somente incompatibilidades objetivas são filtradas no código, enquanto a escolha entre candidatos válidos pertence ao advisor local. O advisor produz separadamente uma composição ideal, sem favorecer modelos instalados salvo como desempate de qualidade, e uma composição instalada que é validada para exigir zero downloads. As duas permanecem editáveis e precisam ser aplicadas explicitamente. O catálogo em `catalogs/ollama-models.json`, que inclui opções DeepSeek para planejamento e avaliação, pode ser incluído por opt-in. A extensão consulta exclusivamente `https://raw.githubusercontent.com/rlsgarcia-code/local-agent-companion/main/catalogs/ollama-models.json`, somente quando o usuário clica em **Refresh public catalog now**, com `Cache-Control: no-cache`, limite de 512 KB e redirects bloqueados. Isso não é um update check e não se aplica aos VSIX LiteLLM ou OpenAI.
 
@@ -453,13 +480,15 @@ Ao informar o alias de chat, um resumo de compatibilidade aparece imediatamente 
 
 Use **Export profile** para salvar um JSON versionado com as configurações não sensíveis da conexão, modelos e workspace. Em outra máquina, **Import profile** valida o formato, apresenta gateway/modelo/runtime para confirmação e aplica somente os campos reconhecidos. A chave permanece separada no Secret Storage e a CA corporativa precisa ser importada localmente quando o perfil indicar essa dependência. Arquivos acima de 256 KB, versões desconhecidas, campos extras, URLs sem HTTPS e qualquer propriedade com aparência de credencial são recusados. Depois da importação, execute **Test connection** antes de usar o agente.
 
+Os testes registram início e resultado de cada etapa em `.local-agent/logs/agent.log`, com ID do teste, duração, classificação da falha e código HTTP quando identificado. **Open test log** abre esse arquivo. O log local inclui o alias escolhido, sem chave, certificado, corpo HTTP ou conteúdo da conversa; não é enviado automaticamente. Falta de permissão para gravá-lo não transforma uma conexão bem-sucedida em falha.
+
 Se precisar de ajuda para diagnosticar uma instalação, clique em **Export support**. O JSON contém versões do aplicativo, plataforma, contagens limitadas e somente o estado booleano das configurações e dos testes. Ele não contém conversas, prompts, conteúdo do workspace, caminhos, comandos, nomes de arquivo, endpoints, aliases de modelo, chave ou certificado. A exportação é totalmente local e só ocorre depois que você escolhe onde salvar. Mesmo assim, revise o arquivo antes de compartilhá-lo conforme a política da sua empresa.
 
 Quando a causa é reconhecida, o próprio resultado apresenta uma ação específica. Por exemplo, é possível aplicar `reasoning_effort: none`, omitir Temperature/Top P ou trocar o header da chave e repetir o teste automaticamente. Correções de URL, alias, chave ou CA apenas direcionam o usuário ao controle apropriado porque esses valores não devem ser adivinhados. Uma correção validada continua pendente até o usuário clicar em **Save connection**.
 
 Para ativar recuperação semântica, abra **LiteLLM**, informe **Models URL**, clique em **Load** e selecione um alias em **Embedding Model**. Uma única consulta alimenta os dois seletores. Para gateways cuja rota exige o modelo, informe em **Embeddings base URL** somente o prefixo (por exemplo `https://gateway/litellm/something`); a extensão chama automaticamente `/<embedding-alias>/embeddings` e envia o mesmo alias no corpo. Para Ollama, a extensão consulta também `/api/show` para ler a capacidade declarada `embedding`; o filtro por nomes como `embed`, `bge`, `e5`, `gte` e `minilm` fica apenas como fallback para versões que não retornam essa metadata. O ChromaDB empacotado é iniciado em `127.0.0.1`, os vetores ficam no armazenamento privado local do VS Code e somente entradas de `.local-agent/memory.md` são indexadas. O arquivo Markdown continua sendo a fonte de verdade legível e versionável. A mesma chave, cabeçalho e CA do gateway são reutilizados; nenhum dado é enviado ao Chroma Cloud.
 
-O catálogo LiteLLM é incorporado como snapshot versionado em `src/litellm-catalog.ts`, baseado no [catálogo de modelos](https://models.litellm.ai/) e no [arquivo canônico de preços e contexto](https://raw.githubusercontent.com/BerriAI/litellm/refs/heads/main/model_prices_and_context_window.json). Ele enriquece apenas aliases reconhecidos pelo gateway; aliases corporativos desconhecidos aparecem como metadata indisponível e não recebem inferências. Para atualizar o snapshot, basta executar `npm run catalog:update`; a data existente é preservada automaticamente. Use opcionalmente `npm run catalog:update -- --date=YYYY-MM-DD` e `LITELLM_MODELS=alias1,alias2` quando quiser controlar a seleção. A extensão não consulta o catálogo público durante o runtime.
+O catálogo LiteLLM é incorporado como snapshot versionado em `src/litellm-catalog.ts`, baseado no [catálogo de modelos](https://models.litellm.ai/) e no [arquivo canônico de preços e contexto](https://raw.githubusercontent.com/BerriAI/litellm/refs/heads/main/model_prices_and_context_window.json). Ele enriquece apenas aliases reconhecidos pelo gateway; aliases corporativos desconhecidos podem ser usados com a declaração manual de capacidades. O snapshot é uma sugestão inicial; não certifica nem invalida a declaração do gateway. Para atualizar o snapshot, basta executar `npm run catalog:update`; a data existente é preservada automaticamente. Use opcionalmente `npm run catalog:update -- --date=YYYY-MM-DD` e `LITELLM_MODELS=alias1,alias2` quando quiser controlar a seleção. A extensão não consulta o catálogo público durante o runtime.
 
 Nas variantes Ollama e OpenAI, informe o modelo de embeddings explicitamente no mesmo formulário. No Ollama, **List local models** consulta a API local `/api/tags` — o equivalente seguro ao `ollama list` — e preenche os modelos instalados sem usar shell ou rede externa. Ollama usa a rota OpenAI-compatible em loopback; OpenAI usa a base fixa oficial. Desativar **Embedding Model** mantém somente a memória textual local em qualquer variante.
 
@@ -665,6 +694,9 @@ No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. 
 O prefixo `localAgentCompanion` foi mantido para que configurações e segredos de instalações anteriores continuem válidos.
 
 ## Arquitetura
+
+Consulte a [referência canônica](docs/SUITE_ARCHITECTURE.md) para responsabilidades,
+caminhos ativos, compatibilidade legada e regras de evolução.
 
 ```text
 macOS Companion / VS Code / Navi

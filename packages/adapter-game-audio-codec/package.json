@@ -1,0 +1,6 @@
+{
+  "name": "@companion/adapter-game-audio-codec",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Exact minimally configured FFmpeg, typed WAV-to-AAC variants in a network-free owned container. No agent loop or generic child authority."
+}

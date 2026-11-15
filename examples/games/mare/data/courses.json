@@ -1,0 +1,769 @@
+{
+  "schemaVersion": 1,
+  "courses": [
+    {
+      "id": "um-so-ritmo",
+      "name": "Um só ritmo",
+      "chapter": "I · Juntos",
+      "start": [
+        120,
+        450
+      ],
+      "heading": 0.0,
+      "docks": [
+        [
+          430,
+          450
+        ],
+        [
+          790,
+          440
+        ],
+        [
+          840,
+          160
+        ]
+      ],
+      "wind": [
+        0,
+        0
+      ],
+      "currents": [],
+      "islands": [
+        {
+          "position": [
+            500,
+            80
+          ],
+          "radius": 40
+        },
+        {
+          "position": [
+            210,
+            260
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            70,
+            90
+          ],
+          "radius": 32
+        }
+      ],
+      "paper": [
+        275.0,
+        450.0
+      ],
+      "par": 22,
+      "hint": "Remem juntos para avançar. Soltem os remos perto do porto."
+    },
+    {
+      "id": "ponta-do-dia",
+      "name": "Ponta do dia",
+      "chapter": "I · Juntos",
+      "start": [
+        120,
+        450
+      ],
+      "heading": -0.9652516631899266,
+      "docks": [
+        [
+          300,
+          190
+        ],
+        [
+          650,
+          160
+        ],
+        [
+          840,
+          430
+        ]
+      ],
+      "wind": [
+        0,
+        0
+      ],
+      "currents": [],
+      "islands": [
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            70,
+            90
+          ],
+          "radius": 32
+        }
+      ],
+      "paper": [
+        210.0,
+        320.0
+      ],
+      "par": 23,
+      "hint": "Remem juntos para avançar. Soltem os remos perto do porto."
+    },
+    {
+      "id": "virar-juntos",
+      "name": "Virar juntos",
+      "chapter": "I · Juntos",
+      "start": [
+        130,
+        130
+      ],
+      "heading": 0.07982998571223732,
+      "docks": [
+        [
+          380,
+          150
+        ],
+        [
+          420,
+          440
+        ],
+        [
+          830,
+          460
+        ]
+      ],
+      "wind": [
+        0,
+        0
+      ],
+      "currents": [],
+      "islands": [
+        {
+          "position": [
+            100,
+            300
+          ],
+          "radius": 48
+        },
+        {
+          "position": [
+            720,
+            90
+          ],
+          "radius": 38
+        },
+        {
+          "position": [
+            75,
+            535
+          ],
+          "radius": 30
+        }
+      ],
+      "paper": [
+        255.0,
+        140.0
+      ],
+      "par": 22,
+      "hint": "Remem juntos para avançar. Soltem os remos perto do porto."
+    },
+    {
+      "id": "tres-cais",
+      "name": "Três cais",
+      "chapter": "I · Juntos",
+      "start": [
+        130,
+        460
+      ],
+      "heading": -1.169567527790048,
+      "docks": [
+        [
+          270,
+          130
+        ],
+        [
+          620,
+          230
+        ],
+        [
+          830,
+          430
+        ]
+      ],
+      "wind": [
+        0,
+        0
+      ],
+      "currents": [],
+      "islands": [
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            720,
+            90
+          ],
+          "radius": 38
+        },
+        {
+          "position": [
+            70,
+            90
+          ],
+          "radius": 32
+        }
+      ],
+      "paper": [
+        200.0,
+        295.0
+      ],
+      "par": 23,
+      "hint": "Remem juntos para avançar. Soltem os remos perto do porto."
+    },
+    {
+      "id": "mar-de-vidro",
+      "name": "Mar de vidro",
+      "chapter": "II · Correntes",
+      "start": [
+        120,
+        450
+      ],
+      "heading": 0.0302937599187751,
+      "docks": [
+        [
+          450,
+          460
+        ],
+        [
+          750,
+          370
+        ],
+        [
+          830,
+          140
+        ]
+      ],
+      "wind": [
+        5,
+        0
+      ],
+      "currents": [
+        {
+          "position": [
+            600.0,
+            415.0
+          ],
+          "radius": 110,
+          "force": [
+            23,
+            0
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            500,
+            80
+          ],
+          "radius": 40
+        },
+        {
+          "position": [
+            210,
+            260
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            70,
+            90
+          ],
+          "radius": 32
+        }
+      ],
+      "paper": [
+        285.0,
+        455.0
+      ],
+      "par": 22,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    },
+    {
+      "id": "faixa-azul",
+      "name": "A faixa azul",
+      "chapter": "II · Correntes",
+      "start": [
+        140,
+        130
+      ],
+      "heading": 0.7631795980707292,
+      "docks": [
+        [
+          370,
+          350
+        ],
+        [
+          650,
+          160
+        ],
+        [
+          830,
+          450
+        ]
+      ],
+      "wind": [
+        0,
+        5
+      ],
+      "currents": [
+        {
+          "position": [
+            510.0,
+            255.0
+          ],
+          "radius": 110,
+          "force": [
+            0,
+            23
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            100,
+            300
+          ],
+          "radius": 48
+        },
+        {
+          "position": [
+            500,
+            80
+          ],
+          "radius": 40
+        },
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            75,
+            535
+          ],
+          "radius": 30
+        }
+      ],
+      "paper": [
+        255.0,
+        240.0
+      ],
+      "par": 23,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    },
+    {
+      "id": "abrigo",
+      "name": "O abrigo",
+      "chapter": "II · Correntes",
+      "start": [
+        130,
+        450
+      ],
+      "heading": -0.7496990507181244,
+      "docks": [
+        [
+          420,
+          180
+        ],
+        [
+          730,
+          450
+        ],
+        [
+          840,
+          180
+        ]
+      ],
+      "wind": [
+        -5,
+        0
+      ],
+      "currents": [
+        {
+          "position": [
+            575.0,
+            315.0
+          ],
+          "radius": 110,
+          "force": [
+            23,
+            0
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            70,
+            90
+          ],
+          "radius": 32
+        }
+      ],
+      "paper": [
+        275.0,
+        315.0
+      ],
+      "par": 24,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    },
+    {
+      "id": "entre-ilhas",
+      "name": "Entre as ilhas",
+      "chapter": "II · Correntes",
+      "start": [
+        140,
+        130
+      ],
+      "heading": 0.8760580505981934,
+      "docks": [
+        [
+          390,
+          430
+        ],
+        [
+          680,
+          190
+        ],
+        [
+          840,
+          450
+        ]
+      ],
+      "wind": [
+        4,
+        -4
+      ],
+      "currents": [
+        {
+          "position": [
+            535.0,
+            310.0
+          ],
+          "radius": 110,
+          "force": [
+            0,
+            23
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            500,
+            80
+          ],
+          "radius": 40
+        },
+        {
+          "position": [
+            75,
+            535
+          ],
+          "radius": 30
+        }
+      ],
+      "paper": [
+        265.0,
+        280.0
+      ],
+      "par": 23,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    },
+    {
+      "id": "vento-leste",
+      "name": "Vento de leste",
+      "chapter": "III · Travessia",
+      "start": [
+        140,
+        450
+      ],
+      "heading": -0.8593372010553887,
+      "docks": [
+        [
+          390,
+          160
+        ],
+        [
+          680,
+          430
+        ],
+        [
+          840,
+          150
+        ]
+      ],
+      "wind": [
+        12,
+        0
+      ],
+      "currents": [
+        {
+          "position": [
+            535.0,
+            295.0
+          ],
+          "radius": 110,
+          "force": [
+            -35,
+            0
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            70,
+            90
+          ],
+          "radius": 32
+        }
+      ],
+      "paper": [
+        265.0,
+        305.0
+      ],
+      "par": 24,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    },
+    {
+      "id": "carta-longa",
+      "name": "Uma carta longa",
+      "chapter": "III · Travessia",
+      "start": [
+        130,
+        160
+      ],
+      "heading": 0.9048270894157867,
+      "docks": [
+        [
+          350,
+          440
+        ],
+        [
+          640,
+          170
+        ],
+        [
+          830,
+          440
+        ]
+      ],
+      "wind": [
+        -10,
+        5
+      ],
+      "currents": [
+        {
+          "position": [
+            495.0,
+            305.0
+          ],
+          "radius": 110,
+          "force": [
+            0,
+            -35
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            500,
+            80
+          ],
+          "radius": 40
+        },
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            75,
+            535
+          ],
+          "radius": 30
+        }
+      ],
+      "paper": [
+        240.0,
+        300.0
+      ],
+      "par": 24,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    },
+    {
+      "id": "volta-do-farol",
+      "name": "A volta do farol",
+      "chapter": "III · Travessia",
+      "start": [
+        120,
+        450
+      ],
+      "heading": -0.9324765187858508,
+      "docks": [
+        [
+          350,
+          140
+        ],
+        [
+          650,
+          440
+        ],
+        [
+          840,
+          160
+        ]
+      ],
+      "wind": [
+        7,
+        -10
+      ],
+      "currents": [
+        {
+          "position": [
+            500.0,
+            290.0
+          ],
+          "radius": 110,
+          "force": [
+            -35,
+            0
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            500,
+            80
+          ],
+          "radius": 40
+        },
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            70,
+            90
+          ],
+          "radius": 32
+        }
+      ],
+      "paper": [
+        235.0,
+        295.0
+      ],
+      "par": 24,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    },
+    {
+      "id": "casa-de-mare",
+      "name": "Casa de maré",
+      "chapter": "III · Travessia",
+      "start": [
+        130,
+        160
+      ],
+      "heading": 0.8831250707561671,
+      "docks": [
+        [
+          360,
+          440
+        ],
+        [
+          640,
+          140
+        ],
+        [
+          840,
+          440
+        ]
+      ],
+      "wind": [
+        -9,
+        -7
+      ],
+      "currents": [
+        {
+          "position": [
+            500.0,
+            290.0
+          ],
+          "radius": 110,
+          "force": [
+            0,
+            -35
+          ]
+        }
+      ],
+      "islands": [
+        {
+          "position": [
+            510,
+            530
+          ],
+          "radius": 42
+        },
+        {
+          "position": [
+            75,
+            535
+          ],
+          "radius": 30
+        }
+      ],
+      "paper": [
+        245.0,
+        300.0
+      ],
+      "par": 24,
+      "hint": "A água também se move. Compensem a corrente e encostem devagar."
+    }
+  ]
+}

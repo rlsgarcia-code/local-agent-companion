@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "version": "4.5.15",
+  "architecture": "x64",
+  "platform": "linux/amd64",
+  "baseImage": "quay.io/pypa/manylinux_2_28_x86_64@sha256:53390351aeb4688114b02c36a23b3e6ce1166ee9b7afc5df1a4f776354fc764c",
+  "archive": {
+    "file": "blender-4.5.15-linux-x64.tar.xz",
+    "root": "blender-4.5.15-linux-x64",
+    "url": "https://download.blender.org/release/Blender4.5/blender-4.5.15-linux-x64.tar.xz",
+    "size": 378036492,
+    "sha256": "0d2b8bb2efe97e6c8eb57de6b7322f8800e1984e3125b60decca5f6771e4773e"
+  },
+  "checksums": "https://download.blender.org/release/Blender4.5/blender-4.5.15.sha256",
+  "dependencies": [
+    {
+      "file": "libXi-1.7.10-4.el8_10.x86_64.rpm",
+      "url": "https://repo.almalinux.org/almalinux/8.10/AppStream/x86_64/os/Packages/libXi-1.7.10-4.el8_10.x86_64.rpm",
+      "size": 49632,
+      "sha256": "a4635dbe4fc3367f6f24ced6e8acd764a1c331e58ef52d7df9bea794e7e081f4"
+    }
+  ]
+}

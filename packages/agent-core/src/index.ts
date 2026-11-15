@@ -31,8 +31,13 @@ import { graphOperationId } from "./operations";
 import { evaluateGoalEvidence, type GoalEvidence } from "./goal-evaluation";
 import type { GoalRecord, GoalEvaluation } from "../../contracts/src/goal-state";
 import { contentHash } from "../../contracts/src/identity";
+import { gameProductionProfile, type GameAgentPort } from "./game-production-profile";
+import { InferenceBudgetCallback, type InferenceBudgetPort } from "./inference-budget";
+import { ModelFailureCallback } from "./model-failure";
 
 export type ExecutionContext = {
+  /** Private service-owner snapshot; not accepted in RunSpec. */
+  contextWorkingBudget?:import('../../contracts/src/model-context').ContextWorkingBudget;
   registration: Registration;
   threadId: string;
   checkpointer: BaseCheckpointSaver;
@@ -47,7 +52,7 @@ export type ExecutionContext = {
   ) => Promise<unknown>;
   /** Test/model adapters are injected by the process owner, never by RPC. */
   model?: BaseChatModel;
-  models?: Partial<Record<"executor" | "planner" | "evaluator", BaseChatModel>>;
+  models?: Partial<Record<"executor" | "planner" | "evaluator" | "vision", BaseChatModel>>;
   subagents?: { name: string; description: string; systemPrompt: string; model: BaseChatModel; tools: string[] }[];
   goal?: GoalRecord;
   evidence?: () => GoalEvidence[];
@@ -56,6 +61,10 @@ export type ExecutionContext = {
   memo?: { get: (key: string) => unknown; put: (key: string, value: unknown) => void };
   requireCheckpoint?: boolean;
   reconciliations?: Record<string, unknown>;
+  gameProduction?: GameAgentPort;
+  inferenceBudget?: InferenceBudgetPort;
+  /** Service-bound game selection captured for this run, never a RunSpec field. */
+  inferenceProjectId?: string;
   resolveAttachment?: (id: string) => Promise<{ mime: string; data: string }>;
 };
 
@@ -90,8 +99,16 @@ export async function executeGraph(
     throw new AgentError(errors.forbidden, "Only the registered editor product may use the workspace profile.");
   const providers = new ProviderModels(spec.provider, context.credential, context.signal);
   const usage = new TokenUsageHandler();
+  const modelFailures = new ModelFailureCallback();
+  const callbacks = [usage, modelFailures, ...(context.inferenceBudget ? [new InferenceBudgetCallback(context.inferenceBudget)] : [])];
   try {
   const hasImages = spec.messages.some((message) => Array.isArray(message.content) && message.content.some((block) => block.type === "image"));
+  if (hasImages) {
+    const alias = spec.provider.roles.vision || spec.provider.roles.executor;
+    const profile = spec.provider.modelProfiles?.[alias] ?? (alias === spec.provider.roles.executor ? spec.provider.profile : undefined);
+    if (profile?.capabilities && !profile.capabilities.vision)
+      throw new AgentError(errors.invalid, "Vision is not declared for the selected model alias.");
+  }
   const modelForRole = (role: "executor" | "planner" | "evaluator"): BaseChatModel => {
     const supplied = context.models?.[role] ?? (role === "executor" ? context.model : undefined);
     if (supplied) return supplied;
@@ -105,7 +122,7 @@ export async function executeGraph(
     const planned = await modelForRole("planner").invoke([
       new SystemMessage("Produce concise planning guidance for the executor: at most eight concrete actions. Do not claim to execute tools or finish the task. Do not provide private reasoning."),
       new HumanMessage(JSON.stringify({ request: spec.messages.filter((message) => message.role === "user").at(-1)?.content, mode: spec.mode })),
-    ], { signal: context.signal, callbacks: [usage] });
+    ], { signal: context.signal, callbacks });
     guidance = planned.text.slice(0, 8000);
     context.memo?.put("planner", guidance);
     }
@@ -178,6 +195,19 @@ export async function executeGraph(
       },
     );
   });
+  const gameProfile = context.registration.product !== "kidos" ? gameProductionProfile(context.gameProduction, {
+    mode: spec.mode, signal: context.signal, modelForRole,
+    imageModel:()=>{
+      const alias=spec.provider.roles.vision;if(!alias)throw new AgentError(errors.unavailable,"Configure the vision model role; image review never switches providers or chooses an alternate alias.");
+      const profile=spec.provider.modelProfiles?.[alias]??(alias===spec.provider.roles.executor?spec.provider.profile:undefined);
+      if(profile?.capabilities&&!profile.capabilities.vision)throw new AgentError(errors.invalid,"Vision is not declared for the configured vision alias.");
+      return {model:context.models?.vision??providers.model("vision",false,{requiresTools:false}),alias};
+    },
+    readTools: tools.filter((entry) => spec.tools.find((definition) => definition.name === entry.name)?.effect === "read"),
+    onToolRejected: value => context.emit("workspace.activity", { type: "activity", kind: "verification", title: `Argumentos rejeitados · ${value.tool}`,
+      detail: value.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("\n") }),
+  }) : undefined;
+  if (gameProfile) systemPrompt += `\n\n${gameProfile.systemPrompt}`;
   const messages = await Promise.all(spec.messages.map(async (message) => {
     const content = typeof message.content === "string" ? message.content : await Promise.all(message.content.map(async (block) => {
       if (block.type === "text") return block;
@@ -196,24 +226,27 @@ export async function executeGraph(
     }
     break;
   }
-  const completion = spec.workspace ? workspaceCompletion(spec, context, hasImages ? model : modelForRole("evaluator"), usage, currentImages) : undefined;
+  const completion = spec.workspace ? workspaceCompletion(spec, context, hasImages ? model : modelForRole("evaluator"), usage, currentImages, callbacks) : undefined;
   const initialFiles = spec.files ? Object.fromEntries(Object.entries(spec.files).map(([name, file]) =>
     [name, { ...file, content: Array.isArray(file.content) ? file.content.join("\n") : file.content }])) : undefined;
   // Both products use the official graph/tool execution and checkpoint machinery.
   // StateBackend contains virtual files only; it never grants OS filesystem or shell access.
   const bridge = workspaceBackend(spec, context);
+  if(bridge)systemPrompt+=`\n\n${bridge.guide}`;
   const state = await executePreparedGraph({
     runtime: spec.runtime,
-    graph: { model, tools, systemPrompt, checkpointer: context.checkpointer, middleware: [...(completion?.middleware ?? []), ...(bridge ? [bridge.middleware] : [])],
+    graph: { model, tools: [...tools, ...(gameProfile?.tools ?? [])], systemPrompt, checkpointer: context.checkpointer, contextWorkingBudget:context.contextWorkingBudget, middleware: [...(completion?.middleware ?? []), ...(bridge ? [bridge.middleware] : []), ...(gameProfile?.middleware ?? [])],
       ...(spec.runtime === "deep" ? { backend: bridge?.backend ?? new StateBackend(),
         ...(bridge ? { permissions: spec.mode === "plan" ? [{operations:["write" as const],paths:["/workspace/**"],mode:"deny" as const}] : [],
           subagents: [{name:"general-purpose",description:"Delegate a bounded part of the current workspace task.",systemPrompt,model,tools,middleware:[bridge.middleware]}] } : {}),
-        ...(context.subagents ? { subagents: context.subagents.map((agent) => ({ ...agent, tools: agent.tools.map((name) => {
+        ...(context.subagents || gameProfile ? { subagents: [
+          ...(bridge ? [{name:"general-purpose",description:"Delegate a bounded part of the current workspace task.",systemPrompt,model,tools,middleware:[bridge.middleware]}] : []),
+          ...(context.subagents ?? []).map((agent) => ({ ...agent, tools: agent.tools.map((name) => {
           const selected = tools.find((entry) => entry.name === name);
           if (!selected) throw new AgentError(errors.forbidden, "Subagent requested an unregistered tool.");
           return selected;
-        }) })) } : {}) } : {}) },
-    threadId: context.threadId, signal: context.signal, recursionLimit: spec.recursionLimit, callbacks: [usage],
+        }) })), ...(gameProfile?.specialists ?? [])] } : {}) } : {}) },
+    threadId: context.threadId, signal: context.signal, recursionLimit: spec.recursionLimit, callbacks,
     initial: { messages, ...(initialFiles ? { files: initialFiles } : {}) },
     reconciliations: context.reconciliations,
     requireCheckpoint: context.requireCheckpoint,
@@ -247,7 +280,7 @@ export async function executeGraph(
     }
     try {
       goalEvaluation = await evaluateGoalEvidence(modelForRole("evaluator"), context.goal, text,
-        [...(context.evidence?.() ?? []), ...virtualEvidence], context.signal);
+        [...(context.evidence?.() ?? []), ...virtualEvidence], context.signal, callbacks);
     } catch (error) {
       if (context.signal.aborted || [401, 403].includes(Number((error as { status?: number })?.status))) throw error;
       goalEvaluation = { decision: "blocked", criteria: [], completedMilestones: [],
@@ -255,5 +288,7 @@ export async function executeGraph(
     }
   }
   return { text, ...workspaceResult, ...(files ? { files } : {}), ...(goalEvaluation ? { goalEvaluation } : {}) };
+  } catch (error) {
+    throw modelFailures.terminalError(error, context.signal);
   } finally { await providers.close(); }
 }

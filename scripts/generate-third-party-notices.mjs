@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import {inspectGameRasterizer} from "./copy-game-rasterizer.mjs";
 
 export const APPROVED_LICENSE_EXPRESSIONS = Object.freeze(["0BSD", "Apache-2.0", "BSD-3-Clause", "ISC", "MIT"]);
 
@@ -8,7 +9,8 @@ const LICENSE_FILE_PATTERN = /^(?:licen[cs]e|copying|notice)(?:$|[ ._-])/i;
 const LICENSE_OVERRIDES = Object.freeze({
   "@cfworker/json-schema": ["licenses/overrides/cfworker-json-schema-mit.txt"],
   "js-tiktoken": ["licenses/overrides/js-tiktoken-mit.txt"],
-  "langsmith": ["licenses/overrides/langsmith-mit.txt"]
+  "langsmith": ["licenses/overrides/langsmith-mit.txt"],
+  "@resvg/resvg-wasm": ["packages/adapter-game-assets/vendor/resvg-wasm-2.6.2/LICENSE"]
 });
 
 export function packagesFromMetafile(metafile) {
@@ -92,7 +94,9 @@ async function inspectPackage(projectRoot, descriptor) {
   if (!license || /^(?:UNLICENSED|SEE LICENSE IN)/i.test(license)) {
     throw new Error(`Bundled package ${name}@${version} does not declare a usable SPDX license expression.`);
   }
-  if (!APPROVED_LICENSE_EXPRESSIONS.includes(license)) {
+  const sourceBackedRasterizer=name==="@resvg/resvg-wasm"&&version==="2.6.2"&&license==="MPL-2.0";
+  if(sourceBackedRasterizer)await inspectGameRasterizer(projectRoot);
+  if (!APPROVED_LICENSE_EXPRESSIONS.includes(license)&&!sourceBackedRasterizer) {
     throw new Error(`Bundled package ${name}@${version} declares unreviewed license “${license}”. Review it and update the explicit allowlist before packaging.`);
   }
 
@@ -106,6 +110,7 @@ async function inspectPackage(projectRoot, descriptor) {
   }
 
   const warnings = [];
+  if(sourceBackedRasterizer)warnings.push("Exact source-backed MPL-2.0 component: the engine includes game-codecs/resvg-source/ with complete license, published glue, declared upstream source archive and notice. This is not a general MPL approval or a reproducible-build/legal certification.");
   if (name.startsWith("chromadb-js-bindings-")) {
     warnings.push("The published native binding declares MIT but ships no standalone license text; the authoritative upstream Chroma Apache-2.0 license is included as a conservative additional notice.");
   }
@@ -151,6 +156,10 @@ async function packageLicenseSources(packageRoot) {
 }
 
 function overrideSources(name) {
+  // esbuild's native platform packages omit a standalone license; the same
+  // compiler distribution ships its authoritative MIT text in the JS package.
+  if (/^@esbuild\/(?:darwin|linux)-(?:arm64|x64)$/.test(name) || name === "@esbuild/win32-x64")
+    return ["node_modules/esbuild/LICENSE.md"];
   if (name.startsWith("chromadb-js-bindings-")) return ["node_modules/chromadb/LICENSE"];
   return LICENSE_OVERRIDES[name] ?? [];
 }

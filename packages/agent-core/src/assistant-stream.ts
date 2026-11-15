@@ -34,10 +34,17 @@ export async function consumeAssistantMessageStreams(
   shouldExpose: (stream: StreamedAssistantMessage) => boolean = () => true
 ): Promise<void> {
   for await (const stream of streams) {
+    // Attach before awaiting text: a failed text iterator can otherwise leave
+    // its sibling output promise rejected without a handler (including hidden
+    // summarization/subagent messages). Retain the original error for the run.
+    const outcome = Promise.resolve(stream.output).then(
+      value => ({ ok: true as const, value }), error => ({ ok: false as const, error }),
+    );
     const requestedExposure = shouldExpose(stream);
     if ((stream.node && /(?:TaskCompletionGate|Summari[sz]|Compact)/i.test(stream.node)) || !requestedExposure) {
       for await (const _delta of stream.text) { /* Drain hidden middleware output. */ }
-      await stream.output;
+      const output = await outcome;
+      if (!output.ok) throw output.error;
       continue;
     }
     let toolTurn = false;
@@ -61,8 +68,9 @@ export async function consumeAssistantMessageStreams(
         }
         if (normalizedDelta) await onDelta(normalizedDelta);
       }
-      const output = await stream.output;
-      toolTurn = containsToolCalls(output);
+      const output = await outcome;
+      if (!output.ok) throw output.error;
+      toolTurn = containsToolCalls(output.value);
     } catch (error) {
       await onMessageEnd(false);
       throw error;

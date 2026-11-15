@@ -263,7 +263,7 @@ test("desktop adaptive setup keeps model roles editable and uses planner/evaluat
   assert.match(main, /runtime\.recommendModels\(/);
   assert.match(main, /state\.ollamaPublicCatalogEnabled && !publicOllamaCatalog/);
   assert.doesNotMatch(main, /new OllamaRecommendationEngine/);
-  assert.match(runtime, /createModel\(options\.modelRoles\.executor, true\)/);
+  assert.match(runtime, /createModel\(options\.modelRoles\.executor, true, undefined,options\.modelContextWindows\?\.\[options\.modelRoles\.executor\]\)/);
   assert.match(runtime, /options\.modelRoles\.evaluator \|\| options\.modelRoles\.executor/);
   assert.match(runtime, /options\.agentRuntime === "deep" && options\.modelRoles\.planner/);
   assert.doesNotMatch(runtime, /AbortSignal\.timeout\(90_000\)/);

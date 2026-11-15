@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 2,
+  "title": "Lume — Jardim Suspenso",
+  "engine": "phaser",
+  "brief": {
+    "request": "Aventura original de plataforma, com doze jardins completos, sementes opcionais e acabamento para teclado e toque.",
+    "audience": "Jogadores casuais a partir de 7 anos; adequação deve ser avaliada nos playtests.",
+    "genre": "platform-adventure",
+    "dimension": "2d",
+    "playMode": "single-player",
+    "players": {
+      "min": 1,
+      "max": 1
+    },
+    "devices": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "inputs": [
+      "keyboard",
+      "pointer",
+      "touch"
+    ]
+  },
+  "design": {
+    "schemaVersion": 2,
+    "structure": "levels",
+    "premise": "Uma pequena semente devolve a luz a doze jardins suspensos.",
+    "coreLoop": {
+      "actions": [
+        "explorar",
+        "saltar",
+        "recolher sementes",
+        "acender a saída"
+      ],
+      "feedback": "Movimento expressivo, brilho, partículas, música e efeitos distintos.",
+      "mastery": "Controlar a altura do salto e combinar vento e plataformas para encontrar as três sementes."
+    },
+    "mechanics": [
+      {
+        "id": "jump",
+        "name": "Salto preciso",
+        "description": "Aceleração, coyote time e buffer de salto; soltar a tecla encurta o salto. Plataformas suspensas são atravessáveis de baixo para cima."
+      },
+      {
+        "id": "seeds",
+        "name": "Sementes de luz",
+        "description": "Uma semente acende a saída. Três por fase permitem exploração opcional e melhora do resultado."
+      },
+      {
+        "id": "checkpoint",
+        "name": "Lanterna segura",
+        "description": "Quedas e espinhos devolvem ao último ponto seguro, sem limite de vidas."
+      },
+      {
+        "id": "wind",
+        "name": "Correntes de vento",
+        "description": "Regiões visíveis elevam Lume para caminhos altos."
+      },
+      {
+        "id": "moving",
+        "name": "Pedras suspensas",
+        "description": "Plataformas carregam o personagem enquanto se movem."
+      }
+    ],
+    "rules": [
+      "Uma semente permite concluir cada fase; as outras são opcionais.",
+      "Quedas preservam sementes e devolvem à lanterna acesa.",
+      "Cada jardim concluído abre o próximo.",
+      "Sem vidas limitadas, anúncios, compras ou conexão externa."
+    ],
+    "controls": [
+      {
+        "action": "Andar",
+        "input": "Setas ou A/D; botões de toque",
+        "feedback": "Aceleração e orientação de Lume."
+      },
+      {
+        "action": "Saltar",
+        "input": "Espaço, W, seta para cima ou botão Saltar",
+        "feedback": "Altura variável e pouso com partículas."
+      },
+      {
+        "action": "Pausar",
+        "input": "P, Escape ou botão Pausa",
+        "feedback": "A simulação para; retorno explícito."
+      },
+      {
+        "action": "Recomeçar",
+        "input": "R ou Ponto seguro no menu",
+        "feedback": "Volta à lanterna sem perder sementes."
+      }
+    ],
+    "camera": "Câmera lateral com acompanhamento amortecido e limites por fase; cenário em camadas.",
+    "progression": {
+      "description": "Três capítulos de quatro fases: salto/checkpoint, vento, plataformas e combinações.",
+      "stages": [
+        {
+          "id": "garden-1",
+          "objective": "Acender a saída de O primeiro brilho.",
+          "challenge": "Saltos e coleta de sementes.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-2",
+          "objective": "Acender a saída de Entre as folhas.",
+          "challenge": "Saltos e coleta de sementes.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-3",
+          "objective": "Acender a saída de Orvalho.",
+          "challenge": "Saltos e coleta de sementes.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-4",
+          "objective": "Acender a saída de A ponte da lua.",
+          "challenge": "Saltos e coleta de sementes.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-5",
+          "objective": "Acender a saída de O sopro do vale.",
+          "challenge": "Vento e caminhos elevados.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-6",
+          "objective": "Acender a saída de Pólen no ar.",
+          "challenge": "Vento e caminhos elevados.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-7",
+          "objective": "Acender a saída de Caminhos do céu.",
+          "challenge": "Vento e caminhos elevados.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-8",
+          "objective": "Acender a saída de A canção das folhas.",
+          "challenge": "Vento e caminhos elevados.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-9",
+          "objective": "Acender a saída de Pedras que dançam.",
+          "challenge": "Combinar vento, espinhos e plataformas.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind",
+            "moving"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-10",
+          "objective": "Acender a saída de Maré de estrelas.",
+          "challenge": "Combinar vento, espinhos e plataformas.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind",
+            "moving"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-11",
+          "objective": "Acender a saída de O coração suspenso.",
+          "challenge": "Combinar vento, espinhos e plataformas.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind",
+            "moving"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        },
+        {
+          "id": "garden-12",
+          "objective": "Acender a saída de Jardim de luz.",
+          "challenge": "Combinar vento, espinhos e plataformas.",
+          "mechanicIds": [
+            "jump",
+            "seeds",
+            "checkpoint",
+            "wind",
+            "moving"
+          ],
+          "completion": "Alcançar a saída com ao menos uma semente."
+        }
+      ],
+      "completion": {
+        "type": "ending",
+        "description": "Lume restaura o Jardim de luz; o mapa permanece disponível para rejogar."
+      }
+    },
+    "art": {
+      "direction": "Jardim noturno vetorial original, jade, pedra azul e luz dourada.",
+      "palette": [
+        "#091f29",
+        "#24635c",
+        "#70b7a0",
+        "#f6cb79"
+      ],
+      "animation": "Vegetação em camadas, pólen, movimentos dos pés, salto e partículas; movimento reduzido respeitado."
+    },
+    "audio": {
+      "music": "Partitura pentatônica original, sintetizada localmente em camadas suaves.",
+      "effects": "Salto, semente, lanterna, retorno e conclusão.",
+      "mix": "Ganho master limitado e mute persistente; áudio inicia apenas após gesto."
+    },
+    "content": [
+      {
+        "id": "garden-1",
+        "kind": "level",
+        "description": "O primeiro brilho"
+      },
+      {
+        "id": "garden-2",
+        "kind": "level",
+        "description": "Entre as folhas"
+      },
+      {
+        "id": "garden-3",
+        "kind": "level",
+        "description": "Orvalho"
+      },
+      {
+        "id": "garden-4",
+        "kind": "level",
+        "description": "A ponte da lua"
+      },
+      {
+        "id": "garden-5",
+        "kind": "level",
+        "description": "O sopro do vale"
+      },
+      {
+        "id": "garden-6",
+        "kind": "level",
+        "description": "Pólen no ar"
+      },
+      {
+        "id": "garden-7",
+        "kind": "level",
+        "description": "Caminhos do céu"
+      },
+      {
+        "id": "garden-8",
+        "kind": "level",
+        "description": "A canção das folhas"
+      },
+      {
+        "id": "garden-9",
+        "kind": "level",
+        "description": "Pedras que dançam"
+      },
+      {
+        "id": "garden-10",
+        "kind": "level",
+        "description": "Maré de estrelas"
+      },
+      {
+        "id": "garden-11",
+        "kind": "level",
+        "description": "O coração suspenso"
+      },
+      {
+        "id": "garden-12",
+        "kind": "level",
+        "description": "Jardim de luz"
+      }
+    ],
+    "save": {
+      "mode": "persistent",
+      "version": 1,
+      "strategy": "Armazenamento local: fases abertas, melhores sementes/tempo, lanterna, sementes atuais, tempo e recomeços. Falta de armazenamento mantém a partida em memória; formato incompatível não é sobrescrito."
+    },
+    "playtests": [
+      {
+        "id": "jump-controls",
+        "category": "gameplay",
+        "description": "Movimento, altura variável e pontos seguros.",
+        "steps": [
+          {
+            "action": "Andar e saltar usando teclado e toque.",
+            "expected": "Movimento previsível, salto proporcional e recuperação após queda."
+          }
+        ]
+      },
+      {
+        "id": "persistence",
+        "category": "technical",
+        "description": "Pausa, retorno, redimensionamento e reload.",
+        "steps": [
+          {
+            "action": "Recolher semente, pausar e reabrir.",
+            "expected": "Semente e lanterna preservadas; jogo recuperável sem IA."
+          }
+        ]
+      },
+      {
+        "id": "human-onboarding",
+        "category": "human",
+        "description": "Playtest consentido com o público-alvo, conforme o plano.",
+        "steps": [
+          {
+            "action": "Jogar sem instruções externas.",
+            "expected": "Registrar compreensão em 30 segundos e avaliação de diversão; não autodeclarar sucesso."
+          }
+        ]
+      }
+    ]
+  },
+  "files": [],
+  "assets": []
+}

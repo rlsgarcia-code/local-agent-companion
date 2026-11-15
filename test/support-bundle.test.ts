@@ -82,3 +82,19 @@ test("drops malformed diagnostic content and bounds numeric metadata", () => {
   assert.equal(bundle.memory.entryCount, 0);
   assert.deepEqual(bundle.diagnostics, []);
 });
+
+
+test("exports only allowlisted failure metadata and correlation, not raw errors", () => {
+  const value = input();
+  value.diagnostics = [{ id: "chat", status: "failed", detail: SECRET, testId: "8c6f6033-4340-4a64-b716-67bd7aaf318f", failureKind: "model_not_found", httpStatus: 404 }] as unknown as typeof value.diagnostics;
+  const bundle = createSupportBundle(value);
+  assert.equal(bundle.diagnostics[0]?.failureKind, "model_not_found");
+  assert.equal(bundle.diagnostics[0]?.httpStatus, 404);
+  assert.equal(bundle.diagnostics[0]?.testId, "8c6f6033-4340-4a64-b716-67bd7aaf318f");
+  assert.doesNotMatch(serializeSupportBundle(bundle), new RegExp(SECRET));
+  value.diagnostics = [{ id: "chat", status: "failed", failureKind: SECRET, testId: SECRET, httpStatus: 100034 }] as unknown as typeof value.diagnostics;
+  const sanitized = createSupportBundle(value).diagnostics[0]!;
+  assert.equal(sanitized.failureKind, undefined);
+  assert.equal(sanitized.testId, undefined);
+  assert.equal(sanitized.httpStatus, undefined);
+});

@@ -90,3 +90,10 @@ test("bounds aliases and the number of imported model profiles", () => {
     /too many model profiles/
   );
 });
+
+
+test("legacy auto profiles keep Chat Completions and roundtrip without catalog metadata", () => {
+  const value = validProfile();
+  value.models.profiles["company-model"] = { preset: "custom", api: "auto" };
+  assert.deepEqual(parseConnectionProfile(JSON.parse(serializeConnectionProfile(value))).models.profiles["company-model"], { preset: "custom", api: "auto" });
+});
