@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -11,8 +11,18 @@ import {prepareGameModelPreview,openGameModelPreview} from '../packages/adapter-
 import {qualifyBrowser} from '../packages/adapter-game-browser/src/browser';
 import {modelPreviewFixture} from './game-model-preview-fixtures';
 import {hasRenderedPixels} from '../packages/adapter-game-browser/src/pixels';
+import {chromium} from 'playwright-core';
 const runtimeDirectory=path.resolve('packages/adapter-game-web/runtimes');
-async function openFixturePreview(options:Parameters<typeof openGameModelPreview>[0]){
+async function openFixturePreview(t:TestContext,options:Parameters<typeof openGameModelPreview>[0]){
+  if(process.platform==='darwin'&&process.arch==='x64'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'){
+    // Hosted Intel Macs have no usable GPU for this preview. Explicit SwANGLE
+    // is Chromium's supported GPU-less bot driver, only for these fixed offline
+    // catalog fixtures. No production preview, RPC, recipe or build receives it.
+    // Keep the browser sandbox; do not enable unsafe WebGL fallback.
+    const launch=chromium.launch.bind(chromium);
+    t.mock.method(chromium,'launch',(options:Parameters<typeof chromium.launch>[0])=>launch({...options,args:[...(options?.args??[]),'--use-gl=angle','--use-angle=swiftshader']}));
+    console.error('MODEL_FIXTURE_RENDERER','Explicit SwANGLE driver on hosted Intel Mac; software rendering, not physical GPU acceptance');
+  }
   try{return await openGameModelPreview(options);}
   catch(error){
     // Only the fixed offline catalog fixtures below reach this wrapper. Never
@@ -71,7 +81,7 @@ test('actual offline model viewer renders textured geometry, selects32 real clip
   const canary=createServer((_request,response)=>{hits++;response.end('must not be read');});
   try{
     canary.listen(0,'127.0.0.1');await once(canary,'listening');const address=canary.address();assert.ok(address&&typeof address==='object');
-    preview=await openFixturePreview({...f,runtimeDirectory,signal:abort.signal,headless:true});const page=preview.page;
+    preview=await openFixturePreview(t,{...f,runtimeDirectory,signal:abort.signal,headless:true});const page=preview.page;
     await page.getByRole('status').filter({hasText:'Modelo carregado'}).waitFor({timeout:20000});
     assert.equal(await page.locator('#clip option').count(),33);assert.equal(await page.locator('#play').isDisabled(),true);
     assert.equal(await page.getByLabel('Posição da animação',{exact:true}).isDisabled(),true);
@@ -117,7 +127,7 @@ test('a real static library model keeps animation navigation disabled and fits a
   if(!await qualifyBrowser()){t.skip('Qualified Chromium browser unavailable');return;}
   const f=await modelPreviewFixture('tree');let preview:Awaited<ReturnType<typeof openGameModelPreview>>|undefined;
   try{
-    preview=await openFixturePreview({...f,runtimeDirectory,signal:new AbortController().signal,headless:true});const page=preview.page;await page.getByRole('status').filter({hasText:'Modelo carregado'}).waitFor();
+    preview=await openFixturePreview(t,{...f,runtimeDirectory,signal:new AbortController().signal,headless:true});const page=preview.page;await page.getByRole('status').filter({hasText:'Modelo carregado'}).waitFor();
     assert.equal(await page.locator('#clip option').count(),1);for(const id of ['clip','play','reset','speed','seek','previous-frame','next-frame'])assert.equal(await page.locator('#'+id).isDisabled(),true);
     await page.setViewportSize({width:520,height:720});await page.locator('#front').click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1),true);
     const output=path.resolve('output/playwright/game-model-viewer/tests','static-'+new Date().toISOString().replace(/[:.]/g,'-'));await mkdir(output,{recursive:true});await preserveViewerEvidence(output,f);await page.screenshot({path:path.join(output,'static-viewer.png'),fullPage:true});

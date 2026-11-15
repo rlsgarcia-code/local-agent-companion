@@ -61,6 +61,17 @@ serializar eliminou a saturação geral, mas restaram duas falhas de abertura do
 visor GLB. O próximo CI conserva diagnóstico textual limitado das fixtures
 locais, sem upload de PNG ou dados pessoais.
 
+A rodada `efa9291` passou nos dois Linux, Mac ARM64 e Windows, incluindo a
+ativação do VSIX. O Mac Intel falhou somente nas duas fixtures GLB: o diagnóstico
+limitado confirmou `graphics: WebGL not supported`, antes de importar o modelo.
+As fixtures do catálogo nesse runner passam a pedir explicitamente o driver
+SwANGLE (`--use-gl=angle --use-angle=swiftshader`), o caminho documentado pelo
+[Chromium para bots sem GPU](https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md).
+Isso fica no teste e só no runner Intel do GitHub; não muda produto, preview,
+coletores, RPC ou receita, nem desabilita a sandbox ou habilita fallback WebGL
+inseguro. As verificações de pixels/pose/animação permanecem. O próximo CI ainda
+precisa comprovar esse caminho; software em VM não aprova hardware físico.
+
 Os testes locais passaram com 820 execuções e um skip explícito, mais 42
 verificações de repositório. Os 21 casos focados de navegador/visor/configuração
 também passaram após as alterações seguintes. A configuração de modelos ganhou

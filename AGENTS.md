@@ -21,6 +21,10 @@ before deleting external temporary resources; unknown work retains them. The
 test-only never-browser fixture may explicitly remove its own directory after
 asserting production refusal. Preserve actual rendering/animation assertions;
 pixel palette size is diagnostic, not a quality or hardware acceptance gate.
+The two offline catalog viewer fixtures explicitly request SwANGLE only on
+GitHub-hosted Intel Mac tests (no usable WebGL GPU). Keep this test-only and
+keep sandboxing; never propagate software-driver flags into preview/collectors,
+RPC or game recipes. A software CI rendering is not physical GPU acceptance.
 
 For the remaining full-product gates, read [acceptance readiness](docs/GAME_DESIGN_ACCEPTANCE_READINESS.md).
 Do not substitute more authored fixtures for the pending real-generation,
