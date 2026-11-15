@@ -1,5 +1,19 @@
 # Rollback real de binários com dados de jogos novos
 
+**Preparação de 15/11/2026:** a leitura da máquina encontrou Mac 0.12.10 / motor
+1.0.7 e VS Code 0.12.8 / motor 1.0.6. As assinaturas e todos os bytes de ambos
+foram conferidos usando seus SDKs oficiais correspondentes, igualmente verificados.
+Isso identifica os binários anteriores; não comprova rollback de dados.
+
+O candidato 1.1.0 acrescenta `contextWindows` e incorpora `webResearch` do motor
+1.0.9. O schema persistido de modelos em 1.0.6/1.0.7 é estrito e não conhece esses
+campos. Antes de ativar sobre dados pessoais, a instalação precisa qualificar a
+restauração/importação de configurações e perfis, além de conversas/jogos. Conservar
+apenas o aplicativo anterior ou abrir o mesmo banco com um binário antigo não
+resolve essa incompatibilidade. Preservar os dois conjuntos de dados e recibos;
+não apagar campos novos para fazer uma consulta antiga passar. Os ensaios abaixo
+não cobrem esse cenário novo nem autorizam a instalação pessoal.
+
 Evidência local de **2026-11-13**, GD-01/GD-11 do
 [plano integral](GAME_DESIGN_IMPLEMENTATION_PLAN.md). Complementa os
 [hosts nativos](GAME_DELIVERY_NATIVE_HOSTS.md) e a

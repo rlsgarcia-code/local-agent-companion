@@ -30,13 +30,21 @@ test("browser launch diagnostics preserve the original cause and never acknowled
   try {
     const { job } = await build(f, webFixture("phaser"), "launch-diagnostic");
     const artifact = await f.client.getGameArtifact(job.id);
-    t.mock.method(chromium, "launch", async () => { throw new Error("Synthetic sandbox launch refusal"); });
+    t.mock.method(chromium, "launch", async () => {
+      throw new Error("Synthetic sandbox launch refusal\nBrowser logs:\n<launching> " + "UNNEEDED_ARGUMENT ".repeat(400) + "\n[pid=123][err] Synthetic bounded root cause");
+    });
     let acknowledged = false;
     await assert.rejects(collect({ job: { id: "launch-diagnostic" }, artifact, designScenarios: [], signal: new AbortController().signal,
       readFile: name => f.client.downloadGameArtifactFile(job.id, name) },
       { executablePath: "never-executed" } as Parameters<typeof collect>[1], true,
       async () => { acknowledged = true; }, async () => assert.fail("No browser was launched")),
-    /shutdown was not confirmed.*Original browser launch failed:.*Synthetic sandbox launch refusal/);
+    error => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /shutdown was not confirmed.*Original browser launch failed:.*Synthetic sandbox launch refusal/);
+      assert.match(error.message, /Synthetic bounded root cause/);
+      assert.doesNotMatch(error.message, /UNNEEDED_ARGUMENT/);
+      return true;
+    });
     assert.equal(acknowledged, false);
   } finally { await f.close(); }
 });

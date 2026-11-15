@@ -10,7 +10,14 @@ import { openGameArtifactPage as openCase } from "./isolation";
 export type CollectionAccess = { job: { id: string; testSuite?: string }; artifact: GameArtifact;
   designScenarios: { id: string; category: string }[]; signal: AbortSignal; readFile(path: string): Promise<Uint8Array> };
 type Trace = { action: unknown; status: "passed" | "failed"; elapsedMs: number; detail?: string; changedRatio?: number };
-const detail = (error: unknown) => (error instanceof Error ? error.message : "Browser observation failed").slice(0, 2000);
+const detail = (error: unknown) => {
+  const message = error instanceof Error ? error.message : "Browser observation failed";
+  // Playwright prints a long fixed command before browser stderr. Keep the
+  // actual launch reason inside the same bound, rather than only its flags.
+  const lines = message.split(/\r?\n/);
+  const stderr = lines.filter(line => /^\[pid=\d+\]\[err\]/.test(line));
+  return (stderr.length ? [lines[0], ...stderr].join("\n") : message).slice(0, 2000);
+};
 
 export async function collect(access: CollectionAccess, qualified: QualifiedBrowser, headless: boolean, onStopped: () => Promise<void>, onLaunched: (browser: Browser, origin: string) => Promise<void>): Promise<CollectedGameObservation[]> {
   const suitePath = access.job.testSuite ?? "data/playtests.json";
