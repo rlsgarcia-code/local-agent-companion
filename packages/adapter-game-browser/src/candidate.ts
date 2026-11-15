@@ -11,6 +11,7 @@ import { browserDigest, type QualifiedBrowser } from "./browser";
 import { gameBrowserCandidateToolchain } from "./candidate-toolchain";
 import { alive, checkDirectory, digest, readPrivate, writePrivate } from "./journal";
 import { opendir } from "node:fs/promises";
+import { flushPublishedDirectory } from "../../platform-files/src/directory-flush";
 
 async function entries(directory: string, max: number) {
   const names: string[] = [];
@@ -25,8 +26,7 @@ async function directory(name: string) {
   if (await realpath(name) !== name) throw new Error("Browser exchanges cannot traverse directory links.");
 }
 async function syncDirectory(name: string) {
-  const handle = await open(name, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try { await handle.sync(); } finally { await handle.close(); }
+  await flushPublishedDirectory(name);
 }
 async function commit(directory: string, name: string, value: unknown) {
   const pending = path.join(directory, `${name}-${randomUUID()}.pending`);

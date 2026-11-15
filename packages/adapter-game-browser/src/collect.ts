@@ -23,6 +23,7 @@ export async function collect(access: CollectionAccess, qualified: QualifiedBrow
   } else if (access.job.testSuite) throw new GameProductionFailure("The requested test suite is not packaged in this exact build.");
   let browser: Browser | undefined;
   let launchAttempted = false;
+  let collectionFailure: unknown;
   let resources: Awaited<ReturnType<typeof serveArtifactResources>> | undefined;
   const signal = AbortSignal.any([access.signal, AbortSignal.timeout(120000)]);
   const stop = () => { void browser?.close().catch(() => {}); };
@@ -120,6 +121,7 @@ export async function collect(access: CollectionAccess, qualified: QualifiedBrow
     evidence(bootFiles, "runtime.json", Buffer.from(JSON.stringify({ errors, blockedRequests: blocked, screenshots, evidenceBytes: bytes, playwright: playwrightPackage.version }, null, 2)), "application/json");
     return reports;
   } catch (error) {
+    collectionFailure = error;
     access.signal.throwIfAborted();
     throw new GameProductionFailure(`Disposable browser collection stopped: ${detail(error)}`);
   } finally {
@@ -129,7 +131,9 @@ export async function collect(access: CollectionAccess, qualified: QualifiedBrow
       if (launchAttempted && !browser) throw new Error("Browser launch was not acknowledged.");
       await onStopped();
     } catch {
-      throw new GameProductionUncertain("Browser/resource shutdown was not confirmed. Preserve this job for reconciliation before repeating its observation.");
+      const launchDetail = launchAttempted && !browser && collectionFailure
+        ? ` Original browser launch failed: ${detail(collectionFailure)}` : "";
+      throw new GameProductionUncertain("Browser/resource shutdown was not confirmed. Preserve this job for reconciliation before repeating its observation." + launchDetail);
     }
   }
 }

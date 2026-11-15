@@ -53,6 +53,7 @@ async function main(): Promise<void> {
   const build = {
     commit: manifest.commit,
     target: manifest.target,
+    filesystem: { fileFlushRequired: true, directoryFlush: process.platform === "win32" ? "unsupported" : "required" },
     manifestSha256: createHash("sha256").update(rawManifest).digest("hex"),
   };
   const resourceDirectory = path.dirname(process.argv[1]!);

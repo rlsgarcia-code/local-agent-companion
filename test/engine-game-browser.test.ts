@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { chromium } from "playwright-core";
 import { AgentService } from "../packages/agent-service/src/service";
 import { Store } from "../packages/agent-service/src/store";
 import { LocalServer } from "../packages/agent-service/src/server";
@@ -22,6 +23,23 @@ import { fixtureGameDocument } from "./game-fixtures";
 import { webFixture } from "./game-web-fixtures";
 
 const reg: Registration = { id: "browser-game-test", product: "companion-mac", profile: "fixture", workspace: "", providers: ["ollama"], hostTools: [] };
+const fixtureDirectories = new WeakMap<AgentClient, string>();
+
+test("browser launch diagnostics preserve the original cause and never acknowledge unknown shutdown", async t => {
+  const f = await fixture();
+  try {
+    const { job } = await build(f, webFixture("phaser"), "launch-diagnostic");
+    const artifact = await f.client.getGameArtifact(job.id);
+    t.mock.method(chromium, "launch", async () => { throw new Error("Synthetic sandbox launch refusal"); });
+    let acknowledged = false;
+    await assert.rejects(collect({ job: { id: "launch-diagnostic" }, artifact, designScenarios: [], signal: new AbortController().signal,
+      readFile: name => f.client.downloadGameArtifactFile(job.id, name) },
+      { executablePath: "never-executed" } as Parameters<typeof collect>[1], true,
+      async () => { acknowledged = true; }, async () => assert.fail("No browser was launched")),
+    /shutdown was not confirmed.*Original browser launch failed:.*Synthetic sandbox launch refusal/);
+    assert.equal(acknowledged, false);
+  } finally { await f.close(); }
+});
 
 test("interactive preview uses immutable blobs in a disposable browser, blocks other origins and closes on host abort",async(t)=>{
   const f=await fixture();let preview:Awaited<ReturnType<typeof openGamePreview>>|undefined;
@@ -41,7 +59,22 @@ test("interactive preview uses immutable blobs in a disposable browser, blocks o
 });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 async function settled(client: AgentClient, id: string): Promise<import("../packages/contracts/src/game-production").GameProductionJob> {
-  for (let i = 0; i < 1000; i++) { const job = await client.getGameProduction(id); if (!["queued", "running", "cancelling"].includes(job.state)) return job; await tick(); }
+  for (let i = 0; i < 1000; i++) {
+    const job = await client.getGameProduction(id);
+    if (!["queued", "running", "cancelling"].includes(job.state)) {
+      const directory = fixtureDirectories.get(client);
+      if (job.state === "awaiting_reconciliation" && directory && /^[a-zA-Z0-9_-]{1,128}$/.test(job.id)) {
+        // This is the test's disposable fixture, never personal engine state.
+        // Preserve the supervisor's reason; it does not acknowledge shutdown.
+        try {
+          const receipt = JSON.parse(await readFile(path.join(directory, "game-browser-jobs", job.id, "receipt.json"), "utf8"));
+          console.error("FIXTURE_BROWSER_RECONCILIATION", JSON.stringify({ status: receipt.status, detail: String(receipt.detail).slice(0, 2200) }));
+        } catch { console.error("FIXTURE_BROWSER_RECONCILIATION", "No committed diagnostic receipt"); }
+      }
+      return job;
+    }
+    await tick();
+  }
   throw new Error("Browser collection did not settle");
 }
 async function fixture() {
@@ -53,6 +86,7 @@ async function fixture() {
   const identity = await ensureIdentity(directory), service = new AgentService(store, directory, undefined, {}, { gameAdapters: createWebGameAdapters(path.resolve("packages/adapter-game-web/runtimes")), gameCollectors: [collector] });
   const server = new LocalServer(service, directory); await server.listen();
   const client = new AgentClient({ address: ipcPath(directory), certificate: identity.cert, credential }); await client.connect();
+  fixtureDirectories.set(client, directory);
   return { directory, store, collector, client, service, server, async close() { client.close(); await server.close(); await rm(directory, { recursive: true, force: true }); } };
 }
 function suite(changed = true) {

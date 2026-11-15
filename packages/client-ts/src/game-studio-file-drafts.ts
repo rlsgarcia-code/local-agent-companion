@@ -2,6 +2,7 @@ import { lstat, mkdir, open, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
+import { flushPublishedDirectory } from "../../platform-files/src/directory-flush";
 import { GameStudioDraftStore, MAX_GAME_STUDIO_DRAFT_BYTES } from "./game-studio-drafts";
 
 /** Fixed host directory and hashed scope only. No path or filesystem operation is exposed to the renderer. */
@@ -34,7 +35,7 @@ export function fileGameStudioDraftStore(userData: string, scope: string, option
       try { await handle.writeFile(JSON.stringify(value));await handle.sync(); }
       catch (error) { await handle.close();await rm(temporary, { force: true });throw error; }
       await handle.close();
-      try { await rename(temporary, file);const parent = await open(directory, "r");try { await parent.sync(); } finally { await parent.close(); } }
+      try { await rename(temporary, file);await flushPublishedDirectory(directory); }
       catch (error) { await rm(temporary, { force: true });throw error; }
     },
   });

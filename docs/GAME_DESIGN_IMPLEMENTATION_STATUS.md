@@ -21,6 +21,18 @@ Candidato: motor 1.1.0, clientes 0.13.0, Node empacotado 22.23.4.
 - O pacote de desenvolvimento ARM64 foi construído em diretório novo. Não é
   assinatura de release, instalação, aceite visual ou rollback instalado.
 
+Rodada remota inicial do commit `e60d391`: Mac ARM64 e Linux ARM64 concluíram
+a geração assinada; a release em rascunho foi corretamente impedida pelas falhas
+em Linux x64, Windows e Mac Intel. Os erros Windows identificaram transformação
+de bytes no checkout e `fsync` de diretórios; a correção mantém os hashes fixos,
+rejeita links também sem `O_NOFOLLOW` e expõe a limitação de flush no diagnóstico.
+A correção passou em 854 testes locais, com um skip explícito, além dos builds
+atualizados do motor, SDK, Mac e extensão.
+Linux conserva reconciliação quando não há prova de encerramento; o recibo de
+fixture passa a preservar a causa original do lançamento. Os erros de renderização
+e tempo no runner Mac Intel ainda exigem diagnóstico; não foram convertidos em
+passe ou skip. Essa rodada não criou nem promoveu uma release.
+
 Pendente desta primeira entrega: matriz assinada sobre commit exato, percurso
 visual nas duas interfaces instaladas, migração e rollback com dados novos. O
 Mac foi encontrado bloqueado e o desbloqueio foi solicitado. A base atual também

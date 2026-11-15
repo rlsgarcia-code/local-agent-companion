@@ -77,6 +77,22 @@ de executar; o índice assinado de release ainda cobre o arquivo final.
 
 ## Integração com CI e consumidores
 
+O candidato 1.1.0 fixa também o checkout: `.gitattributes` preserva os bytes dos
+runtimes, arquivos de catálogo, blobs e fontes de terceiros. A conversão automática
+de LF para CRLF no Windows não pode alterar esses bytes; os hashes existentes
+continuam sendo verificados, sem recálculo para aceitar uma instalação alterada.
+
+Os produtores e rascunhos continuam sincronizando os arquivos antes da publicação
+atômica. `platform-files/flushPublishedDirectory` exige identidade de diretório e
+propaga falhas; apenas `EPERM` de `fsync` em um descritor de diretório Windows
+retorna o modo explícito `unsupported-on-windows`. A limitação aparece em
+`engine.info.build.filesystem`. A [API Windows exige acesso de escrita para
+FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers);
+um descritor de diretório aberto para leitura pelo Node não satisfaz esse requisito.
+Erros ao abrir, sincronizar arquivos, falta de espaço, I/O e falhas POSIX permanecem
+falhas. Isso não comprova persistência do namespace após perda de energia no Windows;
+o estado autoritativo transacional continua em SQLite e o aceite físico permanece separado.
+
 O passo `package` do workflow fornece `bundle` e `archive` em `GITHUB_OUTPUT`.
 Os quatro consumidores — executor Linux, executor Mac/Windows, variantes VSIX e
 aplicativo Mac — usam `steps.package.outputs.bundle`. O ensaio

@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, realpath, opendir, open, link, unlink } from "node:fs/promises";
 import path from "node:path";
+import { flushPublishedDirectory } from "../../platform-files/src/directory-flush";
 
 export function invalidMedia(): never { throw new Error("The bounded media exchange is invalid; originals and candidate were preserved."); }
 
@@ -33,8 +34,7 @@ export async function writeMediaFile(file:string,bytes:Uint8Array):Promise<void>
   try{await handle.writeFile(bytes);await handle.sync();}finally{await handle.close();}
 }
 export async function syncMediaDirectory(directory:string):Promise<void> {
-  const handle=await open(directory,constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW);
-  try{await handle.sync();}finally{await handle.close();}
+  await flushPublishedDirectory(directory);
 }
 /** Atomic create-if-absent; a prior acknowledged result is never overwritten. */
 export async function commitMediaResult(pending:string,destination:string):Promise<void> {

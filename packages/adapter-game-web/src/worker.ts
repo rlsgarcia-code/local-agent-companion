@@ -8,6 +8,7 @@ import { gameContentHash } from "../../game-design/src/project";
 import { canonical } from "../../contracts/src/identity";
 import { NODE_VERSION, type Registration } from "../../contracts/src/index";
 import { createWebGameAdapters } from "./index";
+import { flushPublishedDirectory } from "../../platform-files/src/directory-flush";
 
 const sha = (value: Uint8Array) => createHash("sha256").update(value).digest("hex");
 function fail(): never { throw new Error("The bounded compiler exchange is invalid; source and candidate were preserved."); }
@@ -17,10 +18,12 @@ async function directory(file: string): Promise<void> {
   if (!stat.isDirectory() || stat.isSymbolicLink()) fail();
 }
 async function read(file: string, limit: number): Promise<Buffer> {
+  const before = await lstat(file);
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > limit) fail();
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.nlink !== 1 || stat.size > limit) fail();
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > limit || stat.dev !== before.dev || stat.ino !== before.ino) fail();
     // Limit allocation even if another process grows the input. The broker
     // mounts a sealed input read-only; hashing still verifies exact bytes.
     const buffer = Buffer.alloc(stat.size + 1);
@@ -92,7 +95,7 @@ export async function compileWebCandidate(options: {
   await write(pending,Buffer.from(JSON.stringify(result)));
   // A second invocation must never replace a former acknowledged result.
   await rename(pending,path.join(output,"result.json"));
-  const parent=await open(output,constants.O_RDONLY);try{await parent.sync();}finally{await parent.close();}
+  await flushPublishedDirectory(output);
   return result;
 }
 
