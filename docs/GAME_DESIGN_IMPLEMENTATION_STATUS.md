@@ -1,5 +1,52 @@
 # Game Design 1.0: acompanhamento da implementação
 
+## Estado atual do candidato — 15/11/2026
+
+O primeiro lote continua sendo **Mac/VS Code integrados**, antes de novos jogos.
+Artefatos de produção candidatos usam o commit imutável
+`5d1b660c21e2c93f6e300878574fffad738f26d0`: motor/SDK **1.1.0**, interfaces
+**0.13.0**, Node **22.23.4**. Alterações posteriores deste relatório e do runner
+de rollback são ferramentas de qualificação, não mudanças nesses artefatos.
+
+| Verificação | Resultado comprovado |
+|---|---|
+| CI do candidato | [Cinco plataformas aprovadas](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/43718804949); 820 testes de execução + 42 de repositório aprovados, um skip explícito |
+| Pacotes assinados | [Geração oficial](https://github.com/rlsgarcia-code/local-agent-companion/actions/runs/43719929974): quatro plataformas concluíram; Intel falhou duas vezes no limite de10s da primeira conversa; a repetição sem mudanças foi encerrada e nenhum rascunho foi criado |
+| Mac ARM64 local | SDK e motor conferidos pela chave Ed25519 fixada; ZIP do app conferido pelo manifesto Mac assinado; app extraído com inventário limitado e `codesign --verify --deep --strict` aprovado |
+| Mesmo motor | App extraído, três VSIX e pacote independente contêm o mesmo manifesto `15999add90408a2288f0121fdff28dbc6daeea48e037897e4541cdcb157de761`; falta o índice final assinado do VSIX inteiro |
+| Rollback oficial | 1.1.0 assinado → 1.0.6/1.0.7 assinados → 1.1.0 assinado passou para configurações e domínio de conversas, nos dois produtos, em bancos temporários, sem IA |
+| Preparação anterior | App em uso0.12.10/motor1.0.7, extensão ativa0.12.8/motor1.0.6; par oficial0.12.10/motor1.0.7 preparado nas três variantes, sem instalar |
+| Provedor do editor | Configuração observada é OpenAI; pacote ativo está marcado LiteLLM. Preservar configuração/credenciais e escolher a variante compatível; não interpretar isso como autorização de inferência |
+| Instalação/aceite | **Pendente**: Mac continua bloqueado para controle nativo. Não houve substituição pessoal, aceite visual, rollback instalado, merge ou promoção de release |
+
+Os arquivos locais ficam em `.cache/game-design-candidate-1.1.0-5d1b660/`, fora
+do Git. `verification.json`, `mac-app-engine-verified.json` e
+`signed-rollback-1.0.6.json`/`signed-rollback-1.0.7.json` registram escopos e hashes.
+SDK assinado: manifesto `799335447c26379b9f1a958720560ec2265944a483f0036abcbc35e119243c20`.
+Assinatura Apple é ad hoc, sem notarização; a assinatura Ed25519 é independente.
+As verificações de configuração/domínio não aprovam checkpoints, credenciais ou
+o perfil inteiro. Ver [limites do rollback](GAME_DOMAIN_ROLLBACK.md).
+
+O qualificador agora separa a primeira conversa que inclui verificação/cópia e
+inicialização do motor assinado (limite de30s no CI) de uma segunda conversa com
+motor inicializado (mantém10s). Registra as duas durações e exige comprovação
+de que o motor exato foi criado e encerrou seu processo; registrar comandos não
+basta. Perfis descartáveis usam o
+[Secret Storage em memória recomendado pelo VS Code para testes](https://github.com/microsoft/vscode/blob/main/scripts/test-integration.sh),
+sem acessar o cofre do operador. Isso é uma correção de qualificação, não de
+prazos/segurança do produto ou aceite de credenciais. Os logs não permitem
+atribuir a falha anterior exclusivamente ao cofre ou ao tempo de cópia.
+Essa revisão de testes exige nova rodada assinada; os pacotes do commit5d1b660
+acima continuam preservados e não são apresentados como a revisão seguinte.
+
+Próxima ação: concluir o índice e os pacotes do candidato; com o Mac disponível,
+demonstrar criar projeto → Studio → preview → fechar/reabrir → continuar →
+exportar, migração e rollback nas interfaces instaladas. Geração real, Unity,
+Navi protegido, portfólio e aceite físico/humano continuam depois disso, com
+suas autorizações e critérios preservados. O produto integral não está concluído.
+
+## Histórico das rodadas de integração
+
 ## Candidato integrado Mac/VS Code — 15/11/2026
 
 Prioridade atual: entregar o percurso integrado das duas interfaces antes de

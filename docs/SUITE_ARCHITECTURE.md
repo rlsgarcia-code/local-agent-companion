@@ -1,5 +1,10 @@
 # Arquitetura e contrato de desacoplamento da suíte
 
+O [estado verificável da integração](GAME_DESIGN_IMPLEMENTATION_STATUS.md)
+separa o candidato de fonte, pacotes assinados, instalação e aceite. Os testes
+descartáveis de editor usam Secret Storage em memória; isso não muda os cofres
+dos produtos nem qualifica suas credenciais. O executor permanece no serviço.
+
 **Integração de 15/11/2026:** o candidato motor 1.1.0 / clientes 0.13.0 incorpora
 o `main` até `a6f3977`, preservando a cópia anterior de Game Design. O Studio Mac
 consome o SDK empacotado; seus adaptadores nativos de preview usam os validadores

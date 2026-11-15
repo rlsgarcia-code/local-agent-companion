@@ -15,6 +15,18 @@ não apagar campos novos para fazer uma consulta antiga passar.
 
 ### Correção e ensaio de configurações — 15/11/2026
 
+**Ensaio oficial posterior:** o mesmo percurso passou com o motor1.1.0
+oficialmente assinado, manifesto
+`15999add90408a2288f0121fdff28dbc6daeea48e037897e4541cdcb157de761`,
+commit `5d1b660c21e2c93f6e300878574fffad738f26d0`, contra as duas versões
+anteriores assinadas. O SDK1.1.0 recebido foi verificado integralmente antes de
+importar código: manifesto
+`799335447c26379b9f1a958720560ec2265944a483f0036abcbc35e119243c20`.
+O runner agora exige a chave fixada por padrão; somente `--development` admite
+uma entrada declaradamente de desenvolvimento. Nenhum modo instala ou promove
+software. O relatório inclui o hash do próprio observador; mudanças nesse
+observador não alteram os artefatos de produção congelados no commit acima.
+
 `model-configuration-store.ts` conserva em `model_configurations` os campos
 compatíveis com 1.0.6/1.0.7 e guarda pesquisa web/contexto separadamente no mesmo
 banco privado, por namespace e identidade exata de provedor/endpoint/referência

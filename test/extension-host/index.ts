@@ -75,10 +75,19 @@ export async function run(): Promise<void> {
     "opening the Local Agent Companion view",
     vscode.commands.executeCommand("localAgentCompanion.open")
   );
+  const coldSignedEngine = process.env.LDC_EXPECT_SIGNED_ENGINE === "1";
+  const coldStart = Date.now();
   await completesWithin(
-    "creating a new local thread",
-    vscode.commands.executeCommand("localAgentCompanion.newThread")
+    coldSignedEngine ? "creating the first thread including cold signed-engine verification/startup" : "creating a new local thread",
+    vscode.commands.executeCommand("localAgentCompanion.newThread"),
+    coldSignedEngine ? 30_000 : 10_000
   );
+  if (coldSignedEngine) {
+    console.log("PACKAGED_ENGINE_FIRST_THREAD_MS", Date.now() - coldStart);
+    const warmStart = Date.now();
+    await completesWithin("creating a thread with the initialized engine", vscode.commands.executeCommand("localAgentCompanion.newThread"), 10_000);
+    console.log("PACKAGED_ENGINE_WARM_THREAD_MS", Date.now() - warmStart);
+  }
   await completesWithin(
     "opening the LiteLLM settings surface",
     vscode.commands.executeCommand("localAgentCompanion.configureLiteLlm")

@@ -12,7 +12,8 @@ import security from '../dist-tests/packages/agent-service/src/security.js';
 import storage from '../dist-tests/packages/agent-service/src/store.js';
 import sdk from '../dist-tests/packages/client-ts/src/index.js';
 const names=['--engine','--previous-engine','--previous-sdk','--report'];
-assert.equal(process.argv.length,names.length+2);
+const development=process.argv.includes('--development');
+assert.equal(process.argv.length,names.length+2+(development?1:0));
 const option=name=>{const v=process.argv.find(a=>a.startsWith(name+'='));if(!v)throw Error('Missing '+name);return path.resolve(v.slice(name.length+1));};
 const [engine,previousEngine,previousSdk,report]=names.map(option);
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -21,10 +22,10 @@ const hash=value=>sha(JSON.stringify(canonical(value)));
 const key=await readFile('release-keys/companion-ed25519.pub','utf8');
 const old=await verification.verifiedSdk(previousSdk,key);
 await old.verifyBundle(previousEngine,key,false);
-await bootstrap.verifyBundle(engine,undefined,true);
+await bootstrap.verifyBundle(engine,development?undefined:key,development);
 const currentRaw=await readFile(path.join(engine,'manifest.json')),priorRaw=await readFile(path.join(previousEngine,'manifest.json'));
 const currentManifest=JSON.parse(currentRaw),priorManifest=JSON.parse(priorRaw);
-assert.equal(currentManifest.development,true,'This runner does not approve a release or relax installed trust');
+assert.equal(currentManifest.development===true,development,'Development input requires an explicit flag; signed input requires the pinned key');
 assert.notEqual(currentManifest.version,priorManifest.version);
 const root=await mkdtemp(path.join(tmpdir(),'model-rollback-')),state=path.join(root,'state'),actors=[];
 let active,passed=false;
@@ -103,7 +104,8 @@ try{
   }
   await stop();
   const result={state:'passed',scope:'disposable real-binary configuration/history rollback; no installed, credential, checkpoint or UI acceptance',
-    current:{version:initial.version,manifestSha256:sha(currentRaw),development:true},
+    observerSha256:sha(await readFile(new URL(import.meta.url))),
+    current:{version:initial.version,manifestSha256:sha(currentRaw),development,officialSignatureVerified:!development},
     previous:{version:previous.version,manifestSha256:sha(priorRaw),officialSignatureVerified:true},reactivated:reactivated.version,
     productNamespaces:actors.map(a=>a.product),priorStrictSchemaReadable:true,legacyEditsRetained:true,newPreferencesRetained:true,
     historiesFromBothVersionsRetained:true,modelCalls:0,tools:0};

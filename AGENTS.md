@@ -2,6 +2,10 @@
 
 This integration branch combines Game Design with upstream `a6f3977` on candidate
 engine 1.1.0 / clients 0.13.0. The original Game Design checkout is preserved.
+Production candidate artifacts are frozen at `5d1b660`; read the first section of
+[implementation status](docs/GAME_DESIGN_IMPLEMENTATION_STATUS.md) for current
+binary/signature/rollback evidence. Later observer/report edits do not rebuild
+that candidate. Finish installed Mac/VS Code acceptance before more sample games.
 Do not confuse old installed evidence with this candidate. Mac provider policy
 is awaiting the user's clarification: upstream allows explicit Ollama/OpenAI
 selection while the earlier suite plan restricted Mac to Ollama. Keep candidate
