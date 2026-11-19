@@ -94,6 +94,10 @@ Não presuma que uma versão futura manterá toda capacidade opcional. Faça fea
 8. `sessions.snapshot` reidrata a interface após reconexão sem duplicar mensagens ou efeitos.
 
 Nunca reinicie automaticamente um run porque o polling expirou. Consulte `runs.get`, eventos e recibos; efeitos desconhecidos exigem reconciliação explícita.
+`runs.cancelUnknown` é uma decisão humana terminal para clientes Companion: não
+repete nem inventa resultado, mantém o recibo original como `cancelled_unknown`
+e libera o workspace atomicamente. A interface deve avisar que isso não desfaz
+um efeito possível. O método não substitui a inspeção protegida do KidOS.
 
 ## Modelos e credenciais
 

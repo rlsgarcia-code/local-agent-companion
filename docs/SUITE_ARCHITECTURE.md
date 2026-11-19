@@ -258,6 +258,11 @@ pertencem aos contratos; código de host reutilizável pertence aos adaptadores.
    dela. Recursos dependentes do host aguardam sua volta. Credenciais ausentes
    ou efeitos desconhecidos produzem estados explícitos de espera/reconciliação;
    não apresentar isso como execução ativa nem repetir efeitos automaticamente.
+   Um usuário pode encerrar explicitamente uma execução com efeito ainda incerto:
+   o serviço registra os recibos como `cancelled_unknown`, preserva seus valores
+   e bindings, termina o run e libera o lease numa única transação. Isso não
+   afirma que o efeito ocorreu ou foi desfeito. O caminho é proibido ao KidOS,
+   onde somente a autoridade instalada pode reconciliar efeitos protegidos.
 7. **Independência operacional.** Core e Responsáveis funcionam com IA desligada.
    Cada máquina executa o próprio motor. Usar Ollama do Mac no Alien é uma
    configuração atual de inferência: nesse arranjo, a IA precisa do Mac, mas

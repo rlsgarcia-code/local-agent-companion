@@ -103,11 +103,40 @@ app.whenReady().then(async () => {
       await publishSnapshot();
     }
   ).catch((error) => publish({ type: "run-error", threadId: store.snapshot().activeThreadId, message: String(error) }));
-  void runtime.recover(store.snapshot().workspacePath, (description) => {
+  void recoverDesktopRuns().catch(publishRecoveryError);
+}).catch((error) => {
+  dialog.showErrorBox("Local Companion", error instanceof Error ? error.message : "Unable to start the application.");
+  app.quit();
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+
+app.on("activate", () => {
+  if (!window) createWindow();
+});
+
+app.on("before-quit", () => {
+  runtime.dispose();
+  void closeInterfaceBroker?.();
+  contextBrowser?.close();
+  // Pending approvals remain with the service when this interface closes.
+  approvals.clear();
+});
+
+function publishRecoveryError(error: unknown): void {
+  publish({ type: "run-error", threadId: store.snapshot().activeThreadId,
+    message: error instanceof Error ? error.message : "Não foi possível recuperar a execução. Abra o aplicativo novamente para tentar reconectar." });
+}
+
+async function recoverDesktopRuns(): Promise<void> {
+  await runtime.recover(store.snapshot().workspacePath, (description) => {
     const thread = store.snapshot().threads.find((item) => item.id === description.threadId);
-    if (!thread || !needsDesktopRecovery(thread.messages.find((message) => message.id === description.assistantMessageId))) return;
-    let text = "";
-    const steps: DesktopExecutionStep[] = [];
+    const localMessage = thread?.messages.find((message) => message.id === description.assistantMessageId);
+    if (!thread || !needsDesktopRecovery(localMessage, description.run.state)) return;
+    let text = localMessage?.status === "streaming" ? localMessage.text : "";
+    const steps: DesktopExecutionStep[] = [...(localMessage?.executionSteps ?? [])];
     const savePartial = () => store.replaceMessage(thread.id, {
       id: description.assistantMessageId, role: "assistant", text,
       createdAt: description.run.createdAt, status: "streaming", executionSteps: [...steps],
@@ -141,30 +170,8 @@ app.whenReady().then(async () => {
         await publishSnapshot();
       },
     };
-  }).catch((error) => {
-    publish({ type: "run-error", threadId: store.snapshot().activeThreadId,
-      message: error instanceof Error ? error.message : "Não foi possível recuperar a execução. Abra o aplicativo novamente para tentar reconectar." });
   });
-}).catch((error) => {
-  dialog.showErrorBox("Local Companion", error instanceof Error ? error.message : "Unable to start the application.");
-  app.quit();
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
-
-app.on("activate", () => {
-  if (!window) createWindow();
-});
-
-app.on("before-quit", () => {
-  runtime.dispose();
-  void closeInterfaceBroker?.();
-  contextBrowser?.close();
-  // Pending approvals remain with the service when this interface closes.
-  approvals.clear();
-});
+}
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -283,6 +290,53 @@ function registerIpc(): void {
   });
   ipcMain.handle("companion:new-thread", async () => {
     await store.createThread();
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:open-workspace-run", async () => {
+    const status = await runtime.workspaceStatus(store.snapshot().workspacePath);
+    if (!status.busy || !status.owned || !status.threadId)
+      throw new Error("A execução preservada não pertence a uma conversa recuperável deste aplicativo.");
+    store.thread(status.threadId);
+    await store.update({ activeThreadId: status.threadId });
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:resume-workspace-run", async () => {
+    const state = store.snapshot();
+    const status = await runtime.workspaceStatus(state.workspacePath);
+    if (!status.busy) return publishSnapshot();
+    if (!status.owned || !status.threadId)
+      throw new Error("A execução pertence a outro cliente. Finalize-a no aplicativo que a iniciou.");
+    if (status.state === "awaiting_reconciliation")
+      throw new Error("O último resultado é incerto. Cancele conscientemente a execução ou restaure a autoridade capaz de confirmar esse resultado.");
+    store.thread(status.threadId);
+    await store.update({ activeThreadId: status.threadId });
+    if (state.modelProvider === "openai") {
+      const key = await credentialStore.openAiKey();
+      if (!key) throw new Error("A chave OpenAI não está disponível no Keychain.");
+      await runtime.leaseCredential(OPENAI_CREDENTIAL_REFERENCE, key, state.workspacePath);
+    }
+    void recoverDesktopRuns().catch(publishRecoveryError);
+    return publishSnapshot();
+  });
+  ipcMain.handle("companion:cancel-workspace-run", async () => {
+    const status = await runtime.workspaceStatus(store.snapshot().workspacePath);
+    if (!status.busy) return publishSnapshot();
+    if (!status.owned)
+      throw new Error("A execução pertence a outro cliente. Finalize-a no aplicativo que a iniciou.");
+    const uncertain = status.state === "awaiting_reconciliation";
+    const result = await dialog.showMessageBox(window!, {
+      type: "warning",
+      title: uncertain ? "Cancelar execução com resultado incerto" : "Cancelar execução preservada",
+      message: uncertain ? "Cancelar e liberar este projeto?" : "Cancelar esta execução?",
+      detail: uncertain
+        ? "O Companion não conseguiu confirmar o resultado da última operação. Cancelar não desfaz o que ela possa ter feito. O recibo incerto será preservado para auditoria; revise o projeto antes de iniciar outra solicitação."
+        : "O trabalho já confirmado será preservado. O motor aguardará o encerramento seguro antes de liberar o projeto.",
+      buttons: ["Voltar", uncertain ? "Cancelar e liberar" : "Cancelar execução"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (result.response === 1) await runtime.cancelWorkspaceRun(store.snapshot().workspacePath);
     return publishSnapshot();
   });
   ipcMain.handle("companion:toggle-thread-pin", async (_event, threadId: unknown) => {
@@ -542,7 +596,7 @@ async function send(request: SendRequest): Promise<void> {
   const state = store.snapshot();
   if (!state.workspacePath) throw new Error("Choose a workspace before starting.");
   const workspaceRun = await runtime.workspaceStatus(state.workspacePath);
-  if (workspaceRun.busy) throw new Error(`Outra conversa possui uma execução não finalizada${workspaceRun.state ? ` (${workspaceRun.state})` : ""}. Retome ou cancele essa execução antes de enviar uma nova solicitação.`);
+  if (workspaceRun.busy) throw new Error(`Outra conversa possui uma execução não finalizada${workspaceRun.state ? ` (${workspaceRun.state})` : ""}. Abra a execução preservada antes de enviar uma nova solicitação.`);
   if (!state.modelRoles.executor) throw new Error("Escolha o modelo executor.");
   if (state.modelProvider === "ollama" && !cachedOllama.models.some((model) => model.name.toLowerCase() === state.modelRoles.executor.toLowerCase())) {
     throw new Error(`O executor ${state.modelRoles.executor} não está instalado. Abra Modelos e execução para baixar o modelo ou aplicar a configuração instalada.`);
@@ -659,7 +713,7 @@ async function send(request: SendRequest): Promise<void> {
     const message = cancellationRequested
       ? "A execução foi interrompida."
       : /Workspace is in use by another run/i.test(rawMessage)
-      ? "Outra conversa possui uma execução não finalizada. Retome ou cancele essa execução antes de enviar uma nova solicitação."
+      ? "Outra conversa possui uma execução não finalizada. Abra a execução preservada antes de enviar uma nova solicitação."
       : rawMessage;
     const failedMessage: DesktopMessage = {
       id: assistantMessageId,
@@ -788,7 +842,12 @@ async function snapshot(refreshOllama = false): Promise<DesktopSnapshot> {
     modelContextWindows:await runtime.modelContextWindows(),
     ...current,
     engine: { version: engine.version, state: engine.ready ? "ready" : "busy", blockers: engine.blockers },
-    workspaceRun: { busy: workspaceRun.busy, ...(workspaceRun.state ? { state: workspaceRun.state } : {}) },
+    workspaceRun: {
+      busy: workspaceRun.busy,
+      ...(workspaceRun.state ? { state: workspaceRun.state } : {}),
+      ...(workspaceRun.owned !== undefined ? { owned: workspaceRun.owned } : {}),
+      ...(workspaceRun.threadId ? { threadId: workspaceRun.threadId } : {}),
+    },
     openAiKeyStored: await credentialStore.hasOpenAiKey(),
     ollama: cachedOllama,
     context: contextBrowser.snapshot(),

@@ -8,6 +8,7 @@ import {
   DEFAULT_WEB_RESEARCH_CONFIGURATION,
   engineCapabilities,
   errors,
+  terminalStates,
   type EngineInfo,
   type EngineUpdateStatus,
   type ModelCatalog,
@@ -40,6 +41,13 @@ export type RecoverableDesktopRun = {
   threadId: string;
   assistantMessageId: string;
   request: string;
+};
+export type DesktopWorkspaceRunStatus = {
+  busy: boolean;
+  runId?: string;
+  state?: RunState;
+  owned?: boolean;
+  threadId?: string;
 };
 export type DesktopRecoveryHandler = {
   callbacks: RuntimeOptions["callbacks"];
@@ -160,8 +168,38 @@ export class OllamaDesktopRuntime {
     ]);
     return { ...status, version: info.version };
   }
-  async workspaceStatus(workspace = ""): Promise<{ busy: boolean; runId?: string; state?: RunState }> {
-    return (await this.connect(workspace)).call("workspace.status");
+  async workspaceStatus(workspace = ""): Promise<DesktopWorkspaceRunStatus> {
+    const client = await this.connect(workspace);
+    const status = await client.call<DesktopWorkspaceRunStatus>("workspace.status");
+    if (!status.busy || !status.runId) return status;
+    try {
+      const description = await client.call<RecoverableDesktopRun | { profile: "generic" }>("runs.describe", { id: status.runId });
+      return description.profile === "desktop"
+        ? { ...status, owned: true, threadId: description.threadId }
+        : { ...status, owned: false };
+    } catch (error) {
+      if (error instanceof AgentError && error.code === errors.missing)
+        return { ...status, owned: false };
+      throw error;
+    }
+  }
+  async cancelWorkspaceRun(workspace = ""): Promise<Run | undefined> {
+    const status = await this.workspaceStatus(workspace);
+    if (!status.busy) return undefined;
+    if (!status.owned || !status.runId)
+      throw new Error("A execução pertence a outro cliente. Finalize-a no aplicativo que a iniciou.");
+    const client = await this.connect(workspace);
+    if (status.state === "awaiting_reconciliation")
+      return client.call("runs.cancelUnknown", { id: status.runId });
+    await client.call("runs.cancel", { id: status.runId });
+    let current = await client.call<Run>("runs.get", { id: status.runId });
+    for (let attempt = 0; attempt < 100 && !terminalStates.has(current.state); attempt++) {
+      if (current.state === "awaiting_reconciliation")
+        return client.call("runs.cancelUnknown", { id: status.runId });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      current = await client.call("runs.get", { id: status.runId });
+    }
+    return current;
   }
   async restartEngine(workspace = ""): Promise<void> {
     const client = await this.connect(workspace);
@@ -427,12 +465,16 @@ export class OllamaDesktopRuntime {
         const runs = await client.call<Run[]>("runs.list", { sessionId: session.id });
         for (const run of [...runs].reverse()) {
           if (this.detached) return;
+          // An unknown effect requires an explicit user decision. Merely
+          // reopening the app must not invent a result or overwrite the local
+          // projection with another generic failure.
+          if (run.state === "awaiting_reconciliation") continue;
           const description = await client.call<RecoverableDesktopRun | { profile: "generic" }>("runs.describe", { id: run.id });
           if (description.profile !== "desktop") continue;
           const projection = handler(description);
           if (!projection) continue;
           this.active = { id: run.id, client };
-          if (run.state === "awaiting_host" || run.state === "awaiting_approval")
+          if (run.state === "awaiting_host" || run.state === "awaiting_approval" || run.state === "awaiting_credentials")
             await client.call("runs.resume", { id: run.id });
           const result = await this.observe(client, run, session.id, projection.callbacks, projection.openPreview);
           if (result.state === "completed")

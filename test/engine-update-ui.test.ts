@@ -38,7 +38,12 @@ test("legacy activation uses exact per-user service controls without a shell", (
 
 test("desktop also guards new conversations with the authoritative workspace lease", () => {
   assert.match(desktopMain, /runtime\.workspaceStatus\(state\.workspacePath\)/);
-  assert.match(desktopMain, /Retome ou cancele essa execução/);
+  assert.match(desktopMain, /Abra a execução preservada/);
   assert.match(desktopRenderer, /snapshot\.workspaceRun\?\.busy/);
   assert.match(desktopRenderer, /Execução preservada em outra conversa/);
+  assert.match(desktopHtml, /id="workspace-run-recovery"/);
+  assert.match(desktopHtml, /id="cancel-workspace-run"/);
+  assert.match(desktopRenderer, /appState\.snapshot\.workspaceRun\?\.busy/);
+  assert.match(desktopRenderer, /cancelWorkspaceRun\(\)/);
+  assert.match(desktopMain, /runs\.cancelUnknown|cancelWorkspaceRun/);
 });

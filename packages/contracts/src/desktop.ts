@@ -197,6 +197,10 @@ export type DesktopSnapshot = DesktopState & {
   workspaceRun: {
     busy: boolean;
     state?: RunState;
+    /** True only when this Mac registration owns and can recover the run. */
+    owned?: boolean;
+    /** Local conversation projection; never an engine authority identifier. */
+    threadId?: string;
   };
   ollama: {
     connected: boolean;

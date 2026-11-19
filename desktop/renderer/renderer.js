@@ -24,7 +24,8 @@ const el = Object.fromEntries([
   "thread-title", "refresh-button", "model-button", "model-label", "settings-button", "conversation", "welcome", "prompt",
   "runtime-button", "runtime-label", "runtime-popover", "close-runtimes", "context-button",
   "jump-latest",
-  "mode-control", "cancel-button", "send-button", "run-state", "run-pulse", "setup-panel", "setup-copy",
+  "mode-control", "cancel-button", "send-button", "composer-hint", "run-state", "run-pulse", "setup-panel", "setup-copy",
+  "workspace-run-recovery", "workspace-run-title", "workspace-run-message", "open-workspace-run", "resume-workspace-run", "cancel-workspace-run",
   "setup-action", "activity-count", "activity-list",
   "activity-view", "context-view", "context-count", "context-close", "inspector-resizer", "context-open-form", "context-input",
   "preview-mode-button", "preview-count", "changes-mode-button", "surface-changes-count", "commands-mode-button", "commands-count", "surface-changes-view", "surface-change-list", "commands-view", "command-list",
@@ -176,6 +177,7 @@ function render(conversationEffect = null) {
   document.querySelectorAll("[data-runtime]").forEach((button) => button.classList.toggle("active", button.dataset.runtime === snapshot.agentRuntime));
   el["cancel-button"].classList.toggle("hidden", !snapshot.running);
   el["send-button"].disabled = snapshot.running || Boolean(snapshot.workspaceRun?.busy);
+  renderWorkspaceRunRecovery(snapshot);
   const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
   const inspectorTitles = {
     activity: ({
@@ -190,6 +192,32 @@ function render(conversationEffect = null) {
   };
   el["run-state"].textContent = inspectorTitles[appState.inspectorMode] || "Bancada";
   el["run-pulse"].classList.toggle("active", (snapshot.running && (!snapshot.runState || snapshot.runState === "running")) || (["context", "preview"].includes(appState.inspectorMode) && activeContext?.status === "loading"));
+}
+
+function renderWorkspaceRunRecovery(snapshot) {
+  const blocker = snapshot.workspaceRun;
+  const visible = Boolean(blocker?.busy && !snapshot.running);
+  el["workspace-run-recovery"].classList.toggle("hidden", !visible);
+  if (!visible) {
+    el["composer-hint"].textContent = "Enter para enviar · Shift+Enter para nova linha";
+    return;
+  }
+  const owned = blocker.owned === true;
+  const uncertain = blocker.state === "awaiting_reconciliation";
+  el["workspace-run-title"].textContent = !owned
+    ? "Projeto em uso por outro cliente"
+    : uncertain
+    ? "Execução com resultado incerto"
+    : "Execução preservada";
+  el["workspace-run-message"].textContent = !owned
+    ? "Finalize ou recupere a execução no aplicativo que a iniciou antes de continuar aqui."
+    : uncertain
+    ? "Uma operação pode ter sido executada, mas o recibo final não chegou. Abra a conversa ou cancele conscientemente; o Companion não repetirá a operação."
+    : "A conversa anterior ainda pode continuar do checkpoint salvo. Abra-a, retome-a ou cancele-a antes de iniciar outra solicitação neste projeto.";
+  el["open-workspace-run"].classList.toggle("hidden", !owned || !blocker.threadId);
+  el["resume-workspace-run"].classList.toggle("hidden", !owned || uncertain);
+  el["cancel-workspace-run"].classList.toggle("hidden", !owned);
+  el["composer-hint"].textContent = owned ? "Resolva a execução preservada para enviar" : "Projeto ocupado em outro cliente";
 }
 
 function renderThreadList(threads, activeThreadId) {
@@ -896,12 +924,16 @@ function syncContextBounds() {
 
 async function send() {
   const text = el.prompt.value.trim();
-  if (!text || appState.snapshot.running) return;
+  if (!text || appState.snapshot.running || appState.snapshot.workspaceRun?.busy) return;
   el.prompt.value = "";
   resizePrompt();
   try {
     await window.companion.send({ text, threadId: appState.snapshot.activeThreadId });
   } catch (error) {
+    if (!el.prompt.value.trim()) {
+      el.prompt.value = text;
+      resizePrompt();
+    }
     showError(error.message || String(error));
   }
 }
@@ -925,7 +957,8 @@ async function answerApproval(approved) {
 }
 
 function showError(error) {
-  el.toast.textContent = error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  el.toast.textContent = message.replace(/^Error invoking remote method '[^']+': Error:\s*/i, "");
   el.toast.classList.remove("hidden");
   clearTimeout(showError.timer);
   showError.timer = setTimeout(() => el.toast.classList.add("hidden"), 5500);
@@ -1218,6 +1251,22 @@ el.prompt.addEventListener("input", resizePrompt);
 el.prompt.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } });
 el["send-button"].addEventListener("click", send);
 el["cancel-button"].addEventListener("click", () => window.companion.cancel());
+el["open-workspace-run"].addEventListener("click", async () => {
+  try { appState.snapshot = await window.companion.openWorkspaceRun(); render({ type: "reset" }); }
+  catch (error) { showError(error); }
+});
+el["resume-workspace-run"].addEventListener("click", async () => {
+  el["resume-workspace-run"].disabled = true;
+  try { appState.snapshot = await window.companion.resumeWorkspaceRun(); render({ type: "reset" }); }
+  catch (error) { showError(error); }
+  finally { el["resume-workspace-run"].disabled = false; }
+});
+el["cancel-workspace-run"].addEventListener("click", async () => {
+  el["cancel-workspace-run"].disabled = true;
+  try { appState.snapshot = await window.companion.cancelWorkspaceRun(); render(); }
+  catch (error) { showError(error); }
+  finally { el["cancel-workspace-run"].disabled = false; }
+});
 el["deny-approval"].addEventListener("click", () => answerApproval(false));
 el["allow-approval"].addEventListener("click", () => answerApproval(true));
 document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventListener("click", () => { el.prompt.value = button.dataset.prompt; resizePrompt(); el.prompt.focus(); }));

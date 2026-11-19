@@ -958,6 +958,21 @@ export class AgentService {
         }
         return this.store.run(reg, id);
       }
+      case "runs.cancelUnknown": {
+        const { id } = z.object({ id: identifier }).strict().parse(p);
+        if (reg.product === "kidos")
+          throw new AgentError(errors.forbidden, "Protected unknown effects must be reconciled by the installed KidOS authority.");
+        const current = this.store.run(reg, id);
+        if (current.state === "cancelled") return current;
+        if (current.state !== "awaiting_reconciliation")
+          throw new AgentError(errors.conflict, "The run is not awaiting reconciliation.");
+        const controller = this.running.get(id);
+        if (controller) {
+          controller.abort(new Error("Cancelled by user with an unconfirmed operation result."));
+          await this.runningTasks.get(id);
+        }
+        return this.store.cancelUnknownRun(reg, id);
+      }
       case "runs.resume": {
         const { id } = z.object({ id: identifier }).strict().parse(p);
         const run = this.store.run(reg, id);

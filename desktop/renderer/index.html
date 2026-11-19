@@ -64,6 +64,17 @@
         </div>
 
         <section class="composer-wrap">
+          <div class="workspace-run-recovery hidden" id="workspace-run-recovery" role="status" aria-live="polite">
+            <div>
+              <strong id="workspace-run-title">Execução preservada</strong>
+              <p id="workspace-run-message"></p>
+            </div>
+            <div class="workspace-run-actions">
+              <button id="open-workspace-run">Abrir conversa</button>
+              <button id="resume-workspace-run">Retomar</button>
+              <button class="danger-action" id="cancel-workspace-run">Cancelar</button>
+            </div>
+          </div>
           <div class="composer">
             <textarea id="prompt" rows="1" placeholder="Peça uma análise, alteração ou investigação…"></textarea>
             <div class="composer-footer">
