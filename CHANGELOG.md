@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.4
+
+- Engine/SDK 1.1.4 coordinates prepared-update deferral across concurrent Mac startup connections, so protected work opens directly in the recovery UI instead of racing a modal update prompt.
+- The signed update remains prepared and activates only after the preserved work no longer blocks the engine lifecycle.
+
 ## 0.13.3
 
 - Engine/SDK 1.1.3 lets the Mac client defer a prepared engine update and continue on the authenticated compatible engine while protected work is still active.

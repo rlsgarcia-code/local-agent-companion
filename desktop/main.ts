@@ -456,27 +456,11 @@ async function withEngineUpdateRecovery<T>(operation: () => Promise<T>): Promise
   try { return await operation(); }
   catch (error) {
     if (!(error instanceof PreparedEngineUpdateError)) throw error;
-    if (!engineUpdateRecovery) engineUpdateRecovery = promptEngineUpdate(error).finally(() => { engineUpdateRecovery = undefined; });
+    if (!engineUpdateRecovery) engineUpdateRecovery = runtime.deferPreparedUpdate(store.snapshot().workspacePath)
+      .finally(() => { engineUpdateRecovery = undefined; });
     await engineUpdateRecovery;
     return operation();
   }
-}
-
-async function promptEngineUpdate(error: PreparedEngineUpdateError): Promise<void> {
-  const blockers = error.blockers;
-  const parts = blockers ? engineBlockerLabels(blockers) : [];
-  const result = await dialog.showMessageBox(window!, {
-    type: "warning",
-    title: "Atualização do motor pronta",
-    message: `Motor ${error.requestedVersion} pronto para ativação`,
-    detail: `O motor ${error.installedVersion} ainda está ativo. ${parts.length ? `Bloqueios: ${parts.join(", ")}.` : error.reason}\n\nFinalize trabalhos importantes antes de continuar. O Companion encerrará recursos locais gerenciados, reiniciará o motor e preservará as conversas concluídas.`,
-    buttons: ["Agora não", "Encerrar recursos e atualizar"],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-  });
-  if (result.response === 1) await runtime.activatePreparedUpdate(store.snapshot().workspacePath);
-  else await runtime.deferPreparedUpdate(store.snapshot().workspacePath);
 }
 
 function engineBlockerLabels(blockers: import("@companion/client-sdk/contracts").EngineUpdateBlockers): string[] {

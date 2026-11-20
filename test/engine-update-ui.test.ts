@@ -24,9 +24,9 @@ test("engine updates expose blockers and require an explicit local-resource acti
 test("desktop settings expose engine state and a controlled restart", () => {
   assert.match(desktopHtml, /id="engine-status"/);
   assert.match(desktopHtml, /id="restart-engine"/);
-  assert.match(desktopMain, /Atualização do motor pronta/);
+  assert.match(desktopMain, /runtime\.engineStatus/);
   assert.match(desktopMain, /companion:restart-engine/);
-  assert.match(desktopMain, /Encerrar recursos e atualizar/);
+  assert.match(desktopMain, /Encerrar recursos e reiniciar/);
   assert.match(desktopMain, /deferPreparedUpdate/);
 });
 
