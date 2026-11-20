@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.2
+
+- Engine/SDK 1.1.2 preserves and exposes unreconciled workspace runs instead of allowing a new Mac conversation to fail with a raw IPC conflict.
+- Adds explicit open, resume and conscious-cancel recovery controls; uncertain cancellation preserves the audit receipt and never claims to undo a possible effect.
+- Fixes the macOS renderer registry so the recovery banner is painted before optional model settings, and adds regression coverage for every indexed UI control.
+
 ## 0.13.1
 
 - Engine/SDK 1.1.1 keeps host adapter tools distinct from DeepAgents filesystem names in supervisors and delegated game specialists. Original adapter validation, schemas, call identity, runtime and permissions remain in force.
