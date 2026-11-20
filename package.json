@@ -2,7 +2,7 @@
   "name": "local-agent-companion",
   "displayName": "Local Agent Companion",
   "description": "A local LangChain agent foundation for VS Code with user-configured LiteLLM and approval-gated corporate MCP connections.",
-  "version": "0.12.12",
+  "version": "0.13.7",
   "publisher": "local",
   "license": "MIT",
   "homepage": "https://github.com/rlsgarcia-code/local-agent-companion#readme",
@@ -113,6 +113,10 @@
         "title": "Local Agent Companion: Open MCP Connections"
       },
       {
+        "command": "localAgentCompanion.openGameStudio",
+        "title": "Local Agent Companion: Open Game Studio"
+      },
+      {
         "command": "localAgentCompanion.configureMcpCatalogs",
         "title": "Local Agent Companion: Configure MCP Catalog Sources"
       },
@@ -200,7 +204,7 @@
             "en"
           ],
           "enumDescriptions": [
-            "Respostas exclusivamente em português do Brasil.",
+            "Respostas exclusivamente em portugu\u00eas do Brasil.",
             "Responses exclusively in English."
           ],
           "default": "pt-BR",
@@ -347,6 +351,12 @@
                   "pdfInput"
                 ],
                 "additionalProperties": false
+              },
+              "contextWindow": {
+                "type": "integer",
+                "minimum": 2048,
+                "maximum": 2000000,
+                "description": "Effective input context window for this exact alias. Guides native compaction; does not change inference server settings."
               }
             },
             "additionalProperties": false
@@ -495,8 +505,8 @@
     "desktop:package": "node scripts/package-desktop.mjs",
     "watch": "node esbuild.mjs --watch",
     "check": "tsc --noEmit",
-    "test": "npm run compile:tests && node --test dist-tests/test/**/*.test.js && npm run test:repository",
-    "test:repository": "node --test test/adapter-documentation.test.mjs test/mac-sdk-boundary.test.mjs test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs test/release-artifacts.test.mjs test/installed-vsix.test.mjs",
+    "test": "npm run compile:tests && node --require ./test/unit-network-guard.cjs --test --test-concurrency=1 dist-tests/test/**/*.test.js && npm run test:repository",
+    "test:repository": "node --test test/engine-package.test.mjs test/adapter-documentation.test.mjs test/mac-sdk-boundary.test.mjs test/issue-forms.test.mjs test/license-inventory.test.mjs test/native-package.test.mjs test/release-metadata.test.mjs test/security-audit.test.mjs test/release-artifacts.test.mjs test/installed-vsix.test.mjs test/game-unity-toolchain.test.mjs",
     "compile:tests": "node scripts/clean-test-output.mjs && tsc -p tsconfig.test.json && node scripts/prepare-test-sdk.mjs",
     "compile:extension-host-tests": "node scripts/clean-extension-host-test-output.mjs && tsc -p tsconfig.extension-test.json",
     "test:extension-host": "npm run build && npm run compile:extension-host-tests && node scripts/run-extension-host-tests.mjs",
@@ -504,6 +514,21 @@
     "smoke:litellm": "npm run compile:tests && node scripts/smoke-litellm-routing.mjs",
     "smoke:mac-sdk": "node scripts/build-sdks.mjs && node scripts/smoke-mac-sdk.mjs",
     "smoke:desktop-preview": "npm run compile:tests && node scripts/smoke-desktop-preview.mjs",
+    "smoke:game-builds": "npm run compile:tests && npm run engine:build && node scripts/smoke-game-builds.mjs",
+    "smoke:game-browser": "npm run compile:tests && npm run engine:build && node scripts/smoke-game-builds.mjs --observe",
+    "smoke:game-browser-recovery": "npm run compile:tests && npm run engine:build && node scripts/smoke-game-browser-recovery.mjs",
+    "smoke:game-assets": "npm run compile:tests && npm run engine:build && node scripts/smoke-game-assets.mjs",
+    "smoke:game-scheduling": "npm run compile:tests && npm run engine:build && node scripts/smoke-game-scheduling.mjs",
+    "smoke:game-studio": "npm run compile:tests && npm run engine:build && npm run build && npm run desktop:build && node scripts/smoke-game-studio.mjs",
+    "smoke:game-studio-native": "npm run compile:tests && npm run engine:build && npm run desktop:build && node scripts/smoke-game-studio-electron.mjs",
+    "smoke:game-studio-vscode": "npm run compile:tests && npm run engine:build && npm run build && node scripts/smoke-game-studio-vscode.mjs",
+    "toolchain:godot": "node scripts/prepare-game-godot.mjs",
+    "toolchain:unity": "node scripts/prepare-game-unity.mjs",
+    "toolchain:blender": "node scripts/prepare-game-blender.mjs",
+    "smoke:game-blender": "npm run compile:tests && npm run engine:build && node scripts/smoke-game-blender.mjs",
+    "qualify:game-lume": "npm run compile:tests && npm run engine:build && node scripts/qualify-game-lume.mjs",
+    "qualify:game-farol": "npm run compile:tests && npm run engine:build && node scripts/qualify-game-farol.mjs",
+    "smoke:game-godot": "npm run compile:tests && npm run engine:build && node scripts/smoke-game-godot.mjs",
     "catalog:update": "node scripts/update-litellm-catalog.mjs",
     "smoke:chroma": "node scripts/smoke-chroma-lifecycle.mjs",
     "audit:prod": "node scripts/audit-production.mjs",
@@ -519,7 +544,9 @@
     "engine:package": "node scripts/package-engine.mjs",
     "suite:check": "npm run check && npm test && npm run engine:build",
     "engine:check": "tsc --noEmit -p tsconfig.engine.json",
-    "smoke:connection-settings": "npm run compile:tests && node scripts/smoke-connection-settings.mjs"
+    "smoke:connection-settings": "npm run compile:tests && node scripts/smoke-connection-settings.mjs",
+    "qualify:game-vigilia": "npm run compile:tests && npm run engine:build && node scripts/qualify-game-vigilia.mjs",
+    "qualify:game-arco": "npm run compile:tests && npm run engine:build && node scripts/qualify-game-arco.mjs"
   },
   "dependencies": {
     "@langchain/community": "^1.1.29",
@@ -530,12 +557,17 @@
     "@langchain/openai": "^1.6.2",
     "@modelcontextprotocol/client": "^2.3.1",
     "@peculiar/x509": "3.1.0",
+    "@resvg/resvg-wasm": "2.6.2",
     "better-sqlite3": "12.10.0",
     "chromadb": "^3.5.0",
     "deepagents": "^1.15.0",
+    "diff": "9.0.0",
+    "esbuild": "0.25.12",
     "js-tiktoken": "1.0.21",
     "langchain": "^1.5.16",
+    "openai": "7.33.0",
     "playwright-core": "^1.58.2",
+    "pngjs": "7.0.0",
     "reflect-metadata": "0.2.2",
     "undici": "6.29.1",
     "zod": "^4.6.7"
@@ -543,12 +575,12 @@
   "devDependencies": {
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "^22.10.0",
+    "@types/pngjs": "6.0.5",
     "@types/vscode": "^1.106.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0",
-    "esbuild": "^0.25.0",
     "typescript": "^5.7.0"
   },
   "workspaces": [

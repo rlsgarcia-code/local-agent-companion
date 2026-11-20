@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { z } from "zod";
 import { executeGraph } from "../../agent-core/src/index";
 import { adapterModelAPI, type InstalledAdapter } from "../../agent-core/src/installed-adapter";
+import { installedGameProductionAPI } from "../../agent-core/src/installed-production";
 import { AgentError, errors, PROTOCOL_VERSION } from "../../contracts/src/index";
 
 const descriptorSchema = z.object({ schema: z.literal(1), directory: z.string(), manifestSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
@@ -71,9 +72,46 @@ export async function loadSignedAdapter(descriptorFile: string, publicKeyFile: s
   const entry = path.join(descriptor.directory, manifest.entry);
   const factory = createRequire(entry)(entry).createAdapter;
   if (typeof factory !== "function") throw new Error("Installed adapter has no factory.");
-  const adapter = factory({ ...adapterModelAPI, executeGraph, directory: descriptor.directory });
+  const adapter = factory({ ...adapterModelAPI, ...installedGameProductionAPI, executeGraph, directory: descriptor.directory });
   if (adapter?.product !== "kidos" || ["validate", "execute", "prepareTool", "invokeTool"].some((name) => typeof adapter[name] !== "function"))
     throw new Error("Installed adapter contract is invalid.");
+  if (adapter.reconcileTool !== undefined && typeof adapter.reconcileTool !== "function")
+    throw new Error("Installed adapter inspection contract is invalid.");
+  if(adapter.reconcileInference!==undefined&&typeof adapter.reconcileInference!=="function")
+    throw new Error("Installed inference inspection contract is invalid.");
+  if((adapter.hasPendingInference!==undefined||adapter.reconcileInference!==undefined)&&(typeof adapter.hasPendingInference!=="function"||typeof adapter.reconcileInference!=="function"))
+    throw new Error("Installed inference recovery contract is invalid.");
+  if(adapter.gameAdapters!==undefined){
+    if(!Array.isArray(adapter.gameAdapters))throw new Error("Installed production ports must be an array.");
+    for(const port of adapter.gameAdapters){
+      if(port?.authority!=="kidos-core"||!Array.isArray(port.products)||port.products.length!==1||port.products[0]!=="kidos"||
+          typeof port.probe!=="function"||typeof port.build!=="function"||["reconcile","dispose"].some(key=>port[key]!==undefined&&typeof port[key]!=="function"))
+        throw new Error("Installed game production must expose only protected KidOS Core ports.");
+      if(port.admission!==undefined&&(!port.admission||typeof port.admission.reserve!=="function"||
+          typeof port.admission.cancel!=="function"||typeof port.reconcile!=="function"))
+        throw new Error("Installed production admission requires reservation, cancellation and inspection.");
+    }
+  }
+  if(adapter.gameAssetProcessors!==undefined){
+    if(!Array.isArray(adapter.gameAssetProcessors))throw new Error("Installed media ports must be an array.");
+    for(const port of adapter.gameAssetProcessors){
+      if(port?.authority!=="kidos-core"||!Array.isArray(port.products)||port.products.length!==1||port.products[0]!=="kidos"||
+        typeof port.probe!=="function"||typeof port.process!=="function"||typeof port.reconcile!=="function"||
+        !port.admission||typeof port.admission.reserve!=="function"||typeof port.admission.cancel!=="function")
+        throw new Error("Installed media must expose only protected admitted KidOS Core ports.");
+    }
+  }
+  if(adapter.gameValidationCollectors!==undefined){
+    if(!Array.isArray(adapter.gameValidationCollectors))throw new Error("Installed validation ports must be an array.");
+    for(const port of adapter.gameValidationCollectors){
+      if(port?.authority!=="kidos-core"||!Array.isArray(port.products)||port.products.length!==1||port.products[0]!=="kidos"||
+        (port.testSuiteFormat!==undefined&&port.testSuiteFormat!=="browser-v1")||
+        typeof port.probe!=="function"||typeof port.validate!=="function"||typeof port.reconcile!=="function"||
+        (port.dispose!==undefined&&typeof port.dispose!=="function")||
+        !port.admission||typeof port.admission.reserve!=="function"||typeof port.admission.cancel!=="function")
+        throw new Error("Installed validation must expose only protected admitted KidOS Core ports.");
+    }
+  }
   return adapter as InstalledAdapter;
 }
 export async function systemAdapter(engine: {version:string;commit?:string;manifestSha256?:string}): Promise<InstalledAdapter | undefined> {

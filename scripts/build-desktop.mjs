@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { generateThirdPartyNotices } from "./generate-third-party-notices.mjs";
+import {copyGameModelRuntime} from "./copy-game-model-runtime.mjs";
 
 if (process.env.COMPANION_USE_EXISTING_SDK !== "1")
   execFileSync(process.execPath, ["scripts/build-sdks.mjs"], { stdio: "inherit" });
@@ -18,6 +19,13 @@ const sdkEntries = new Map([
 const installedSdkPlugin = {
   name: "installed-companion-sdk",
   setup(build) {
+    // Preview stays a host adapter. Its three runtime schema imports must use
+    // the same published contract bytes as the client, not raw monorepo sources.
+    build.onResolve({ filter: /^(?:\.\.\/)+contracts\/src\/(?:identity|games|game-assets)$/ }, (args) => {
+      const previewRoot = path.resolve("packages/adapter-game-browser/src") + path.sep;
+      if (!path.resolve(args.importer).startsWith(previewRoot)) return undefined;
+      return { path: sdkEntries.get("@companion/client-sdk/contracts") };
+    });
     build.onResolve({ filter: /^@companion\/client-sdk(?:\/.*)?$/ }, (args) => {
       const resolved = sdkEntries.get(args.path);
       return resolved ? { path: resolved } : { errors: [{ text: `Unknown Companion SDK entry: ${args.path}` }] };
@@ -35,7 +43,7 @@ const [mainBuild] = await Promise.all([
     platform: "node",
     format: "cjs",
     target: "node22",
-    external: ["electron"],
+    external: ["electron","playwright-core"],
     sourcemap: true,
     metafile: true,
     plugins: [installedSdkPlugin],
@@ -54,6 +62,7 @@ const [mainBuild] = await Promise.all([
     logLevel: "info"
   })
 ]);
+await esbuild.build({entryPoints:["desktop/game-studio-preload.ts"],outfile:path.join(output,"game-studio-preload.cjs"),bundle:true,platform:"node",format:"cjs",target:"node22",external:["electron"]});
 const inputs = Object.keys(mainBuild.metafile.inputs);
 if (!inputs.some((name) => name.includes("release/sdk/typescript/client-ts/src/bootstrap.cjs"))) {
   throw new Error("The Mac client did not consume the packaged Companion SDK.");
@@ -65,7 +74,10 @@ if (inputs.some((name) => /node_modules\/(?:langchain|deepagents|@langchain)\//.
   throw new Error("The Mac client contains an agent runtime. Keep execution inside the shared engine.");
 }
 await writeFile(path.join(output, "dependencies.json"), JSON.stringify({ inputs }, null, 2) + "\n");
-await generateThirdPartyNotices({ metafile: mainBuild.metafile, outputDirectory: path.join(output, "licenses") });
+await generateThirdPartyNotices({ metafile: mainBuild.metafile,additionalPackages:["playwright-core"], outputDirectory: path.join(output, "licenses") });
+await cp("node_modules/playwright-core",path.join(output,"node_modules/playwright-core"),{recursive:true,filter:(source)=>!source.split(path.sep).includes("types")&&!source.split(path.sep).includes("bin")});
+await cp("packages/game-studio-ui",path.join(output,"game-studio"),{recursive:true});
+await copyGameModelRuntime(path.join(output,"game-model-runtime"));
 
 await cp("desktop/renderer", path.join(output, "renderer"), { recursive: true });
 await cp("ops/searxng", path.join(output, "ops", "searxng"), { recursive: true });
@@ -78,7 +90,7 @@ const desktopPackage = {
   description: "Local Ollama coding companion for macOS",
   author: "Local Agent Companion contributors",
   license: "MIT",
-  dependencies: {},
+  dependencies: {"playwright-core":JSON.parse(await readFile("node_modules/playwright-core/package.json","utf8")).version},
   main: "main.cjs"
 };
 await writeFile(path.join(output, "package.json"), `${JSON.stringify(desktopPackage, null, 2)}\n`, "utf8");
@@ -87,7 +99,7 @@ await writeFile(path.join(output, "package-lock.json"), `${JSON.stringify({
   version: desktopPackage.version,
   lockfileVersion: 3,
   requires: true,
-  packages: { "": desktopPackage }
+  packages: { "": desktopPackage,"node_modules/playwright-core":JSON.parse(await readFile("package-lock.json","utf8")).packages["node_modules/playwright-core"] }
 }, null, 2)}\n`, "utf8");
 
 console.log(`DESKTOP_APP_READY ${output}`);

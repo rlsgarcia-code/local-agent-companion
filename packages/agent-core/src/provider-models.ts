@@ -1,3 +1,4 @@
+import {ContextualChatCompletions,ContextualChatResponses} from './model-context';
 import { withOfflineTokenCounting } from "./offline-token-count";
 import type { Registration, RunSpec } from "../../contracts/src/index";
 import { embeddingsBaseUrl, embeddingsUrl } from "./litellm";
@@ -53,13 +54,27 @@ export function validateProvider(
 }
 
 
+// Match the pinned SDK's request deadline instead of Undici's shorter default
+// header/body inactivity limits. Per-call SDK/run aborts remain authoritative.
+const MODEL_REQUEST_TIMEOUT_MS = 10 * 60_000;
+
 export class ProviderModels {
-  private readonly dispatcher?: UndiciAgent;
+  private readonly dispatchers = new Map<number, UndiciAgent>();
   constructor(private readonly provider: ProviderSpec,private readonly credential:string|undefined,private readonly signal:AbortSignal) {
     if(provider.corporateCa?.length) {
       if(provider.kind!=="litellm")throw new AgentError(errors.forbidden,"Corporate CA configuration belongs only to the configured LiteLLM provider.");
-      this.dispatcher=new UndiciAgent({connect:{ca:provider.corporateCa}});
     }
+  }
+  private dispatcher(timeout = MODEL_REQUEST_TIMEOUT_MS): UndiciAgent {
+    if (!Number.isSafeInteger(timeout) || timeout <= 0)
+      throw new AgentError(errors.invalid, "A positive model request timeout is required.");
+    let dispatcher = this.dispatchers.get(timeout);
+    if (!dispatcher) {
+      dispatcher = new UndiciAgent({ headersTimeout: timeout, bodyTimeout: timeout,
+        ...(this.provider.corporateCa?.length ? { connect: { ca: this.provider.corporateCa } } : {}) });
+      this.dispatchers.set(timeout, dispatcher);
+    }
+    return dispatcher;
   }
   model(role:"executor"|"planner"|"evaluator"|"advisor"|"vision"="executor",streaming=role==="executor", options: { timeout?: number; maxRetries?: number; requiresTools?: boolean; webSearch?: boolean } = {}) {
     const provider=this.provider;
@@ -72,11 +87,13 @@ export class ProviderModels {
       throw new AgentError(errors.invalid,"Vision is not declared for the selected model alias.");
     const connection={endpoint:provider.endpoint,model:provider.roles[role]||provider.roles.executor,apiKey:this.credential||"ollama-local",authHeader:provider.authHeader};
     const responses=provider.kind==="openai"&&options.webSearch===true || provider.kind==="litellm"&&resolveLiteLlmModelApi(connection.model,profile,connection.endpoint)==="responses";
-    const common={model:connection.model,apiKey:connection.apiKey,streaming,disableStreaming:!streaming,maxRetries:options.maxRetries ?? 0,...(options.timeout ? {timeout:options.timeout}:{}),
+    const timeout = options.timeout ?? MODEL_REQUEST_TIMEOUT_MS;
+    const dispatcher = this.dispatcher(timeout);
+    const common={model:connection.model,apiKey:connection.apiKey,streaming,disableStreaming:!streaming,maxRetries:options.maxRetries ?? 0,timeout,
       configuration:{baseURL:responses?responsesBaseUrl(connection,connection.model):chatCompletionsBaseUrl(connection),
         ...(this.credential&&provider.authHeader!=="authorization"?{defaultHeaders:{[provider.authHeader]:this.credential}}:{}),
-        fetch:gatewayFetch(responses?responsesUrl(connection,connection.model):chatCompletionsUrl(connection),provider.authHeader!=="authorization",this.dispatcher,this.signal)}};
-    return withOfflineTokenCounting(responses?new ChatOpenAIResponses(common):new ChatOpenAICompletions({...common,...chatCompletionsModelOptions(profile)}),connection.model);
+        fetch:gatewayFetch(responses?responsesUrl(connection,connection.model):chatCompletionsUrl(connection),provider.authHeader!=="authorization",dispatcher,this.signal)}};
+    return withOfflineTokenCounting(responses?new ContextualChatResponses(common,profile.contextWindow):new ContextualChatCompletions({...common,...chatCompletionsModelOptions(profile)},profile.contextWindow),connection.model);
   }
   embeddingOptions(model: string, endpoint?: string) {
     validateProvider({ providers: [this.provider.kind] } as Registration, { ...this.provider, endpoint: endpoint || this.provider.endpoint });
@@ -84,13 +101,13 @@ export class ProviderModels {
     return { embeddingModel: model, embeddingsBaseUrl: embeddingsBaseUrl(connection, model, Boolean(endpoint)),
       apiKey: this.credential || "ollama-local",
       ...(this.credential && this.provider.authHeader !== "authorization" ? { defaultHeaders: { [this.provider.authHeader]: this.credential } } : {}),
-      fetch: gatewayFetch(embeddingsUrl(connection, model, Boolean(endpoint)), this.provider.authHeader !== "authorization", this.dispatcher, this.signal) };
+      fetch: gatewayFetch(embeddingsUrl(connection, model, Boolean(endpoint)), this.provider.authHeader !== "authorization", this.dispatcher(), this.signal) };
   }
   async listModels(): Promise<string[]> {
     if (this.provider.kind === "kidos-gateway")
       throw new AgentError(errors.forbidden, "The protected KidOS catalog is managed by its system authority.");
     const url = `${this.provider.endpoint.replace(/\/$/, "")}/models`;
-    const request = gatewayFetch(url, false, this.dispatcher, this.signal, undefined, ["GET"]);
+    const request = gatewayFetch(url, false, this.dispatcher(), this.signal, undefined, ["GET"]);
     const headers = new Headers({ accept: "application/json", "cache-control": "no-cache" });
     if (this.credential) {
       const header = this.provider.authHeader ?? "authorization";
@@ -105,5 +122,5 @@ export class ProviderModels {
     return [...new Set(aliases.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
       .map((value) => value.trim()))].sort((left, right) => left.localeCompare(right));
   }
-  async close(){await this.dispatcher?.close();}
+  async close(){await Promise.all([...this.dispatchers.values()].map(dispatcher => dispatcher.close()));}
 }

@@ -10,16 +10,18 @@ import { publicOllamaCatalogSchema } from "../../agent-core/src/ollama-recommend
 import { validateProvider } from "../../agent-core/src/provider-models";
 import { namespace } from "./security";
 import type { Store } from "./store";
+import { ModelConfigurationStore } from "./model-configuration-store";
 
 type ModelAdapter = Pick<OllamaModels, "ollamaStatus" | "invokeAdvisor" | "pullModel" | "cancelDownload">;
 export class Models {
+  private readonly configurations: ModelConfigurationStore;
   private readonly tasks = new Map<string, { controller: AbortController; promise: Promise<void>; job: ModelJob }>();
   private download?: string;
   private closed = false;
   constructor(private readonly store: Store, private readonly directory: string,
     private readonly adapter: ModelAdapter = new OllamaModels()) {
-    store.db.exec(`CREATE TABLE IF NOT EXISTS model_configurations(namespace TEXT PRIMARY KEY,value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS model_jobs(id TEXT PRIMARY KEY,namespace TEXT NOT NULL,request_key TEXT NOT NULL,binding TEXT NOT NULL,value TEXT NOT NULL,UNIQUE(namespace,request_key));`);
+    this.configurations = new ModelConfigurationStore(store);
+    store.db.exec(`CREATE TABLE IF NOT EXISTS model_jobs(id TEXT PRIMARY KEY,namespace TEXT NOT NULL,request_key TEXT NOT NULL,binding TEXT NOT NULL,value TEXT NOT NULL,UNIQUE(namespace,request_key));`);
   }
   recover(): void {
     for (const row of this.store.db.prepare("SELECT id,value FROM model_jobs").all() as { id: string; value: string }[]) {
@@ -44,18 +46,14 @@ export class Models {
   async status(reg: Registration) { this.authorizeOllama(reg); return this.adapter.ollamaStatus(); }
   configuration(reg: Registration): z.infer<typeof modelConfiguration> | null {
     this.authorize(reg);
-    const row = this.store.db.prepare("SELECT value FROM model_configurations WHERE namespace=?").get(namespace(reg)) as { value: string } | undefined;
-    return row ? modelConfiguration.parse(JSON.parse(row.value)) : null;
+    return this.configurations.get(namespace(reg));
   }
   configure(reg: Registration, input: unknown) {
     this.authorize(reg); const value = modelConfiguration.parse(input);
     if (!reg.providers.includes(value.provider)) throw new AgentError(errors.forbidden, "This client is not authorized for the selected provider.");
     if (value.provider !== "ollama" && !value.credentialRef) throw new AgentError(errors.invalid, "Hosted providers require a host credential reference.");
     validateProvider(reg, { kind: value.provider, endpoint: value.endpoint, roles: value.roles, authHeader: "authorization", ...(value.credentialRef ? { credentialRef: value.credentialRef } : {}) });
-    if (value.revision !== (this.configuration(reg)?.revision ?? 0)) throw new AgentError(errors.conflict, "Refresh model settings before changing them.");
-    const next = { ...value, revision: value.revision + 1 };
-    this.store.db.prepare("INSERT INTO model_configurations VALUES(?,?) ON CONFLICT(namespace) DO UPDATE SET value=excluded.value").run(namespace(reg), JSON.stringify(next));
-    return next;
+    return this.configurations.set(namespace(reg), value, input as Record<string, unknown>);
   }
   get(reg: Registration, id: string): ModelJob {
     const row = this.store.db.prepare("SELECT value FROM model_jobs WHERE namespace=? AND id=?").get(namespace(reg), id) as { value: string } | undefined;

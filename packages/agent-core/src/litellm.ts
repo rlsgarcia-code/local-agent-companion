@@ -1,3 +1,5 @@
+import {parseOptionalModelContextWindow,modelContextWindow} from '../../contracts/src/model-context';
+export {parseOptionalModelContextWindow} from '../../contracts/src/model-context';
 import { modelCapabilityDeclaration, type ModelCapabilityDeclaration } from "../../contracts/src/model-capabilities";
 import { X509Certificate } from "node:crypto";
 import * as path from "node:path";
@@ -97,6 +99,7 @@ export const LITELLM_MODEL_CAPABILITIES: Record<Exclude<LiteLlmModelPreset, "aut
 };
 
 export type LiteLlmModelProfile = {
+  contextWindow?: number;
   capabilities?: ModelCapabilityDeclaration;
   api?: LiteLlmModelApi;
   preset?: LiteLlmModelPreset;
@@ -340,6 +343,7 @@ export function parseLiteLlmModelProfiles(value: unknown): LiteLlmModelProfiles 
       Array.isArray(rawProfile)
     ) continue;
     const source = rawProfile as Record<string, unknown>;
+    const contextWindow = source.contextWindow===undefined?undefined:modelContextWindow.parse(source.contextWindow);
     const declaration = source.capabilities === undefined ? undefined : modelCapabilityDeclaration.safeParse(source.capabilities);
     if (declaration && !declaration.success) continue;
     const api = source.api === "responses" || source.api === "chat_completions" || source.api === "auto" ? source.api : undefined;
@@ -354,6 +358,7 @@ export function parseLiteLlmModelProfiles(value: unknown): LiteLlmModelProfiles 
       continue;
     }
     profiles[model] = {
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
       ...(declaration?.success ? { capabilities: declaration.data } : {}),
       ...(api ? { api } : {}),
       ...(preset !== "auto" ? { preset } : {}),
@@ -377,6 +382,7 @@ export function updateLiteLlmModelProfile(
   const profiles = parseLiteLlmModelProfiles(value);
   const alias = model.trim();
   const normalized: LiteLlmModelProfile = {
+    ...(profile.contextWindow !== undefined ? { contextWindow:modelContextWindow.parse(profile.contextWindow) } : {}),
     ...(profile.capabilities !== undefined ? { capabilities: modelCapabilityDeclaration.parse(profile.capabilities) } : {}),
     ...(profile.api === "responses" || profile.api === "chat_completions" || profile.api === "auto" ? { api: profile.api } : {}),
     ...(parseLiteLlmModelPreset(profile.preset) !== "auto" ? { preset: parseLiteLlmModelPreset(profile.preset) } : {}),
@@ -387,6 +393,7 @@ export function updateLiteLlmModelProfile(
     ...(profile.topP !== undefined ? { topP: parseOptionalTopP(profile.topP) } : {})
   };
   if (
+    normalized.contextWindow === undefined &&
     normalized.capabilities === undefined &&
     normalized.api === undefined &&
     normalized.preset === undefined &&
@@ -408,6 +415,7 @@ export function validateLiteLlmModelProfile(
   requireTools = true,
   endpoint?: string
 ): LiteLlmModelCapabilities {
+  if(profile.contextWindow!==undefined)modelContextWindow.parse(profile.contextWindow);
   if (profile.capabilities) {
     const declared = modelCapabilityDeclaration.parse(profile.capabilities);
     if (requireTools && !declared.functionCalling) throw new Error("Enable Function calling for this alias to use it as the agent model.");

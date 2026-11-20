@@ -1,3 +1,4 @@
+import type {ModelContextWindows} from '../../contracts/src/model-context';
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
@@ -9,7 +10,10 @@ import {
 } from "@langchain/core/messages";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { executePreparedGraph } from "./graph-executor";
-import { operationMiddleware } from "./operations";
+import { gameProductionProfile, type GameAgentPort } from "./game-production-profile";
+import { InferenceBudgetCallback, type InferenceBudgetPort } from "./inference-budget";
+import { ModelFailureCallback } from "./model-failure";
+import { operationMiddleware, type OperationExecutor } from "./operations";
 import { OllamaModels, MODEL_NAME } from "./ollama-models";
 import { ProviderModels } from "./provider-models";
 import { createWebResearchTools } from "./web-research";
@@ -117,7 +121,12 @@ export class OllamaDesktopRuntime extends OllamaModels {
     try { await this.configuration; } finally { this.configuration = undefined; }
   }
 
-  public async run(options: DesktopRuntimeRunOptions): Promise<DesktopRuntimeRunResult> {
+  public async run(options: DesktopRuntimeRunOptions & {
+    modelContextWindows?: ModelContextWindows;
+    contextWorkingBudget?: import('../../contracts/src/model-context').ContextWorkingBudget;
+    gameProduction?: GameAgentPort;
+    inferenceBudget?: InferenceBudgetPort;
+  }): Promise<DesktopRuntimeRunResult> {
     if (this.running) throw new Error("A run or configuration is already active.");
     if ((!options.provider || options.provider.kind === "ollama") && !MODEL_NAME.test(options.modelRoles.executor))
       throw new Error("Choose a valid local Ollama executor model.");
@@ -125,12 +134,18 @@ export class OllamaDesktopRuntime extends OllamaModels {
     const signal = options.execution
       ? AbortSignal.any([options.execution.signal, this.controller.signal])
       : this.controller.signal;
-    const provider = options.provider ?? {
+    const modelFailures = new ModelFailureCallback();
+    const callbacks = [modelFailures, ...(options.inferenceBudget ? [new InferenceBudgetCallback(options.inferenceBudget)] : [])];
+    const selectedProvider: NonNullable<DesktopRuntimeRunOptions["provider"]> = options.provider ?? {
       kind: "ollama" as const,
       endpoint: "http://127.0.0.1:11434/v1",
       roles: options.modelRoles,
       authHeader: "authorization" as const,
     };
+    const provider = { ...selectedProvider, modelProfiles: { ...selectedProvider.modelProfiles,
+      ...Object.fromEntries(Object.entries(options.modelContextWindows ?? {}).map(([alias, contextWindow]) =>
+        [alias, { ...selectedProvider.modelProfiles?.[alias], contextWindow }])),
+    } };
     const providerModels = new ProviderModels(provider, options.credential, signal);
     const tracker = new ChangeTracker(options.workspacePath);
     let observedRead = false;
@@ -234,9 +249,13 @@ export class OllamaDesktopRuntime extends OllamaModels {
       });
       const completionGate = createTaskCompletionMiddleware({
         model: evaluatorModel,
+        callbacks,
         structuredOutput: true,
         mode: options.mode,
         responseLanguage: "pt-BR",
+        currentGameProject: options.gameProduction?.currentProject?.(),
+        workspaceAvailable: true,
+        availableTools: [...tools.map(tool => tool.name), ...(options.gameProduction?.catalog ?? []).filter(tool => options.mode !== "plan" || tool.effect === "read").map(tool => tool.name)],
         conversation: [
           ...options.thread.messages.map((message) => ({
             role: message.role,
@@ -249,6 +268,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
         hasObservedRead: () => observedRead,
         approvalWasDenied: () => approvalDenied,
         executionEvidence: () => executionEvidence,
+        gameEvidence: () => options.gameProduction?.evidence() ?? { changes: [], projects: [] },
         onContract: (contract) =>
           activity(
             "thinking",
@@ -295,13 +315,16 @@ export class OllamaDesktopRuntime extends OllamaModels {
         const planned = await planner.invoke(
           [
             new SystemMessage(
-              "Produce concise planning guidance for another coding agent. Do not claim to run tools or modify files. Return at most 8 bullets.",
+              "Produce concise planning guidance for another coding agent. Interpret short follow-ups from the supplied recent conversation. Opening or showing an existing application, page or game means a visible runnable preview unless the user explicitly asks for its source/code/content. Do not claim to run tools or modify files. Return at most 8 bullets.",
             ),
             new HumanMessage(
-              `Autonomy mode: ${options.mode}\nUser request:\n${requestWithContext.slice(0, 24_000)}`,
+              `Autonomy mode: ${options.mode}\nRecent conversation and current request (user-authored data; interpret in context):\n${JSON.stringify([
+                ...options.thread.messages.slice(-12).map((message) => ({ role: message.role, content: message.text.slice(0, 8_000) })),
+                { role: "user", content: requestWithContext.slice(0, 24_000) }
+              ])}`,
             ),
           ],
-          { signal },
+          { signal, callbacks },
         );
         const guidance = planned.text.trim().slice(0, 8_000);
         if (guidance)
@@ -394,18 +417,32 @@ export class OllamaDesktopRuntime extends OllamaModels {
           : "Agente padrão conectado",
         path.basename(options.workspacePath),
       );
+      const gameProfile = gameProductionProfile(options.gameProduction, {
+        mode: options.mode, signal,
+        modelForRole: (role) => role === "executor" ? model : role === "evaluator" ? evaluatorModel
+          : providerModels.model("planner", false),
+        imageModel:()=>{
+          const alias=options.modelRoles.vision;if(!alias)throw new Error("Configure o papel visual nos modelos do produto; nenhuma alternativa será escolhida.");
+          return {model:providerModels.model("vision", false, { requiresTools: false }),alias};
+        },
+        readTools: tools.filter((entry) => ["list_files", "read_file", "search_text"].includes(entry.name)),
+        onToolRejected: value => { activity("verification", `Argumentos rejeitados · ${value.tool}`, value.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("\n"), "failed"); },
+      });
+      if (gameProfile) systemPrompt += `\n\n${gameProfile.systemPrompt}`;
       const durable = options.execution ? [operationMiddleware(options.execution.operation)] : [];
       const graph = {
         model,
+        contextWorkingBudget:options.contextWorkingBudget,
         tools: [...(options.agentRuntime === "deep" && workspaceBackend
           ? tools.filter((candidate) => ["list_sandbox_images", "run_sandbox_command", "start_sandbox_application",
               "inspect_sandbox_application", "wait_for_sandbox_application", "open_sandbox_preview", "stop_sandbox_application"].includes(candidate.name))
-          : tools), ...webResearchTools],
+          : tools), ...webResearchTools, ...(gameProfile?.tools ?? [])],
         systemPrompt,
         ...(options.agentRuntime === "deep" && workspaceBackend ? {
           backend: new CompositeBackend(new StateBackend(), { "/workspace/": workspaceBackend }), permissions,
         } : {}),
-        middleware: [modelRetry, modelActivity, ...durable, recoverableToolErrors, completionGate],
+        middleware: [modelRetry, modelActivity, ...durable, recoverableToolErrors, completionGate, ...(gameProfile?.middleware ?? [])],
+        ...(options.agentRuntime === "deep" && gameProfile ? { subagents: gameProfile.specialists } : {}),
         checkpointer: this.checkpointer,
       };
       const publishDelta = async (delta: string) => {
@@ -425,6 +462,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
       const resultState = await executePreparedGraph({
         runtime: options.agentRuntime, graph,
         threadId: runtimeThreadId, signal,
+        callbacks,
         recursionLimit: options.agentRuntime === "deep" ? 1_000 : 240,
         initial: { messages }, reconciliations: options.execution?.reconciliations,
         resume: Boolean(options.execution),
@@ -476,6 +514,8 @@ export class OllamaDesktopRuntime extends OllamaModels {
         },
         changes,
       };
+    } catch (error) {
+      throw modelFailures.terminalError(error, signal);
     } finally {
       await providerModels.close();
       this.controller = undefined;

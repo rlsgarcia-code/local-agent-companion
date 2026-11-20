@@ -1,0 +1,77 @@
+// Actual production Electron window/preload/host with an isolated fixture service.
+// Dialog decisions and one lost response are injected only in this temporary app.
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdtemp,mkdir,readFile,writeFile,rm,cp,readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import * as esbuild from "esbuild";
+import {createHash,randomUUID} from "node:crypto";
+import { _electron } from "playwright-core";
+import electronExecutable from "electron";
+import security from "../dist-tests/packages/agent-service/src/security.js";
+import storage from "../dist-tests/packages/agent-service/src/store.js";
+import sdk from "../dist-tests/packages/client-ts/src/index.js";
+import fixtures from "../dist-tests/test/game-fixtures.js";
+import webFixtures from "../dist-tests/test/game-web-fixtures.js";
+import bootstrap from "../dist-tests/packages/client-ts/src/bootstrap.js";
+assert.equal(process.platform,'darwin');assert.equal(process.argv.length,4);assert.ok(process.argv[2].startsWith('--engine='));assert.ok(process.argv[3].startsWith('--input='));
+const engine=path.resolve(process.argv[2].slice(9)),input=path.resolve(process.argv[3].slice(8));await bootstrap.verifyBundle(engine,undefined,true);
+const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const codec=JSON.parse(await readFile(path.join(input,'phaser/codec/menu.json'),'utf8')),master=await readFile(path.join(input,'phaser/build/assets/menu.wav')),aac=await readFile(path.join(input,'phaser/build/assets/menu.compact.m4a'));
+assert.equal(sha(master),codec.sourceSha256);assert.equal(sha(aac),codec.variants[0].sha256);
+const root=await mkdtemp(path.join(tmpdir(),'native-delivery-mac-')),state=path.join(root,'service'),output=path.resolve('output/playwright/game-delivery-native-mac',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));
+for(const folder of [state,path.join(root,'app-profile'),path.join(root,'exports'),output])await mkdir(folder,{recursive:true,mode:0o700});
+const save=async(name,value)=>writeFile(path.join(output,name),JSON.stringify(value,null,2)+'\n');
+const env={HOME:root,PATH:'/usr/bin:/bin',TMPDIR:tmpdir(),LANG:'en_US.UTF-8'};
+const credential=await security.createClientCredential(state,{id:'native-delivery',product:'companion-mac',profile:'fixture',workspace:'',providers:['ollama'],hostTools:[]}),identity=await security.ensureIdentity(state),store=new storage.Store(path.join(state,'metadata.sqlite'));store.register(credential);store.close();
+const child=spawn(path.join(engine,'node'),[path.join(engine,'service.cjs'),state],{env,stdio:'ignore'});let client,electronApp,window,project,passed=false;const lifecycle=[];
+async function launch(){const app=await _electron.launch({executablePath:electronExecutable,args:[path.join(root,'harness.cjs')],env:{...env,STUDIO_FIXTURE_ROOT:root},timeout:20000});electronApp=app;window=await app.firstWindow();await window.getByRole('heading',{name:/Distribuição nativa/}).waitFor({timeout:20000});return {pid:app.process().pid,versions:await app.evaluate(()=>process.versions)};}
+async function stopApp(){if(!electronApp)return;const app=electronApp,process=app.process();await app.close();assert.ok(process.exitCode!==null||process.signalCode!==null,'Original owned Electron process must be confirmed terminal before a restart');lifecycle.push({pid:process.pid,exitCode:process.exitCode,signalCode:process.signalCode});electronApp=undefined;}
+async function settled(id){for(let i=0;i<2400;i++){const job=await client.getGameProduction(id);if(['completed','failed','cancelled','awaiting_reconciliation'].includes(job.state)){assert.equal(job.state,'completed',job.error??job.state);return job;}await new Promise(r=>setTimeout(r,25));}throw Error('Inspect original job '+id+' without repeating it');}
+try{
+ let ready=false;for(let i=0;i<600;i++){assert.equal(child.exitCode,null);try{if(JSON.parse(await readFile(path.join(state,'runtime.json'),'utf8')).pid===child.pid){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,25));}assert.ok(ready);
+ client=new sdk.AgentClient({address:security.ipcPath(state),certificate:identity.cert,credential});await client.connect();
+ const document=fixtures.fixtureGameDocument();document.title='Distribuição nativa · Mac';
+ for(const [name,text]of webFixtures.webFixture('phaser'))document.files.push(await client.uploadGameFile(name,Buffer.from(text),name.endsWith('.json')?'application/json':'text/plain'));
+ for(const [name,bytes,mime]of [['assets/menu.wav',master,'audio/wav'],['assets/menu.compact.m4a',aac,'audio/mp4'],['assets/NOTICE.txt',Buffer.from('Full synthetic fixture notice, not finished music.'),'text/plain'],['assets/menu.encoded.json',Buffer.from(JSON.stringify(codec)),'application/json'],['data/levels.json',Buffer.from('{"rounds":[1,2,3]}'),'application/json']])document.files.push(await client.uploadGameFile(name,bytes,mime));
+ const origin={kind:'procedural',source:'Acknowledged real-codec synthetic fixture',author:'Qualification',license:'Declared-unverified synthetic input',referenceIds:[]};
+ document.assets=[{id:'master',kind:'audio',role:'Master',placeholder:true,files:['assets/menu.wav','assets/NOTICE.txt'],origin},{id:'variant',kind:'audio',role:'AAC',placeholder:true,files:['assets/menu.compact.m4a','assets/menu.encoded.json'],origin:{...origin,referenceIds:['master']}}];
+ project=await client.createGameProject('native-source',document);const session=await client.call('sessions.create',{title:'Native delivery'});await client.selectGameProject(session.id,project.id);
+ await writeFile(path.join(root,'fixture.json'),JSON.stringify({credential,certificate:identity.cert,address:security.ipcPath(state),session}),{mode:0o600});
+ for(const folder of ['game-studio','game-model-runtime'])await cp(path.join('desktop-dist',folder),path.join(root,folder),{recursive:true});await cp('desktop-dist/game-studio-preload.cjs',path.join(root,'game-studio-preload.cjs'));await cp('desktop-dist/node_modules/playwright-core',path.join(root,'node_modules/playwright-core'),{recursive:true});
+ for(const name of ['index.html','studio.js','studio.css'])assert.equal(sha(await readFile(path.join(root,'game-studio',name))),sha(await readFile(path.join('packages/game-studio-ui',name))));
+ const code=`import {app,dialog} from 'electron';import {readFileSync,existsSync,writeFileSync,appendFileSync} from 'node:fs';import path from 'node:path';
+import {openDesktopGameStudio} from ${JSON.stringify(path.resolve('desktop/game-studio.ts'))};
+import {AgentClient} from ${JSON.stringify(path.resolve('packages/client-ts/src/index.ts'))};
+const root=process.env.STUDIO_FIXTURE_ROOT;app.setName('Game Delivery Validation');app.setPath('userData',path.join(root,'app-profile'));app.on('window-all-closed',()=>app.quit());
+dialog.showMessageBox=async()=>{appendFileSync(path.join(root,'dialog-actions.jsonl'),JSON.stringify({kind:'message',at:Date.now()})+'\\n');return {response:1,checkboxChecked:false};};
+dialog.showOpenDialog=async()=>({canceled:false,filePaths:[path.join(root,'exports')]});
+app.whenReady().then(async()=>{const f=JSON.parse(readFileSync(path.join(root,'fixture.json'),'utf8')),client=new AgentClient({address:f.address,certificate:f.certificate,credential:f.credential});await client.connect();
+const upload=client.uploadGameFile.bind(client);client.uploadGameFile=async(...args)=>{const value=await upload(...args);appendFileSync(path.join(root,'upload-actions.jsonl'),JSON.stringify({path:args[0]})+'\\n');return value;};
+const commit=client.commitGameRevision.bind(client);client.commitGameRevision=async(...args)=>{const value=await commit(...args);appendFileSync(path.join(root,'delivery-dispatch.jsonl'),JSON.stringify({requestId:args[1],revision:value.revision})+'\\n');if(!existsSync(path.join(root,'lost-delivery.marker'))){writeFileSync(path.join(root,'lost-delivery.marker'),'committed');throw Error('Fixture lost native delivery response');}return value;};
+await openDesktopGameStudio({runtime:{gameStudioConnection:async()=>({client,session:f.session,reconnect:async()=>client})},workspace:'',thread:{id:'delivery-fixture',title:'Native delivery',messages:[]},canWrite:()=>!existsSync(path.join(root,'read-only.marker'))});
+}).catch(error=>{console.error(error.message);app.exit(1);});`;
+ await esbuild.build({stdin:{contents:code,resolveDir:process.cwd(),loader:'ts'},outfile:path.join(root,'harness.cjs'),bundle:true,platform:'node',format:'cjs',target:'node22',external:['electron','playwright-core'],logLevel:'silent'});
+ await save('control.json',{manifestSha256:sha(await readFile(path.join(engine,'manifest.json'))),observerSha256:sha(await readFile(new URL(import.meta.url))),nativeHostSha256:sha(await readFile('desktop/game-studio.ts')),preloadSha256:sha(await readFile(path.join(root,'game-studio-preload.cjs'))),ownedServicePid:child.pid,credentialExported:false,modelCalls:0});
+ const first=await launch();assert.deepEqual(await window.evaluate(()=>({require:typeof require,process:typeof process,studio:typeof window.gameStudioHost?.request})),{require:'undefined',process:'undefined',studio:'function'});
+ await window.getByRole('button',{name:'Recursos do build',exact:true}).click();await window.getByLabel('Arquivos do build',{exact:true}).selectOption('selected');await window.getByRole('button',{name:'Desmarcar todos',exact:true}).click();await window.getByRole('checkbox',{name:'assets/menu.compact.m4a',exact:true}).check();await window.getByRole('checkbox',{name:'data/levels.json',exact:true}).check();await window.getByLabel('Filtrar arquivos',{exact:true}).fill('menu');await window.locator('#draft-status[data-state="saved"]').waitFor();await window.screenshot({path:path.join(output,'unsent.png'),fullPage:true});
+ await stopApp();assert.equal((await client.getGameProject(project.id)).revision,1);assert.equal(child.exitCode,null);
+ const second=await launch();assert.notEqual(second.pid,first.pid);await window.locator('#delivery-fields:not([disabled])').waitFor();assert.equal(await window.getByLabel('Filtrar arquivos',{exact:true}).inputValue(),'menu');assert.equal(await window.getByRole('checkbox',{name:'assets/menu.compact.m4a',exact:true}).isChecked(),true);assert.equal(await window.getByRole('checkbox',{name:'assets/menu.wav',exact:true}).isChecked(),false);
+ await window.getByRole('button',{name:'Salvar recursos',exact:true}).click();await window.locator('#notice').filter({hasText:'Fixture lost native delivery response'}).waitFor();assert.equal((await client.getGameProject(project.id)).revision,2);const dispatches=await readFile(path.join(root,'delivery-dispatch.jsonl'),'utf8');assert.equal(dispatches.trim().split('\n').length,1);
+ await stopApp();const later=await client.getGameRevision(project.id);later.document.title='Distribuição nativa · trabalho posterior';await client.commitGameRevision(project.id,'later-work',2,later.document,'Preserve later work');await writeFile(path.join(root,'read-only.marker'),'fixture read-only mode');assert.equal(child.exitCode,null);
+ const dialogsBefore=await readFile(path.join(root,'dialog-actions.jsonl'),'utf8'),uploadsBefore=await readFile(path.join(root,'upload-actions.jsonl'),'utf8'),third=await launch();assert.notEqual(third.pid,second.pid);await window.getByRole('button',{name:'Conferir pedido',exact:true}).waitFor();assert.equal(await window.getByLabel('Arquivos do build',{exact:true}).isDisabled(),true);assert.equal(await readFile(path.join(root,'delivery-dispatch.jsonl'),'utf8'),dispatches);
+ await window.getByRole('button',{name:'Conferir pedido',exact:true}).click();await window.locator('#delivery-editor').waitFor({state:'hidden'});assert.equal((await client.getGameProject(project.id)).revision,3);assert.equal(await readFile(path.join(root,'delivery-dispatch.jsonl'),'utf8'),dispatches);assert.equal(await readFile(path.join(root,'dialog-actions.jsonl'),'utf8'),dialogsBefore);assert.equal(await readFile(path.join(root,'upload-actions.jsonl'),'utf8'),uploadsBefore);assert.equal(child.exitCode,null);
+ await window.screenshot({path:path.join(output,'recovered-read-only.png'),fullPage:true});
+ await window.getByRole('button',{name:'Exportar fonte',exact:true}).click();await window.locator('#notice').filter({hasText:'Exportação concluída'}).waitFor();const exports=await readdir(path.join(root,'exports'));assert.equal(exports.length,1);await cp(path.join(root,'exports',exports[0]),path.join(output,'exported-source'),{recursive:true});
+ await rm(path.join(root,'read-only.marker'));await window.getByRole('button',{name:'Atualizar',exact:true}).click();await window.getByRole('button',{name:'Gerar build',exact:true}).click();let build;
+ for(let i=0;i<600;i++){build=(await client.listGameProduction(project.id)).jobs.find(j=>j.kind==='build');if(build)break;await new Promise(r=>setTimeout(r,25));}assert.ok(build);await settled(build.id);const artifact=await client.getGameArtifact(build.id);assert.ok(!artifact.files.some(f=>f.path==='assets/menu.wav'));assert.ok(artifact.files.some(f=>f.path==='assets/NOTICE.txt'));assert.equal(sha(await client.downloadGameFile(project.id,'assets/menu.wav')),sha(master));assert.equal((await client.getGameQuality(project.id)).ready,false);
+ await save('artifact.json',artifact);await stopApp();assert.equal(child.exitCode,null);assert.equal((await client.getGameProject(project.id)).revision,3);
+ await save('report.json',{scope:'Real production Electron window/preload/IPC/host/private drafts with temporary service. Dialog decisions and one lost response injected only in fixture. Not installed app, physical/human/game or rollback acceptance.',manifestSha256:sha(await readFile(path.join(engine,'manifest.json'))),product:'companion-mac',projectId:project.id,sessionId:session.id,processes:[first,second,third],lifecycle,independentServicePid:child.pid,serviceSurvivedHostRestarts:true,unsentDraftRecovered:true,frozenDraftRecovered:true,readOnlyReceiptWithoutConsentUploadOrCommit:true,newDeliveryDispatches:1,laterRevision:3,laterTitlePreserved:true,nativeSourceExport:true,selectedBuildId:build.id,masterAndNoticesPreserved:true,qualityApproved:false,modelCalls:0});passed=true;console.log('NATIVE_DELIVERY_MAC_QUALIFIED '+output);
+}catch(error){await save('failure.json',{message:error.message,ownedServicePid:child.pid,lifecycle});if(window)try{await window.screenshot({path:path.join(output,'failure.png'),fullPage:true});}catch{}throw error;}
+finally{
+ await stopApp();const unresolved=[];if(client&&project)try{for(const job of (await client.listGameProduction(project.id)).jobs)if(!['completed','failed','cancelled'].includes(job.state))unresolved.push({id:job.id,state:job.state});}catch{unresolved.push({state:'inspection-unavailable'});}client?.close();
+ if(unresolved.length){child.unref();await save('closure.json',{servicePreservedForInspection:true,ownedServicePid:child.pid,unresolved,electronLifecycle:lifecycle});console.error('Inspect original fixture at '+root);}
+ else{if(child.exitCode===null){const end=once(child,'exit');child.kill('SIGTERM');await end;}await save('closure.json',{serviceExitCode:child.exitCode,electronLifecycle:lifecycle});if(passed){assert.equal(child.exitCode,0);await rm(root,{recursive:true,force:true});}else console.error('Original failed fixture preserved: '+root);}
+}

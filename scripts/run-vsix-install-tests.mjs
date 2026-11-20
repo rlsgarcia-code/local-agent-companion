@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { access, mkdtemp, rm, stat } from "node:fs/promises";
+import { access, mkdtemp, rm, stat, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -66,6 +66,10 @@ try {
   installedRoot=await installedVSIXDirectory(vsixPath,extensionsDirectory);
   if(!installedRoot)throw new Error("The installed copy does not match the exact VSIX.");
   console.log("PACKAGED_EXTENSION_PAYLOAD_VERIFIED");
+  let signedEngine = false;
+  try { signedEngine = JSON.parse(await readFile(path.join(installedRoot,"dist/engine/manifest.json"),"utf8")).development !== true; }
+  catch(error) { if(error.code !== "ENOENT") throw error; }
+  const ownedCI = process.env.GITHUB_ACTIONS === "true" && process.env.RUNNER_ENVIRONMENT === "github-hosted";
 
   await runTests({
     version,
@@ -74,10 +78,13 @@ try {
     extensionTestsPath: path.join(projectRoot, "dist-extension-tests", "index.js"),
     extensionTestsEnv: {
       LDC_EXPECTED_EXTENSION_SOURCE: "installed",
-      LDC_EXPECTED_EXTENSION_ROOT: extensionsDirectory
+      LDC_EXPECTED_EXTENSION_ROOT: extensionsDirectory,
+      LDC_EXPECT_SIGNED_ENGINE: signedEngine && ownedCI ? "1" : "0"
     },
     launchArgs: [
       path.join(projectRoot, "test", "fixtures", "extension-host-workspace"),
+      "--use-inmemory-secretstorage", "--disable-telemetry", "--disable-experiments",
+      "--disable-updates", "--skip-welcome", "--skip-release-notes",
       `--user-data-dir=${userDataDirectory}`,
       `--extensions-dir=${extensionsDirectory}`,
       ...(process.env.LDC_VSIX_TEST_VERBOSE === "1" ? ["--verbose"] : [])
@@ -85,6 +92,8 @@ try {
   });
   console.log("PACKAGED_EXTENSION_HOST_EXITED");
   const teardown=await cleanupEditorTestEngine(projectRoot,installedRoot,path.join(projectRoot,"test/fixtures/extension-host-workspace"));
+  if(signedEngine && ownedCI && (!teardown.stopped || !teardown.processExited))
+    throw new Error("The signed packaged extension did not initialize and close its exact engine. Command registration alone is not acceptance.");
   console.log("PACKAGED_EXTENSION_ENGINE_TEARDOWN",JSON.stringify(teardown));
   completed = true;
 } catch (error) {

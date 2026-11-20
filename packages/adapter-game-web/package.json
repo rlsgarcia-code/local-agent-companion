@@ -1,0 +1,6 @@
+{
+  "name": "@companion/adapter-game-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline verified Phaser and Babylon game build adapters. No agent runtime or KidOS authority."
+}

@@ -4,9 +4,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
   AgentError,
+  errors,
   MAX_FRAME_BYTES,
   PROTOCOL_VERSION,
   terminalStates,
+  installedToolInspection,
   type ClientCredential,
   type ModelAssistance,
   type ModelAssistanceResult,
@@ -23,6 +25,19 @@ import {
 } from "../../contracts/src/index";
 import { MAX_TRANSFER_BYTES, TRANSFER_CHUNK_BYTES, type Transfer } from "../../contracts/src/transfers";
 import { contentHash } from "../../contracts/src/identity";
+import { gameProjectArchive, gameMutationInspection, type GameMutationInspection, type GameDocument, type GameFile, type GameProject,
+  type GameRevision, type GameProjectArchive, type GameProjectSnapshot, type GameProjectEvent, type LegacyGameDesignConversion } from "../../contracts/src/games";
+import type { GameArtifact, GameProductionJob, GameProductionCapabilities, GameQualityAssessment, GameValidationReport } from "../../contracts/src/game-production";
+import { gamePlaytestStudy, gamePlaytestResponse, gamePlaytestSnapshot, gamePlaytestPage, gamePlaytestInspection, gamePlaytestExport,gamePlaytestCorrections,
+  type GamePlaytestCorrect,type GamePlaytestCorrections,
+  type GamePlaytestInspection, type GamePlaytestExport, type GamePlaytestCreate, type GamePlaytestRecord, type GamePlaytestWithdraw,
+  type GamePlaytestStudy, type GamePlaytestResponse, type GamePlaytestSnapshot, type GamePlaytestSummary } from "../../contracts/src/game-playtests";
+import {gameAssetProcessRequest,gameAssetRequestInspection,type GameAssetSpec,type GameAssetResult} from "../../contracts/src/game-assets";
+import {gameLibraryPage,type GameLibraryQuery} from "../../contracts/src/game-library";
+import type { GameWorkflow, GameWorkflowSnapshot, GameWorkflowEvent } from "../../contracts/src/game-workflow";
+import {gameRevisionCompare,gameRevisionComparison,type GameRevisionComparison} from "../../contracts/src/game-comparison";
+import {gameFileCompare,gameFileComparison,type GameFileComparison} from "../../contracts/src/game-file-comparison";
+import type { InferenceBudgetSnapshot } from "../../contracts/src/inference-budget";
 export { CompanionInterfaceBroker, interfaceBrokerDescriptorPath, type InterfaceModelConfiguration } from "./interface-broker";
 
 export type HostResponses = Map<string, { signature: string; response: Promise<unknown> }>;
@@ -225,6 +240,195 @@ export class AgentClient {
     const transfer = await this.upload(`import:${digest}`, data, "application/json");
     return this.call("sessions.import", { key, transferId: transfer.id });
   }
+  private async gameRequest<T>(method: string, request: unknown): Promise<T> {
+    const data = Buffer.from(JSON.stringify(request));
+    if (data.length < 512 * 1024) return this.call<T>(method, request);
+    const transfer = await this.upload(`game-request:${createHash("sha256").update(data).digest("hex")}`, data, "application/json");
+    return this.call<T>(method, { requestTransferId: transfer.id });
+  }
+  async createGameProject(requestId: string, document: GameDocument): Promise<GameProject> {
+    return this.gameRequest("games.projects.create", { requestId, document });
+  }
+  async gameProductionCapabilities(): Promise<GameProductionCapabilities> { return this.call("games.production.capabilities", {}); }
+  getInferenceBudgets(sessionId: string): Promise<InferenceBudgetSnapshot> {
+    return this.call("inference.budgets.get", { sessionId });
+  }
+  async getGameWorkflow(projectId: string): Promise<GameWorkflowSnapshot> {
+    const transfer = await this.call<Transfer>("games.workflows.get", { projectId }); return JSON.parse((await this.download(transfer.id)).toString("utf8"));
+  }
+  async advanceGameStage(requestId: string, projectId: string, expectedVersion: number, expectedRevision: number): Promise<GameWorkflow> {
+    return this.call("games.workflows.advance", { requestId, projectId, expectedVersion, expectedRevision });
+  }
+  async continueGameProduction(requestId: string, projectId: string, expectedVersion: number, expectedRevision: number): Promise<GameWorkflow> {
+    return this.call("games.workflows.continue", { requestId, projectId, expectedVersion, expectedRevision });
+  }
+  async reopenGameProduction(requestId: string, projectId: string, expectedVersion: number, expectedRevision: number): Promise<GameWorkflow> {
+    return this.call("games.workflows.reopen", { requestId, projectId, expectedVersion, expectedRevision });
+  }
+  async readGameWorkflowEvents(projectId: string, cursor = 0, limit = 30, until?: number): Promise<{ events: GameWorkflowEvent[]; cursor: number; hasMore: boolean }> {
+    const transfer = await this.call<Transfer>("games.workflows.events", { projectId, cursor, limit, ...(until === undefined ? {} : { until }) }); return JSON.parse((await this.download(transfer.id)).toString("utf8"));
+  }
+  async processGameAsset(requestId:string,projectId:string,revision:number,spec:GameAssetSpec):Promise<GameProductionJob> {
+    return this.gameRequest("games.assets.process",{requestId,projectId,revision,spec});
+  }
+  async inspectGameAssetRequest(requestId:string,projectId:string,revision:number,spec:GameAssetSpec){
+    const request=gameAssetProcessRequest.parse({requestId,projectId,revision,spec});
+    const result=gameAssetRequestInspection.parse(await this.gameRequest('games.assets.inspect',request));
+    if(result.requestId!==requestId||result.projectId!==projectId||result.revision!==revision||result.requestHash!==contentHash({kind:'assets',request}))
+      throw new AgentError(errors.invalid,'Asset request receipt differs from its exact request.');
+    return result;
+  }
+  async listGameLibraries(query:GameLibraryQuery={}) {
+    return gameLibraryPage.parse(await this.call("games.assets.libraries",query));
+  }
+  async getGameAssetResult(id:string):Promise<GameAssetResult> {
+    const transfer=await this.call<Transfer>("games.assets.result",{id});return JSON.parse((await this.download(transfer.id)).toString("utf8")) as GameAssetResult;
+  }
+  async applyGameAsset(requestId:string,jobId:string,expectedRevision:number):Promise<GameProject> {
+    return this.gameRequest("games.assets.apply",{requestId,jobId,expectedRevision});
+  }
+  async downloadGameAssetFile(jobId:string,filePath:string):Promise<Buffer> {
+    const transfer=await this.call<Transfer>("games.assets.file",{jobId,path:filePath});return this.download(transfer.id);
+  }
+  async startGameBuild(requestId: string, projectId: string, revision: number): Promise<GameProductionJob> {
+    return this.call("games.builds.start", { requestId, projectId, revision });
+  }
+  async startGameValidation(requestId: string, buildId: string, collectorId: string, testSuite?: string): Promise<GameProductionJob> {
+    return this.call("games.validation.start", { requestId, buildId, collectorId, ...(testSuite ? { testSuite } : {}) });
+  }
+  async getGameProduction(id: string): Promise<GameProductionJob> { return this.call("games.production.get", { id }); }
+  async createGamePlaytest(input: GamePlaytestCreate): Promise<GamePlaytestStudy> {
+    return gamePlaytestStudy.parse(await this.call("games.playtests.create", input));
+  }
+  async recordGamePlaytest(input: GamePlaytestRecord): Promise<GamePlaytestResponse> {
+    return gamePlaytestResponse.parse(await this.call("games.playtests.record", input));
+  }
+  async withdrawGamePlaytest(input: GamePlaytestWithdraw): Promise<GamePlaytestResponse> {
+    return gamePlaytestResponse.parse(await this.call("games.playtests.withdraw", input));
+  }
+  async correctGamePlaytest(input:GamePlaytestCorrect):Promise<GamePlaytestResponse>{
+    return gamePlaytestResponse.parse(await this.call("games.playtests.correct",input));
+  }
+  async getGamePlaytestCorrections(studyId:string,participantId:string,cursor=0,limit=30):Promise<GamePlaytestCorrections>{
+    return gamePlaytestCorrections.parse(await this.call("games.playtests.corrections",{studyId,participantId,cursor,limit}));
+  }
+  async getGamePlaytest(studyId: string, cursor = 0, limit = 30): Promise<GamePlaytestSnapshot> {
+    return gamePlaytestSnapshot.parse(await this.call("games.playtests.read", { studyId, cursor, limit }));
+  }
+  async inspectGamePlaytest(requestId: string): Promise<GamePlaytestInspection> {
+    return gamePlaytestInspection.parse(await this.call("games.playtests.inspect", { requestId }));
+  }
+  async exportGamePlaytest(studyId: string, includeResponses = false): Promise<GamePlaytestExport> {
+    const transfer = await this.call<Transfer>("games.playtests.export", { studyId, includeResponses });
+    return gamePlaytestExport.parse(JSON.parse((await this.download(transfer.id)).toString("utf8")));
+  }
+  async listGamePlaytests(projectId: string, cursor = 0, limit = 30): Promise<{
+    studies: { study: GamePlaytestStudy; stale: boolean; summary: GamePlaytestSummary }[]; cursor: number; hasMore: boolean;
+  }> { return gamePlaytestPage.parse(await this.call("games.playtests.list", { projectId, cursor, limit })); }
+  async cancelGameProduction(id: string): Promise<GameProductionJob> { return this.call("games.production.cancel", { id }); }
+  async reconcileGameProduction(id: string): Promise<GameProductionJob> { return this.call("games.production.reconcile", { id }); }
+  async listGameProduction(projectId: string, cursor = 0, limit = 30,order:"asc"|"desc"="asc"): Promise<{ jobs: GameProductionJob[]; cursor: number; hasMore: boolean }> {
+    return this.call("games.production.list", { projectId, cursor, limit,order });
+  }
+  async readGameProductionEvents(projectId: string, cursor = 0, limit = 100): Promise<{ events: { sequence: number; job: GameProductionJob }[]; cursor: number; hasMore: boolean }> {
+    return this.call("games.production.events", { projectId, cursor, limit });
+  }
+  async getGameArtifact(id: string): Promise<GameArtifact> {
+    const transfer = await this.call<Transfer>("games.builds.artifact", { id });
+    return JSON.parse((await this.download(transfer.id)).toString("utf8")) as GameArtifact;
+  }
+  async downloadGameArtifactFile(buildId: string, filePath: string): Promise<Buffer> {
+    const transfer = await this.call<Transfer>("games.builds.file", { buildId, path: filePath });
+    return this.download(transfer.id);
+  }
+  async getGameReports(id: string): Promise<GameValidationReport[]> {
+    const transfer = await this.call<Transfer>("games.validation.reports", { id });
+    return JSON.parse((await this.download(transfer.id)).toString("utf8")) as GameValidationReport[];
+  }
+  async downloadGameReportFile(reportId: string, filePath: string): Promise<Buffer> {
+    const transfer = await this.call<Transfer>("games.validation.file", { reportId, path: filePath });
+    return this.download(transfer.id);
+  }
+  async getGameQuality(projectId: string, revision?: number): Promise<GameQualityAssessment> {
+    const transfer = await this.call<Transfer>("games.quality.get", { projectId, ...(revision === undefined ? {} : { revision }) });
+    return JSON.parse((await this.download(transfer.id)).toString("utf8")) as GameQualityAssessment;
+  }
+  async listGameProjects(cursor = 0, limit = 30): Promise<{ projects: GameProject[]; cursor: number; hasMore: boolean }> {
+    return this.call("games.projects.list", { cursor, limit });
+  }
+  async getGameProject(id: string): Promise<GameProject> { return this.call("games.projects.get", { id }); }
+  async linkedGameProject(sessionId: string): Promise<GameProject | null> { return this.call("games.projects.linked", { sessionId }); }
+  async selectGameProject(sessionId: string, projectId: string): Promise<GameProject> { return this.call("games.projects.select", { sessionId, projectId }); }
+  async snapshotGameProject(id: string): Promise<GameProjectSnapshot> {
+    const transfer = await this.call<Transfer>("games.projects.snapshot", { id });
+    return JSON.parse((await this.download(transfer.id)).toString("utf8")) as GameProjectSnapshot;
+  }
+  async getGameRevision(projectId: string, revision?: number): Promise<GameRevision> {
+    const transfer = await this.call<Transfer>("games.revisions.get", { projectId, ...(revision === undefined ? {} : { revision }) });
+    return JSON.parse((await this.download(transfer.id)).toString("utf8")) as GameRevision;
+  }
+  async listGameRevisions(projectId: string, cursor = 0, limit = 30,order:"asc"|"desc"="asc"): Promise<{ revisions: Omit<GameRevision, "document">[]; cursor: number; hasMore: boolean }> {
+    return this.call("games.revisions.list", { projectId, cursor, limit,order });
+  }
+  async compareGameRevisions(projectId:string,baseRevision:number,targetRevision:number,section:"all"|"overview"|"design"|"files"|"assets"|"legacy"="all",cursor=0,limit=30):Promise<GameRevisionComparison>{
+    const request=gameRevisionCompare.parse({projectId,baseRevision,targetRevision,section,cursor,limit});
+    const result=gameRevisionComparison.parse(await this.call("games.revisions.compare",request));
+    if(result.projectId!==projectId||result.base.revision!==baseRevision||result.target.revision!==targetRevision||result.section!==section)throw new AgentError(errors.invalid,"Comparison identity differs from the selected immutable revisions.");
+    return result;
+  }
+  async compareGameFile(projectId:string,baseRevision:number,targetRevision:number,path:string,context=3,cursor=0,limit=50,bindingHash?:string):Promise<GameFileComparison>{
+    const request=gameFileCompare.parse({projectId,baseRevision,targetRevision,path,context,cursor,limit,bindingHash});
+    const result=gameFileComparison.parse(await this.call("games.revisions.compareFile",request));
+    if(result.projectId!==projectId||result.base.revision!==baseRevision||result.target.revision!==targetRevision||result.path!==path||result.context!==context||
+       bindingHash!==undefined&&bindingHash!==result.bindingHash||result.cursor!==cursor+result.rows.length)
+      throw new AgentError(errors.invalid,"File comparison identity differs from the selected immutable revisions.");
+    return result;
+  }
+  async convertLegacyGameDesign(design: unknown): Promise<LegacyGameDesignConversion> {
+    const transfer = await this.gameRequest<Transfer>("games.design.convertLegacy", { design });
+    return JSON.parse((await this.download(transfer.id)).toString("utf8")) as LegacyGameDesignConversion;
+  }
+  async commitGameRevision(projectId: string, requestId: string, expectedRevision: number, document: GameDocument, message: string): Promise<GameProject> {
+    return this.gameRequest("games.revisions.commit", { projectId, requestId, expectedRevision, document, message });
+  }
+  /** Domain acknowledgment only: compare the original binding before recovery.
+   * Missing is not proof of absent effects and never reconciles a graph/tool receipt. */
+  async inspectGameMutation(projectId: string, requestId: string): Promise<GameMutationInspection> {
+    const result = gameMutationInspection.parse(await this.call("games.mutations.inspect", { projectId, requestId }));
+    if (result.projectId !== projectId || result.requestId !== requestId) throw new AgentError(-32602, "Game receipt identity differs from its requested mutation.");
+    return result;
+  }
+  async readGameEvents(projectId: string, cursor = 0, limit = 100): Promise<{ events: GameProjectEvent[]; cursor: number; hasMore: boolean }> {
+    return this.call("games.events.read", { projectId, cursor, limit });
+  }
+  async uploadGameFile(filePath: string, content: Uint8Array, mime: string): Promise<GameFile> {
+    const data = Buffer.from(content), sha256 = createHash("sha256").update(data).digest("hex");
+    const transfer = await this.upload(`game-file:${sha256}`, data, "application/octet-stream");
+    return { path: filePath, sha256, size: data.length, mime, transferId: transfer.id };
+  }
+  async downloadGameFile(projectId: string, filePath: string, revision?: number): Promise<Buffer> {
+    const transfer = await this.call<Transfer>("games.files.get", { projectId, path: filePath, ...(revision === undefined ? {} : { revision }) });
+    return this.download(transfer.id);
+  }
+  async exportGameProject(id: string): Promise<GameProjectArchive> {
+    const transfer = await this.call<Transfer>("games.projects.export", { id });
+    return gameProjectArchive.parse(JSON.parse((await this.download(transfer.id)).toString("utf8")));
+  }
+  async importGameProject(requestId: string, source: GameProjectArchive, blobs: ReadonlyMap<string, Uint8Array>): Promise<GameProject> {
+    const archive = gameProjectArchive.parse(source);
+    const needed = new Set(archive.revisions.flatMap((row) => row.document.files.map((file) => file.sha256)));
+    const references: { sha256: string; transferId: string }[] = [];
+    for (const sha256 of needed) {
+      const data = blobs.get(sha256);
+      if (!data || createHash("sha256").update(data).digest("hex") !== sha256)
+        throw new Error("Imported game is missing original file bytes or their SHA-256 does not match.");
+      const transfer = await this.upload(`game-file:${sha256}`, data, "application/octet-stream");
+      references.push({ sha256, transferId: transfer.id });
+    }
+    const data = Buffer.from(JSON.stringify(archive));
+    const transfer = await this.upload(`game-archive:${createHash("sha256").update(data).digest("hex")}`, data, "application/json");
+    return this.gameRequest("games.projects.import", { requestId, transferId: transfer.id, blobs: references });
+  }
   async startRun(sessionId: string, key: string, spec: unknown, profile: "generic" | "desktop" = "generic"): Promise<Run> {
     const data = Buffer.from(JSON.stringify(spec));
     const method = profile === "desktop" ? "desktop.start" : "runs.start";
@@ -243,6 +447,10 @@ export class AgentClient {
     await this.hydrateEvents(snapshot.events);
     return snapshot;
   }
+  async inspectTool(runId: string, callId: string): Promise<Run> {
+    return this.call("tools.inspect", installedToolInspection.parse({ runId, callId }));
+  }
+  async inspectInference(runId:string):Promise<Run>{return this.call("inference.inspect",{runId});}
   async readEvents(sessionId: string, cursor = 0): Promise<EngineEvent[]> {
     const events = await this.call<EngineEvent[]>("events.read", { sessionId, cursor });
     await this.hydrateEvents(events);
@@ -344,3 +552,8 @@ export class AgentClient {
     });
   }
 }
+
+export { GameStudioController } from "./game-studio";
+export { exportGameDirectory } from "./game-export";
+export { gameStudioDraftKey } from "./game-studio-drafts";
+export { fileGameStudioDraftStore } from "./game-studio-file-drafts";

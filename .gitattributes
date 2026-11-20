@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+# These bytes are pinned in the offline catalogs and release manifests.
+packages/adapter-game-web/runtimes/** -text
+packages/adapter-game-library/libraries/** -text
+packages/adapter-game-assets/vendor/** -text
+*.gz binary
+*.zip binary
+*.wasm binary
+*.glb binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.woff2 binary

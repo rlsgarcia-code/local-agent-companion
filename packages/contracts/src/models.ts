@@ -1,3 +1,4 @@
+import {modelContextWindows} from './model-context';
 import { z } from "zod";
 import { identifier } from "./schema";
 
@@ -41,6 +42,7 @@ export const modelConfiguration = z.object({
   optimizationProfile: modelOptimizationProfile.default("balanced"),
   webResearch: webResearchConfiguration.default(DEFAULT_WEB_RESEARCH_CONFIGURATION),
   roles: ollamaRoleConfiguration,
+  contextWindows:modelContextWindows.optional(),
 }).strict();
 export type ModelConfiguration = z.infer<typeof modelConfiguration>;
 export const modelDownload = z.object({ key: identifier, model: ollamaRoleConfiguration.shape.executor }).strict();

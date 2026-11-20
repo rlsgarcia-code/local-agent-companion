@@ -1,0 +1,745 @@
+{
+  "schemaVersion": 1,
+  "library": {
+    "id": "kenney-mini-arena",
+    "title": "Kenney Mini Arena",
+    "version": "1.0+a6927e66ff8dd8e173660ce4825abe773c65f683",
+    "author": "Kenney; additional credit: Tony Schär",
+    "source": "https://github.com/KenneyNL/Starter-Kit-Basic-Scene/tree/a6927e66ff8dd8e173660ce4825abe773c65f683/sample/Mini%20Arena",
+    "spdx": "CC0-1.0",
+    "licenseFiles": [
+      "License.txt"
+    ]
+  },
+  "entries": [
+    {
+      "id": "banner",
+      "title": "Banner",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "banner"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "banner.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "96e1cf7924fcc871be0e7e182c9b918de381b9783ca9e96922f8db62af384056",
+          "size": 22108
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "block",
+      "title": "Block",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "block"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "block.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "656e07f0a3e7d0620892aca6fc40683b4266ff6b9672ecf89f3553e5ed85a1fb",
+          "size": 2804
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "border-corner",
+      "title": "Border Corner",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "border",
+        "corner"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "border-corner.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "120ce330ca50fe50e51bf693eadb957abaca972c42d573a07d8e8e404560bc3c",
+          "size": 11124
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "border-straight",
+      "title": "Border Straight",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "border",
+        "straight"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "border-straight.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "76ef69e8858f3d17c652d92033a553db58296135a5810d1bd5e54f47b5aa40c4",
+          "size": 6520
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "bricks",
+      "title": "Bricks",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "bricks"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "bricks.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "fd1d2c033c7db8b7352ac1becdab447d09cabcc11c73adf9bb6790f9680eaa86",
+          "size": 13192
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "character-soldier",
+      "title": "Character Soldier",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "character",
+        "soldier",
+        "animated"
+      ],
+      "animations": [
+        "static",
+        "idle",
+        "walk",
+        "sprint",
+        "jump",
+        "fall",
+        "crouch",
+        "sit",
+        "drive",
+        "die",
+        "pick-up",
+        "emote-yes",
+        "emote-no",
+        "holding-right",
+        "holding-left",
+        "holding-both",
+        "holding-right-shoot",
+        "holding-left-shoot",
+        "holding-both-shoot",
+        "attack-melee-right",
+        "attack-melee-left",
+        "attack-kick-right",
+        "attack-kick-left",
+        "interact-right",
+        "interact-left",
+        "wheelchair-sit",
+        "wheelchair-look-left",
+        "wheelchair-look-right",
+        "wheelchair-move-forward",
+        "wheelchair-move-back",
+        "wheelchair-move-left",
+        "wheelchair-move-right"
+      ],
+      "files": [
+        {
+          "path": "character-soldier.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "b0410b4a34068e56ac1af3a2571f4497f84f1e481cced895b618d1fe8136529c",
+          "size": 215704
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "column-damaged",
+      "title": "Column Damaged",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "column",
+        "damaged"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "column-damaged.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "442a6856e7e2d042c9e3af155dabf6d394f7ba91b2e271ee6392da22555a072c",
+          "size": 14308
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "column",
+      "title": "Column",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "column"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "column.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "5c815b5fd43d613a21afddaaa90dc2f90b80e31f03dbdde98921cb7424e836c0",
+          "size": 17140
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "floor-detail",
+      "title": "Floor Detail",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "floor",
+        "detail"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "floor-detail.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "804224caf3008fcdbd57d7ccc2c4734320c58ca880895699307670d2443e324b",
+          "size": 6484
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "floor",
+      "title": "Floor",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "floor"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "floor.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "15512c5ca6e9d3eb60efd237bbbf5b8010fdea63e0d8e6623f72b59de20279ab",
+          "size": 1796
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "stairs-corner-inner",
+      "title": "Stairs Corner Inner",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "stairs",
+        "corner",
+        "inner"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "stairs-corner-inner.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "2e232cecda1d633acc1b78707ee50089fd40a167293c173536d61ef064697a5c",
+          "size": 7584
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "stairs-corner",
+      "title": "Stairs Corner",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "stairs",
+        "corner"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "stairs-corner.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "af8eb87dc8826e184f585ebccf0592c909da7370559cd840b218593f4b1c8a38",
+          "size": 8752
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "stairs",
+      "title": "Stairs",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "stairs"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "stairs.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "54a3f12c720f9cb83027b5429e330d7c50578f70771fd1bf9a2e521fe131ca6f",
+          "size": 5244
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "statue",
+      "title": "Statue",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "statue"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "statue.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "5ba8ecba963f6b3ec974809e2bf0b615da7e2701cd0efc6a3c0e946efb147397",
+          "size": 51012
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "tree",
+      "title": "Tree",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "tree"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "tree.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "f8632c9758a78f60aa4ca68bf0e5ac972770167a5608e179293a12552d8fc2ef",
+          "size": 34164
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "trophy",
+      "title": "Trophy",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "trophy"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "trophy.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "253f6d5f321ab20f8f505dfe35b7404c98d2d492728e6df5f69dd29e936b8be5",
+          "size": 23752
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "wall-corner",
+      "title": "Wall Corner",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "wall",
+        "corner"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "wall-corner.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "4dc0e770106a122885f41be0bb4024466a7f58bc29a13f07b6600c4babbeb777",
+          "size": 22476
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "wall-gate",
+      "title": "Wall Gate",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "wall",
+        "gate"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "wall-gate.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "f70a86344f202b3a8057e3a6ee9cd632ba51a5c16795cfde34cd10e906f14697",
+          "size": 31064
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "wall",
+      "title": "Wall",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "wall"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "wall.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "b05ab8645136cc26e761ae2189f660a585dca88c11721771bca3fb4c1f7a807f",
+          "size": 16000
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "weapon-rack",
+      "title": "Weapon Rack",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "weapon",
+        "rack"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "weapon-rack.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "bb95da3746098e36f3d87a1e1036ca70ead7fe95860191871e02f7c58ff1efe5",
+          "size": 20056
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "weapon-spear",
+      "title": "Weapon Spear",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "weapon",
+        "spear"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "weapon-spear.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "9634e12abce01a07d40d5156454bfa1123eba72af6449fccf577980e331adbeb",
+          "size": 7152
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    },
+    {
+      "id": "weapon-sword",
+      "title": "Weapon Sword",
+      "kind": "model",
+      "tags": [
+        "3d",
+        "mini-arena",
+        "weapon",
+        "sword"
+      ],
+      "animations": [],
+      "files": [
+        {
+          "path": "weapon-sword.glb",
+          "mime": "model/gltf-binary",
+          "sha256": "e4d2219d954148dd8b04fccc7602726c34eafad58c0dc5a45268155fcf6cc8c4",
+          "size": 9340
+        },
+        {
+          "path": "License.txt",
+          "mime": "text/plain",
+          "sha256": "499e6af94c9258fb965ef55cbb91c57ca6cbacccc3a7f8d6cd6f5059cd59b8df",
+          "size": 721
+        },
+        {
+          "path": "Textures/colormap.png",
+          "mime": "image/png",
+          "sha256": "cdc845e1c8704c69d87dbf872c9004b470fc838f4b2830fb7e4fc4a530c80e10",
+          "size": 10306
+        }
+      ]
+    }
+  ]
+}

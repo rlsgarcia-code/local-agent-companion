@@ -87,6 +87,15 @@ export class Transfers {
     try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(rows.map((row) => row.data)))); }
     catch { throw new AgentError(errors.invalid, "Transferred domain is not valid UTF-8 JSON. Source and transfer were preserved."); }
   }
+  bytes(reg: Registration, id: string): Buffer {
+    const transfer = this.get(reg, id);
+    if (!transfer.committed) throw new AgentError(errors.invalid, "File transfer is not committed.");
+    const rows = this.store.db.prepare("SELECT data FROM transfer_parts WHERE id=? ORDER BY offset").all(id) as { data: Buffer }[];
+    const data = Buffer.concat(rows.map((row) => row.data));
+    if (data.length !== transfer.size || createHash("sha256").update(data).digest("hex") !== transfer.sha256)
+      throw new AgentError(errors.invalid, "Stored file bytes no longer match their verified SHA-256.");
+    return data;
+  }
   image(reg: Registration, id: string): { mime: string; data: string } {
     const transfer = this.get(reg, id);
     if (!transfer.committed || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(transfer.mime) || transfer.size > 20 * 1024 * 1024)

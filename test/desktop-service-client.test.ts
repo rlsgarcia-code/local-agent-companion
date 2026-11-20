@@ -63,6 +63,63 @@ test("a lost admission acknowledgement retries the same key and specification", 
   assert.deepEqual(specs[0], specs[1]);
 });
 
+test("workspace recovery identifies only a desktop run owned by this Mac registration", async () => {
+  const calls: string[] = [];
+  const { runtime } = fixture({ call: async (method: string) => {
+    calls.push(method);
+    if (method === "workspace.status") return { busy: true, runId: "blocked", state: "awaiting_reconciliation" };
+    if (method === "runs.describe") return { profile: "desktop", threadId: "original-thread" };
+    return {};
+  } });
+  assert.deepEqual(await runtime.workspaceStatus("/fixture"), {
+    busy: true, runId: "blocked", state: "awaiting_reconciliation", owned: true, threadId: "original-thread",
+  });
+  assert.deepEqual(calls, ["workspace.status", "runs.describe"]);
+});
+
+test("a workspace lease owned by another client stays visible but cannot be controlled by the Mac", async () => {
+  const { runtime } = fixture({ call: async (method: string) => {
+    if (method === "workspace.status") return { busy: true, runId: "foreign", state: "awaiting_host" };
+    if (method === "runs.describe") throw new AgentError(errors.missing, "Run not found.");
+    return {};
+  } });
+  assert.deepEqual(await runtime.workspaceStatus("/fixture"), {
+    busy: true, runId: "foreign", state: "awaiting_host", owned: false,
+  });
+  await assert.rejects(runtime.cancelWorkspaceRun("/fixture"), /outro cliente/);
+});
+
+test("explicit Mac cancellation uses the atomic unknown-result endpoint", async () => {
+  const calls: Array<{ method: string; params?: unknown }> = [];
+  const { runtime } = fixture({ call: async (method: string, params?: unknown) => {
+    calls.push({ method, params });
+    if (method === "workspace.status") return { busy: true, runId: "blocked", state: "awaiting_reconciliation" };
+    if (method === "runs.describe") return { profile: "desktop", threadId: "original-thread" };
+    if (method === "runs.cancelUnknown") return { ...run, id: "blocked", state: "cancelled" };
+    return {};
+  } });
+  assert.equal((await runtime.cancelWorkspaceRun("/fixture"))?.state, "cancelled");
+  assert.deepEqual(calls.at(-1), { method: "runs.cancelUnknown", params: { id: "blocked" } });
+  assert.ok(!calls.some((entry) => entry.method === "runs.resume"));
+});
+
+test("automatic desktop recovery never resumes an unknown effect", async () => {
+  let observed = 0, described = 0;
+  const unknown = { ...run, state: "awaiting_reconciliation" as const };
+  const { runtime } = fixture({
+    call: async (method: string) => {
+      if (method === "sessions.list") return [session];
+      if (method === "runs.list") return [unknown];
+      if (method === "runs.describe") described++;
+      return {};
+    },
+    waitForRun: async () => { observed++; return unknown; },
+  });
+  await runtime.recover("/fixture", () => { throw new Error("Unknown effects must require a user decision."); });
+  assert.equal(described, 0);
+  assert.equal(observed, 0);
+});
+
 test("a Mac provider-policy upgrade uses the enrolled Ollama identity only to activate the new engine", async () => {
   const providers: string[][] = [];
   let compatibilityClosed = false;
@@ -90,6 +147,27 @@ test("a Mac provider-policy upgrade uses the enrolled Ollama identity only to ac
   assert.equal((await runtime.engineStatus()).version, "1.0.6");
   assert.deepEqual(providers, [["ollama", "openai"], ["ollama"], ["ollama", "openai"]]);
   assert.equal(compatibilityClosed, true);
+});
+
+test("deferring a prepared update keeps compatible active-engine connections available", async () => {
+  const activations: Array<string | undefined> = [];
+  const runtime = new OllamaDesktopRuntime({
+    bundleDirectory: "unused-fixture",
+    development: true,
+    ensureClient: async (options) => {
+      activations.push(options.activation);
+      return {
+        connected: true,
+        close: () => {},
+        engineInfo: async () => ({ version: "1.1.1", capabilities: [...engineCapabilities] }),
+        call: async (method: string) => method === "workspace.status" ? { busy: false } : {},
+      } as unknown as AgentClient;
+    },
+  });
+
+  await runtime.deferPreparedUpdate("/fixture");
+  assert.deepEqual(await runtime.workspaceStatus("/other"), { busy: false });
+  assert.deepEqual(activations, ["defer", "defer"]);
 });
 
 test("the Mac client rejects an engine that is missing a required SDK capability", async () => {

@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
+  "scenarios": [
+    {
+      "id": "movement-pause-journal",
+      "designScenarioId": "exploration-controls",
+      "steps": [
+        {
+          "action": "expect-visible",
+          "selector": "#start"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 500
+        },
+        {
+          "action": "capture",
+          "name": "before"
+        },
+        {
+          "action": "key-down",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "wait",
+          "ms": 700
+        },
+        {
+          "action": "key-up",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "expect-image",
+          "baseline": "before",
+          "comparison": "changed",
+          "threshold": 0.002
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#panel",
+          "value": "À sombra do farol",
+          "match": "contains"
+        },
+        {
+          "action": "capture",
+          "name": "paused",
+          "selector": "body"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "expect-image",
+          "selector": "body",
+          "baseline": "paused",
+          "comparison": "unchanged",
+          "threshold": 0.001
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#hud"
+        }
+      ]
+    },
+    {
+      "id": "memory-reload",
+      "designScenarioId": "recovery",
+      "steps": [
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "key-down",
+          "key": "ArrowUp"
+        },
+        {
+          "action": "wait",
+          "ms": 700
+        },
+        {
+          "action": "key-up",
+          "key": "ArrowUp"
+        },
+        {
+          "action": "press",
+          "key": "e"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#count",
+          "value": "1 / 12",
+          "match": "contains"
+        },
+        {
+          "action": "reload"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#start",
+          "value": "Continuar viagem"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#count",
+          "value": "1 / 12",
+          "match": "contains"
+        },
+        {
+          "action": "capture",
+          "name": "restored",
+          "selector": "body"
+        }
+      ]
+    },
+    {
+      "id": "portrait-touch",
+      "steps": [
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "resize",
+          "width": 390,
+          "height": 844
+        },
+        {
+          "action": "expect-visible",
+          "selector": "button[data-input=up]"
+        },
+        {
+          "action": "capture",
+          "name": "portrait",
+          "selector": "body"
+        },
+        {
+          "action": "tap",
+          "x": 0.89,
+          "y": 0.92
+        },
+        {
+          "action": "resize",
+          "width": 960,
+          "height": 540
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#hud"
+        }
+      ]
+    }
+  ]
+}

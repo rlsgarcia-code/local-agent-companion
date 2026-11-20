@@ -9,7 +9,7 @@ import { Transfers } from "../packages/agent-service/src/transfers";
 import { LocalServer } from "../packages/agent-service/src/server";
 import { authorizeProvisionedClient } from "../packages/agent-service/src/provisioning";
 import { contentHash } from "../packages/contracts/src/identity";
-import { runSpec, type Registration, type Run, type ToolSpec, type SessionSnapshot } from "../packages/contracts/src/index";
+import { AgentError, errors, runSpec, type Registration, type Run, type ToolSpec, type SessionSnapshot } from "../packages/contracts/src/index";
 
 const tool: ToolSpec = {
   name: "write_fixture", description: "Write fixture",
@@ -68,6 +68,41 @@ test("a second cold start cannot recover or interrupt the live coordinator's run
     assert.equal(store.run(reg, run.id).result, undefined);
     assert.ok(store.start(reg, session.id, "after-confirmation", spec).created);
   } finally { service.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("explicit uncertain cancellation is atomic, auditable, and never invents an operation result", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "engine-unknown-cancel-"));
+  const file = path.join(dir, "metadata.sqlite");
+  const workspaceReg = { ...reg, workspace: "/fixture/project" };
+  let store = new Store(file);
+  let service = new AgentService(store, dir, undefined, {}, { deferRecovery: true });
+  try {
+    const session = store.createSession(workspaceReg, "Unknown effect");
+    const started = store.start(workspaceReg, session.id, "unknown", spec).run;
+    const original = { input: { path: "fixture.txt" }, dispatched: true };
+    store.saveReceipt(workspaceReg, started.id, `${started.id}:write-once`, "started", original, "binding");
+    store.updateRun(workspaceReg, started.id, "awaiting_reconciliation");
+
+    await assert.rejects(
+      service.dispatch({ ...workspaceReg, product: "kidos" }, "runs.cancelUnknown", { id: started.id }, "child"),
+      (error) => error instanceof AgentError && error.code === errors.forbidden,
+    );
+
+    const cancelled = await service.dispatch(workspaceReg, "runs.cancelUnknown", { id: started.id }, "mac") as Run;
+    assert.equal(cancelled.state, "cancelled");
+    assert.deepEqual(store.receipt(workspaceReg, `${started.id}:write-once`), {
+      status: "cancelled_unknown", value: original, binding: "binding",
+    });
+    assert.deepEqual(store.workspaceStatus(workspaceReg.workspace), { busy: false });
+    assert.equal(store.events(workspaceReg, session.id).filter((event) => event.type === "run.unknown_cancelled").length, 1);
+    assert.ok(store.start(workspaceReg, session.id, "after-explicit-cancel", spec).created);
+
+    await service.close();
+    store = new Store(file);
+    service = new AgentService(store, dir, undefined, {}, { deferRecovery: true });
+    assert.equal(store.run(workspaceReg, started.id).state, "cancelled");
+    assert.equal(store.receipt(workspaceReg, `${started.id}:write-once`)?.status, "cancelled_unknown");
+  } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
 test("a receipt cannot authorize different tool arguments, even with a reused invocation ID", async () => {

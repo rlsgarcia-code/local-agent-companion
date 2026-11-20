@@ -1,0 +1,436 @@
+{
+  "schemaVersion": 2,
+  "title": "Farol — caminhos de luz",
+  "engine": "godot",
+  "brief": {
+    "request": "Puzzle original de luz, com campanha de 16 ilhas, progressão, teclado e toque.",
+    "audience": "Público casual a partir de 7 anos; adequação e diversão dependem de playtests.",
+    "genre": "light-routing-puzzle",
+    "dimension": "2d",
+    "playMode": "single-player",
+    "players": {
+      "min": 1,
+      "max": 1
+    },
+    "devices": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "inputs": [
+      "keyboard",
+      "pointer",
+      "touch"
+    ]
+  },
+  "design": {
+    "schemaVersion": 2,
+    "structure": "levels",
+    "premise": "Uma carta náutica noturna: levar luz a um arquipélago esquecido.",
+    "coreLoop": {
+      "actions": [
+        "observar o feixe",
+        "girar peças",
+        "acender faróis",
+        "descobrir uma rota melhor"
+      ],
+      "feedback": "Rotas douradas, faróis acesos, pulso e notas suaves distinguem cada ação.",
+      "mastery": "Combinar reflexão, lentes e divisão de feixes com poucos giros."
+    },
+    "mechanics": [
+      {
+        "id": "mirror",
+        "name": "Espelhos",
+        "description": "Dois ângulos refletem o feixe em noventa graus."
+      },
+      {
+        "id": "lens",
+        "name": "Lentes",
+        "description": "Passagem horizontal ou vertical conforme orientação."
+      },
+      {
+        "id": "split",
+        "name": "Divisores",
+        "description": "Três portas: entrada por uma emite pelas outras duas."
+      },
+      {
+        "id": "fixed",
+        "name": "Peças fixas e rochas",
+        "description": "Peças com marca de cobre não giram; rochas bloqueiam o feixe."
+      },
+      {
+        "id": "help",
+        "name": "Experimentação",
+        "description": "Undo, reinício e dica de uma ação; sem aplicação automática ou vidas."
+      }
+    ],
+    "rules": [
+      "Acender todos os faróis abre a próxima ilha.",
+      "Luz viaja em quatro direções; circuitos são limitados por estados visitados.",
+      "Estrelas recompensam economia sem bloquear a progressão.",
+      "Sem relógio obrigatório, rede, anúncios ou IA na partida."
+    ],
+    "controls": [
+      {
+        "action": "Girar peça",
+        "input": "Clique/toque; Espaço na peça selecionada; Shift+Espaço ou clique direito para inverso",
+        "feedback": "A rota luminosa é recalculada."
+      },
+      {
+        "action": "Selecionar peça",
+        "input": "Setas do teclado",
+        "feedback": "Contorno visível na peça."
+      },
+      {
+        "action": "Desfazer e reiniciar",
+        "input": "Z/R ou botões",
+        "feedback": "Estado anterior ou tabuleiro inicial."
+      },
+      {
+        "action": "Dica",
+        "input": "H ou botão Dica",
+        "feedback": "Marca uma peça e descreve a direção; não gira por conta própria."
+      },
+      {
+        "action": "Pausa e áudio",
+        "input": "Escape/Pausa e M/Som",
+        "feedback": "Menu de retorno e som persistente."
+      }
+    ],
+    "camera": "Tabuleiro integral, sem pan/zoom; áreas adaptadas a retrato, paisagem e telas largas.",
+    "progression": {
+      "description": "Quatro capítulos introduzem reflexão, divisão, restrições e combinações.",
+      "stages": [
+        {
+          "id": "island-1",
+          "objective": "Acender todos os faróis de Primeira luz.",
+          "challenge": "Toque no espelho para girar. Leve a luz ao farol.",
+          "mechanicIds": [
+            "mirror",
+            "help"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-2",
+          "objective": "Acender todos os faróis de Duas curvas.",
+          "challenge": "Cada espelho muda o caminho em um quarto de volta.",
+          "mechanicIds": [
+            "mirror",
+            "help"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-3",
+          "objective": "Acender todos os faróis de A enseada.",
+          "challenge": "Siga o feixe a partir da pequena estrela.",
+          "mechanicIds": [
+            "mirror",
+            "help"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-4",
+          "objective": "Acender todos os faróis de Vidro do mar.",
+          "challenge": "A lente só deixa passar a luz na direção da abertura.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "fixed"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-5",
+          "objective": "Acender todos os faróis de Luz partilhada.",
+          "challenge": "O divisor tem três entradas. Acenda os dois faróis.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-6",
+          "objective": "Acender todos os faróis de Outra margem.",
+          "challenge": "Girar uma peça pode mudar mais de um caminho.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-7",
+          "objective": "Acender todos os faróis de O desvio.",
+          "challenge": "Uma lente fechada interrompe todo o caminho que vem depois.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-8",
+          "objective": "Acender todos os faróis de Duas alturas.",
+          "challenge": "Os divisores também recebem luz de cima ou de baixo.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-9",
+          "objective": "Acender todos os faróis de Pedra antiga.",
+          "challenge": "Peças com ponto de cobre são fixas. Use o caminho que elas oferecem.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split",
+            "fixed"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-10",
+          "objective": "Acender todos os faróis de Três ilhas.",
+          "challenge": "Um divisor pode alimentar outro divisor.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-11",
+          "objective": "Acender todos os faróis de Volta ao mar.",
+          "challenge": "Um circuito pode devolver a luz. Nem todo caminho chega a um farol.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split",
+            "fixed"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-12",
+          "objective": "Acender todos os faróis de Portas de vidro.",
+          "challenge": "Observe o último lugar onde a luz parou.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split",
+            "fixed"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-13",
+          "objective": "Acender todos os faróis de Arquipélago.",
+          "challenge": "Primeiro divida a luz; depois ajuste cada ramificação.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-14",
+          "objective": "Acender todos os faróis de Caminhos cruzados.",
+          "challenge": "Dois feixes podem cruzar a mesma peça em direções diferentes.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-15",
+          "objective": "Acender todos os faróis de Última maré.",
+          "challenge": "Um bom caminho mantém todas as ilhas acesas ao mesmo tempo.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        },
+        {
+          "id": "island-16",
+          "objective": "Acender todos os faróis de Noite clara.",
+          "challenge": "Todo o arquipélago espera a sua luz. Experimente, desfaça, encontre o caminho.",
+          "mechanicIds": [
+            "mirror",
+            "help",
+            "lens",
+            "split",
+            "fixed"
+          ],
+          "completion": "Todos os faróis recebem luz."
+        }
+      ],
+      "completion": {
+        "type": "ending",
+        "description": "O arquipélago fica iluminado; mapa e replay continuam disponíveis."
+      }
+    },
+    "art": {
+      "direction": "Carta náutica noturna, papel marfim, mar profundo, cobre e luz dourada; desenho vetorial original.",
+      "palette": [
+        "#0A202C",
+        "#F3E8D4",
+        "#F7C866",
+        "#8CB6A2"
+      ],
+      "animation": "Ondas lentas, revelação do feixe e partículas dos faróis; movimento pode ser desligado."
+    },
+    "audio": {
+      "music": "Sequência original de oito notas sintetizadas; loop local suave.",
+      "effects": "Notas curtas ao girar e conclusão prolongada.",
+      "mix": "Três vozes de efeitos a -12 dB, música a -24 dB e mute persistente; sem microfone."
+    },
+    "content": [
+      {
+        "id": "island-1",
+        "kind": "level",
+        "description": "Primeira luz"
+      },
+      {
+        "id": "island-2",
+        "kind": "level",
+        "description": "Duas curvas"
+      },
+      {
+        "id": "island-3",
+        "kind": "level",
+        "description": "A enseada"
+      },
+      {
+        "id": "island-4",
+        "kind": "level",
+        "description": "Vidro do mar"
+      },
+      {
+        "id": "island-5",
+        "kind": "level",
+        "description": "Luz partilhada"
+      },
+      {
+        "id": "island-6",
+        "kind": "level",
+        "description": "Outra margem"
+      },
+      {
+        "id": "island-7",
+        "kind": "level",
+        "description": "O desvio"
+      },
+      {
+        "id": "island-8",
+        "kind": "level",
+        "description": "Duas alturas"
+      },
+      {
+        "id": "island-9",
+        "kind": "level",
+        "description": "Pedra antiga"
+      },
+      {
+        "id": "island-10",
+        "kind": "level",
+        "description": "Três ilhas"
+      },
+      {
+        "id": "island-11",
+        "kind": "level",
+        "description": "Volta ao mar"
+      },
+      {
+        "id": "island-12",
+        "kind": "level",
+        "description": "Portas de vidro"
+      },
+      {
+        "id": "island-13",
+        "kind": "level",
+        "description": "Arquipélago"
+      },
+      {
+        "id": "island-14",
+        "kind": "level",
+        "description": "Caminhos cruzados"
+      },
+      {
+        "id": "island-15",
+        "kind": "level",
+        "description": "Última maré"
+      },
+      {
+        "id": "island-16",
+        "kind": "level",
+        "description": "Noite clara"
+      }
+    ],
+    "save": {
+      "mode": "persistent",
+      "version": 1,
+      "strategy": "Arquivo local Godot/IDBFS: melhores estrelas/giros, ilha atual, rota e preferências. Save inválido é preservado e a sessão permanece jogável. Undo após reload abrange apenas ações novas."
+    },
+    "playtests": [
+      {
+        "id": "campaign-rules",
+        "category": "gameplay",
+        "description": "Rotas e progressão nas dezesseis ilhas.",
+        "steps": [
+          {
+            "action": "Completar cada ilha pelas peças, usando teclado e toque.",
+            "expected": "Todos os faróis acendem e a próxima ilha abre; sem bloqueio por estrelas."
+          }
+        ]
+      },
+      {
+        "id": "save-recovery",
+        "category": "technical",
+        "description": "Retomada, formato inválido, pausa e mudança de tamanho.",
+        "steps": [
+          {
+            "action": "Alterar uma rota, reabrir, pausar e redimensionar.",
+            "expected": "Rota recuperada, controles legíveis e bytes incompatíveis preservados."
+          }
+        ]
+      },
+      {
+        "id": "human-onboarding",
+        "category": "human",
+        "description": "Dez participantes consentidos, sem orientação externa.",
+        "steps": [
+          {
+            "action": "Jogar e avaliar compreensão, desafio, legibilidade, som e diversão.",
+            "expected": "Registrar as métricas exigidas pelo plano; não inferir aprovação por compilação."
+          }
+        ]
+      }
+    ]
+  },
+  "files": [],
+  "assets": []
+}

@@ -1,3 +1,5 @@
+import {modelContextWindow} from './model-context';
+export {modelContextWindow,modelContextWindows,parseOptionalModelContextWindow,type ModelContextWindows} from './model-context';
 import { modelCapabilityDeclaration } from "./model-capabilities";
 export { modelCapabilityDeclaration, modelCapabilityDeclarations, type ModelCapabilityDeclaration } from "./model-capabilities";
 import { z } from "zod";
@@ -11,6 +13,27 @@ export * from "./memory";
 export * from "./models";
 export * from "./execution";
 export * from "./ollama";
+export * from "./games";
+export * from "./game-production";
+export * from "./game-playtests";
+export * from "./game-workflow";
+export * from "./inference-budget";
+export * from "./model-failure";
+export * from "./game-assets";
+export * from "./game-audio-analysis";
+export * from "./game-audio-codec";
+export * from "./game-vector";
+export * from "./game-library";
+export * from "./game-colors";
+export * from "./game-models";
+export * from "./game-studio";
+export * from "./game-agent";
+export * from "./game-image-review";
+export * from "./game-text-edits";
+export * from "./game-file-comparison";
+export * from "./game-browser-tests";
+export * from "./game-web-compiler";
+export * from "./game-media-worker";
 
 export const PROTOCOL_VERSION = versions.protocol;
 export const ENGINE_VERSION = versions.engine;
@@ -54,6 +77,9 @@ export const runStates = [
   "completed",
 ] as const;
 export type RunState = (typeof runStates)[number];
+// Inspect an existing effect through its installed authority. No client result,
+// arguments, namespace or replacement operation can be supplied here.
+export const installedToolInspection = z.object({ runId: identifier, callId: identifier }).strict();
 export const terminalStates: ReadonlySet<RunState> = new Set([
   "cancelled",
   "failed",
@@ -69,7 +95,7 @@ export const modelRoles = z
     embedding: z.string().max(200).optional(),
   })
   .strict();
-export const modelConfigurationProfile = z.object({capabilities:modelCapabilityDeclaration.optional(),api:z.enum(["auto","chat_completions","responses"]).optional(),preset:z.enum(["auto","gpt-6-chat-tools","gpt-6-responses-tools","gpt-5.6","gpt-5-reasoning","gpt-standard","claude-modern","claude-4.6","claude-legacy","custom"]).optional(),reasoningEffort:z.enum(["none","minimal","low","medium","high","xhigh","max"]).optional(),temperature:z.number().min(0).max(2).optional(),topP:z.number().min(0).max(1).optional()}).strict();
+export const modelConfigurationProfile = z.object({contextWindow:modelContextWindow.optional(),capabilities:modelCapabilityDeclaration.optional(),api:z.enum(["auto","chat_completions","responses"]).optional(),preset:z.enum(["auto","gpt-6-chat-tools","gpt-6-responses-tools","gpt-5.6","gpt-5-reasoning","gpt-standard","claude-modern","claude-4.6","claude-legacy","custom"]).optional(),reasoningEffort:z.enum(["none","minimal","low","medium","high","xhigh","max"]).optional(),temperature:z.number().min(0).max(2).optional(),topP:z.number().min(0).max(1).optional()}).strict();
 export const providerSpec = z
   .object({
     kind: z.enum(["ollama", "litellm", "openai", "kidos-gateway"]),
@@ -179,6 +205,7 @@ export type Run = {
   result?: unknown;
   resultAvailable?: boolean;
   error?: string;
+  waitingFor?: "protected-inference";
 };
 export type EngineEvent = {
   id: string;
@@ -191,6 +218,8 @@ export type EngineEvent = {
   correlationId?: string;
 };
 export type EngineUpdateBlockers = {
+  gameOperations?: number;
+  toolInspections?: number;
   activeRuns: number;
   managedProcesses: number;
   modelOperations: number;
@@ -260,3 +289,10 @@ export function negotiate(protocol: string): void {
       `Agent API ${PROTOCOL_VERSION} required.`,
     );
 }
+
+export { modelConfiguration } from "./models";
+// Public validation primitives used by native preview adapters. The Mac builder
+// resolves those adapters against the shipped SDK instead of a second schema copy.
+export { contentHash } from "./identity";
+export { gameFilePath } from "./games";
+export { gameAssetResult } from "./game-assets";

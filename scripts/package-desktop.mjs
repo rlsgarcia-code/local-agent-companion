@@ -16,7 +16,7 @@ execFileSync(process.execPath, ["scripts/build-sdks.mjs"], { stdio: "inherit" })
 const require = createRequire(import.meta.url);
 const { verifyBundle } = require(path.resolve("release/sdk/typescript/client-ts/src/bootstrap.cjs"));
 const publicKey = await readFile("release-keys/companion-ed25519.pub", "utf8");
-// Keep the dependency-free client outside the repository workspace so the
+// Keep the client and its explicit browser dependency outside the workspace so the
 // builder cannot discover and embed the parent's agent/native dependencies.
 const staging = await mkdtemp(path.join(tmpdir(), `companion-desktop-${architecture}-`));
 try {

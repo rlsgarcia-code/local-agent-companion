@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
+  "scenarios": [
+    {
+      "id": "held-controls-pause",
+      "steps": [
+        {
+          "action": "expect-visible",
+          "selector": "#start"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#hud"
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "before"
+        },
+        {
+          "action": "key-down",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "wait",
+          "ms": 450
+        },
+        {
+          "action": "key-up",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "before",
+          "comparison": "changed",
+          "threshold": 0.003
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#panel",
+          "value": "Jardim em pausa",
+          "match": "contains"
+        },
+        {
+          "action": "capture",
+          "selector": "body",
+          "name": "pause"
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#hud"
+        }
+      ]
+    },
+    {
+      "id": "saved-seed-reload",
+      "steps": [
+        {
+          "action": "expect-visible",
+          "selector": "#start"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "key-down",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "wait",
+          "ms": 650
+        },
+        {
+          "action": "key-up",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#seed-count",
+          "value": "✦",
+          "match": "contains"
+        },
+        {
+          "action": "reload"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#start",
+          "value": "Continuar"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 200
+        },
+        {
+          "action": "expect-text",
+          "selector": "#seed-count",
+          "value": "✦",
+          "match": "contains"
+        },
+        {
+          "action": "capture",
+          "selector": "body",
+          "name": "restored"
+        }
+      ]
+    },
+    {
+      "id": "touch-jump-resize",
+      "steps": [
+        {
+          "action": "expect-visible",
+          "selector": "#start"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 250
+        },
+        {
+          "action": "resize",
+          "width": 390,
+          "height": 844
+        },
+        {
+          "action": "expect-visible",
+          "selector": "button[data-input=\"jump\"]"
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "before"
+        },
+        {
+          "action": "tap",
+          "x": 0.855,
+          "y": 0.925
+        },
+        {
+          "action": "wait",
+          "ms": 150
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "before",
+          "comparison": "changed",
+          "threshold": 0.0003
+        },
+        {
+          "action": "capture",
+          "selector": "body",
+          "name": "portrait"
+        },
+        {
+          "action": "resize",
+          "width": 960,
+          "height": 540
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#hud"
+        }
+      ]
+    },
+    {
+      "id": "first-garden-completion",
+      "steps": [
+        {
+          "action": "expect-visible",
+          "selector": "#start"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "key-down",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "wait",
+          "ms": 1250
+        },
+        {
+          "action": "key-down",
+          "key": "Space"
+        },
+        {
+          "action": "wait",
+          "ms": 850
+        },
+        {
+          "action": "key-up",
+          "key": "Space"
+        },
+        {
+          "action": "wait",
+          "ms": 1250
+        },
+        {
+          "action": "key-down",
+          "key": "Space"
+        },
+        {
+          "action": "wait",
+          "ms": 900
+        },
+        {
+          "action": "key-up",
+          "key": "Space"
+        },
+        {
+          "action": "wait",
+          "ms": 1300
+        },
+        {
+          "action": "key-up",
+          "key": "ArrowRight"
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#next"
+        },
+        {
+          "action": "capture",
+          "selector": "body",
+          "name": "completed"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "expect-text",
+          "selector": "#level-name",
+          "value": "02 · Entre as folhas",
+          "match": "exact"
+        }
+      ]
+    }
+  ]
+}

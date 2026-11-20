@@ -1,0 +1,402 @@
+{
+  "schemaVersion": 2,
+  "title": "Maré a Dois",
+  "engine": "godot",
+  "brief": {
+    "request": "Jogo cooperativo local original: duas pessoas em um barco de remos, com doze travessias, três capítulos e final.",
+    "audience": "Duplas casuais; compreensão, acessibilidade e diversão dependem de playtest humano.",
+    "genre": "cooperative-boat-navigation",
+    "dimension": "2d",
+    "playMode": "local-coop",
+    "players": {
+      "min": 2,
+      "max": 2
+    },
+    "devices": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "inputs": [
+      "keyboard",
+      "pointer",
+      "touch",
+      "gamepad"
+    ]
+  },
+  "design": {
+    "schemaVersion": 2,
+    "structure": "campaign",
+    "premise": "Duas pessoas levam cartas a um arquipélago em um barco de remos, aprendendo a compartilhar direção e ritmo.",
+    "coreLoop": {
+      "actions": [
+        "combinar os dois remos",
+        "compensar vento e correntes",
+        "desacelerar e entregar",
+        "escolher um desvio pela carta"
+      ],
+      "feedback": "Remos e remadores de cores diferentes, esteira, círculos de porto, notas curtas e resultado de cada chegada.",
+      "mastery": "Manter impulso nas curvas e chegar devagar sem bater, combinando controles independentes."
+    },
+    "mechanics": [
+      {
+        "id": "oars",
+        "name": "Dois remos",
+        "description": "Remar juntos avança; intensidades diferentes mudam a direção; remos opostos giram."
+      },
+      {
+        "id": "docks",
+        "name": "Entregas",
+        "description": "Atracar devagar em três portos ordenados; sem entregas por atravessar em alta velocidade."
+      },
+      {
+        "id": "water",
+        "name": "Água e vento",
+        "description": "Correntes locais e vento global deslocam o barco e exigem compensação."
+      },
+      {
+        "id": "islands",
+        "name": "Ilhas",
+        "description": "Colisão retorna ao último porto; entregas e carta são preservadas, tempo e colisões contam."
+      },
+      {
+        "id": "paper",
+        "name": "Carta",
+        "description": "Desvio opcional concede duzentos pontos, sem bloquear o término."
+      },
+      {
+        "id": "voyage",
+        "name": "Travessia",
+        "description": "Estrelas e melhores tempos, doze percursos, checkpoints e final."
+      }
+    ],
+    "rules": [
+      "Uma pessoa controla cada remo; jogar com os dois pares no mesmo teclado também é possível.",
+      "Entregas em ordem abrem doze percursos; estrelas não impedem avanço.",
+      "Sem vidas finitas: colisões retornam ao último porto, mantendo entregas e carta.",
+      "Sem rede, anúncios, microfone ou IA durante a partida."
+    ],
+    "controls": [
+      {
+        "action": "Remo esquerdo",
+        "input": "W para remar, S para frear/recuar; painel de toque esquerdo; controle 1",
+        "feedback": "Remador cobre e remo esquerdo respondem independentemente."
+      },
+      {
+        "action": "Remo direito",
+        "input": "Seta para cima/baixo; painel de toque direito; controle 2",
+        "feedback": "Remador verde e remo direito respondem independentemente."
+      },
+      {
+        "action": "Pausa e preferências",
+        "input": "P/Escape ou botão; botões de som/ondas no menu",
+        "feedback": "Física congelada, retomada explícita, mute e efeitos reduzidos persistidos."
+      }
+    ],
+    "camera": "Carta náutica integral, sem câmera móvel; retrato e paisagem adaptam quadro e painéis de toque.",
+    "progression": {
+      "description": "Três capítulos: coordenação, correntes, vento e volta para casa.",
+      "stages": [
+        {
+          "id": "um-so-ritmo",
+          "objective": "Entregar nas três paradas de Um só ritmo.",
+          "challenge": "Remem juntos para avançar. Soltem os remos perto do porto.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "ponta-do-dia",
+          "objective": "Entregar nas três paradas de Ponta do dia.",
+          "challenge": "Remem juntos para avançar. Soltem os remos perto do porto.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "virar-juntos",
+          "objective": "Entregar nas três paradas de Virar juntos.",
+          "challenge": "Remem juntos para avançar. Soltem os remos perto do porto.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "tres-cais",
+          "objective": "Entregar nas três paradas de Três cais.",
+          "challenge": "Remem juntos para avançar. Soltem os remos perto do porto.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "mar-de-vidro",
+          "objective": "Entregar nas três paradas de Mar de vidro.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "faixa-azul",
+          "objective": "Entregar nas três paradas de A faixa azul.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "abrigo",
+          "objective": "Entregar nas três paradas de O abrigo.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "entre-ilhas",
+          "objective": "Entregar nas três paradas de Entre as ilhas.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "vento-leste",
+          "objective": "Entregar nas três paradas de Vento de leste.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "carta-longa",
+          "objective": "Entregar nas três paradas de Uma carta longa.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "volta-do-farol",
+          "objective": "Entregar nas três paradas de A volta do farol.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        },
+        {
+          "id": "casa-de-mare",
+          "objective": "Entregar nas três paradas de Casa de maré.",
+          "challenge": "A água também se move. Compensem a corrente e encostem devagar.",
+          "mechanicIds": [
+            "oars",
+            "docks",
+            "islands",
+            "paper",
+            "voyage",
+            "water"
+          ],
+          "completion": "Três entregas ordenadas por atracação real."
+        }
+      ],
+      "completion": {
+        "type": "ending",
+        "description": "As trinta e seis entregas completam a carta de volta para casa; mapa e replay continuam disponíveis."
+      }
+    },
+    "art": {
+      "direction": "Carta de marés ilustrada: água azul profunda, papel marfim, cobre e verde água; barco e dois remadores são o foco.",
+      "palette": [
+        "#102B3D",
+        "#21495B",
+        "#F4E7CF",
+        "#ECA36D",
+        "#9CD2C8"
+      ],
+      "animation": "Remos independentes, esteira e halos de chegada; ondas opcionais sem alterar física."
+    },
+    "audio": {
+      "music": "Partitura original de 24 notas, frase de doze segundos em compasso composto, sintetizada localmente.",
+      "effects": "Notas curtas distintas de colisão, carta e entrega.",
+      "mix": "Música a -22 dB e efeitos a -16 dB; mute persistente; autorização e qualidade auditiva precisam de teste físico."
+    },
+    "content": [
+      {
+        "id": "um-so-ritmo",
+        "kind": "level",
+        "description": "I · Juntos · Um só ritmo"
+      },
+      {
+        "id": "ponta-do-dia",
+        "kind": "level",
+        "description": "I · Juntos · Ponta do dia"
+      },
+      {
+        "id": "virar-juntos",
+        "kind": "level",
+        "description": "I · Juntos · Virar juntos"
+      },
+      {
+        "id": "tres-cais",
+        "kind": "level",
+        "description": "I · Juntos · Três cais"
+      },
+      {
+        "id": "mar-de-vidro",
+        "kind": "level",
+        "description": "II · Correntes · Mar de vidro"
+      },
+      {
+        "id": "faixa-azul",
+        "kind": "level",
+        "description": "II · Correntes · A faixa azul"
+      },
+      {
+        "id": "abrigo",
+        "kind": "level",
+        "description": "II · Correntes · O abrigo"
+      },
+      {
+        "id": "entre-ilhas",
+        "kind": "level",
+        "description": "II · Correntes · Entre as ilhas"
+      },
+      {
+        "id": "vento-leste",
+        "kind": "level",
+        "description": "III · Travessia · Vento de leste"
+      },
+      {
+        "id": "carta-longa",
+        "kind": "level",
+        "description": "III · Travessia · Uma carta longa"
+      },
+      {
+        "id": "volta-do-farol",
+        "kind": "level",
+        "description": "III · Travessia · A volta do farol"
+      },
+      {
+        "id": "casa-de-mare",
+        "kind": "level",
+        "description": "III · Travessia · Casa de maré"
+      }
+    ],
+    "save": {
+      "mode": "persistent",
+      "version": 1,
+      "strategy": "Godot user:// e IDBFS no navegador: melhores estrelas/tempos, travessia e estado físico completo em números de precisão completa; checkpoints, pausa e preferências. Dados incompatíveis ficam intactos e jogo continua em memória."
+    },
+    "playtests": [
+      {
+        "id": "campaign",
+        "category": "gameplay",
+        "description": "Doze travessias e conclusão por remos comuns.",
+        "steps": [
+          {
+            "action": "Jogar as doze rotas, entregar em ordem e chegar ao final.",
+            "expected": "Cada porto exige aproximação real; mapa abre a próxima travessia e mantém melhores resultados."
+          }
+        ]
+      },
+      {
+        "id": "two-inputs",
+        "category": "technical",
+        "description": "Dois controles independentes sem contato preso.",
+        "steps": [
+          {
+            "action": "Segurar dois remos, soltar um, girar e soltar ambos; repetir com dois contatos.",
+            "expected": "Soma/diferença dos remos produz avanço/giro; todo contato encerrado para de aplicar força."
+          }
+        ]
+      },
+      {
+        "id": "save-pause",
+        "category": "technical",
+        "description": "Pausa, foco, reload e dados incompatíveis.",
+        "steps": [
+          {
+            "action": "Navegar, pausar, reabrir e testar formato incompatível em ambiente descartável.",
+            "expected": "Pausa congela a física, checkpoint retoma e save incompatível permanece intacto."
+          }
+        ]
+      },
+      {
+        "id": "human-onboarding",
+        "category": "human",
+        "description": "Dez participantes consentidos, em duplas.",
+        "steps": [
+          {
+            "action": "Jogar sem orientação externa e registrar compreensão, coordenação, conforto, som e diversão.",
+            "expected": "Aplicar critérios do plano com consentimento real; não inferir aprovação por automação."
+          }
+        ]
+      }
+    ]
+  },
+  "files": [],
+  "assets": []
+}

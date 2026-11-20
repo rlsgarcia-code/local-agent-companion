@@ -1,0 +1,6 @@
+{
+  "name": "@companion/adapter-game-blender",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed Blender model/material/animation processing in a pinned offline container; no model loop or generic script authority."
+}

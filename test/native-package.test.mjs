@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import {createHash, generateKeyPairSync, sign} from "node:crypto";
+import {createWriteStream} from "node:fs";
+import {once} from "node:events";
+import yazl from "yazl";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -9,6 +13,7 @@ import {
   packageArguments,
   packageInvocation,
   verifyProviderVariant,
+  verifyPackagedEngine,
   verifyPackagedBrowserRuntime
 } from "../scripts/package-native.mjs";
 
@@ -17,6 +22,60 @@ test("maps every supported build host to an explicit VSIX target", () => {
     const separator = target.lastIndexOf("-");
     assert.equal(nativeTarget(target.slice(0, separator), target.slice(separator + 1)), target);
   }
+});
+
+async function engineArchive(context) {
+  const root = await mkdtemp(path.join(tmpdir(), "engine-vsix-integrity-"));
+  context.after(() => rm(root, {recursive:true, force:true}));
+  const pair = generateKeyPairSync("ed25519");
+  const payload = {node:Buffer.from("synthetic runtime; never executed"), "service.cjs":Buffer.from("// synthetic"), "bootstrap-lock.cjs":Buffer.from("// synthetic lock")};
+  const manifest = {version:"fixture", target:"linux-x64", files:Object.fromEntries(Object.entries(payload).map(([name,bytes]) => [name, createHash("sha256").update(bytes).digest("hex")]))};
+  const manifestBytes = Buffer.from(JSON.stringify(manifest)+"\n");
+  const signatureBytes = sign(null, manifestBytes, pair.privateKey);
+  const files = {...payload, "manifest.json":manifestBytes, "manifest.sig":signatureBytes};
+  let counter = 0;
+  const archive = async (change = entries => entries) => {
+    const name = path.join(root, `${counter++}.vsix`), zip = new yazl.ZipFile();
+    for (const entry of change(Object.entries(files).map(([file,bytes]) => ({file:"extension/dist/engine/"+file, bytes, mode:file==="node"?0o100755:0o100644})))) {
+      if (entry.file.endsWith("/")) zip.addEmptyDirectory(entry.file, {mode:entry.mode??0o40755});
+      else zip.addBuffer(entry.bytes, entry.file, {mode:entry.mode});
+    }
+    const output = createWriteStream(name); zip.outputStream.pipe(output); zip.end(); await once(output,"close"); return name;
+  };
+  return {manifest, metadata:{manifestBytes, signatureBytes, publicKey:pair.publicKey}, archive};
+}
+
+test("VSIX verification binds exact signed manifest and signature bytes, including equivalent JSON", async context => {
+  const f = await engineArchive(context);
+  await verifyPackagedEngine(await f.archive(),f.manifest,f.metadata);
+  for (const field of ["manifest.json","manifest.sig"]) {
+    const archive = await f.archive(entries => entries.map(entry => entry.file.endsWith("/"+field)
+      ? {...entry, bytes:field==="manifest.json"?Buffer.from(JSON.stringify(f.manifest,null,2)):Buffer.alloc(64)} : entry));
+    await assert.rejects(verifyPackagedEngine(archive,f.manifest,f.metadata),/signed engine|signature|manifest/i);
+  }
+});
+
+test("VSIX verification rejects missing, duplicated, undeclared, aliased and non-regular engine entries", async context => {
+  const f=await engineArchive(context);
+  for(const change of [
+    entries=>entries.filter(entry=>!entry.file.endsWith("/manifest.sig")),
+    entries=>[...entries,entries[0]],
+    entries=>[...entries,{...entries[0],file:"extension/dist/engine/extra.cjs"}],
+    entries=>[...entries,{...entries[0],file:"Extension/dist/engine/node"}],
+    entries=>entries.map((entry,index)=>index?entry:{...entry,mode:0o120755}),
+    entries=>entries.map((entry,index)=>index?entry:{...entry,mode:0o100644}),
+    entries=>[...entries,{file:"extension/dist/engine/extra/",mode:0o40755}],
+    entries=>entries.map((entry,index)=>index?entry:{...entry,bytes:Buffer.from("different runtime")}),
+  ])await assert.rejects(verifyPackagedEngine(await f.archive(change),f.manifest,f.metadata),/VSIX/);
+});
+
+test("VSIX verification requires a valid captured signature and binds the supplied manifest",async context=>{
+  const f=await engineArchive(context),archive=await f.archive();
+  await assert.rejects(verifyPackagedEngine(archive,f.manifest),/trusted signed engine/);
+  await assert.rejects(verifyPackagedEngine(archive,f.manifest,{...f.metadata,publicKey:generateKeyPairSync("ed25519").publicKey}),/trusted signed engine/);
+  await assert.rejects(verifyPackagedEngine(archive,{...f.manifest,version:"forged"},f.metadata),/differs from its signed bytes/);
+  const result=await verifyPackagedEngine(archive,f.manifest,f.metadata);
+  assert.equal(result.files,5);assert.equal(result.manifestSha256,createHash("sha256").update(f.metadata.manifestBytes).digest("hex"));
 });
 
 test("refuses to label unsupported native hosts as universal packages", () => {

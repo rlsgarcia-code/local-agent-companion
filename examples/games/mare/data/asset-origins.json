@@ -1,0 +1,20 @@
+[
+  {
+    "id": "mare-original-art-score",
+    "kind": "other",
+    "role": "Arte vetorial, partitura e síntese sonora originais",
+    "files": [
+      "main.gd",
+      "sound.gd",
+      "icon.svg"
+    ],
+    "placeholder": false,
+    "origin": {
+      "kind": "procedural",
+      "source": "Desenhos vetoriais e síntese PCM originais no projeto; sem samples, modelos ou bibliotecas de arte externos. Fonte fallback e runtime pertencem ao Godot.",
+      "author": "Local Agent Companion contributors",
+      "license": "MIT; ver data/LICENSE.txt. Proveniência sujeita à revisão, não aceite artístico.",
+      "referenceIds": []
+    }
+  }
+]

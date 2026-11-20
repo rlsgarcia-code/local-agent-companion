@@ -1,0 +1,25 @@
+config_version=5
+
+[application]
+config/name="Maré a Dois"
+config/icon="res://icon.svg"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+window/size/viewport_width=960
+window/size/viewport_height=700
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.063, 0.169, 0.239, 1)
+
+[input_devices]
+pointing/emulate_mouse_from_touch=true
+pointing/emulate_touch_from_mouse=false
+
+[audio]
+driver/enable_input=false

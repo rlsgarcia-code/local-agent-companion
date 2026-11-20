@@ -1,13 +1,13 @@
 // Actual renderer HTML/CSS/script with a fixture host bridge, never personal settings or inference.
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright-core");
+const { qualifyBrowser } = require("../dist-tests/packages/adapter-game-browser/src/browser.js");
 const { LITELLM_MODEL_CAPABILITIES } = require("../dist-tests/src/litellm.js");
 const { LITELLM_MODEL_CATALOG } = require("../dist-tests/packages/agent-core/src/litellm-catalog.js");
 const { parseIncomingMessage } = require("../dist-tests/src/webview-protocol.js");
@@ -26,16 +26,9 @@ const directory = path.resolve("output/playwright/connection-settings", `${new D
 await mkdir(directory, { recursive: true });
 const file = path.join(directory, "fixture.html");
 await writeFile(file, html);
-const executablePath = [
-  process.env.CONNECTION_TEST_BROWSER,
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
-  ...[process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"], process.env.LOCALAPPDATA]
-    .filter(Boolean).flatMap(folder => [path.join(folder, "Google/Chrome/Application/chrome.exe"), path.join(folder, "Microsoft/Edge/Application/msedge.exe")]),
-].find(file => file && existsSync(file));
-assert.ok(executablePath, "An installed Chrome/Edge is required; no browser is downloaded.");
-const browser = await chromium.launch({ executablePath, headless: true, chromiumSandbox: true });
+const qualified = await qualifyBrowser(process.env.CONNECTION_TEST_BROWSER);
+assert.ok(qualified, "An installed Chrome/Edge is required; no browser is downloaded.");
+const browser = await chromium.launch({ executablePath: qualified.executablePath, headless: true, chromiumSandbox: true });
 const results = [];
 try {
   for (const provider of ["litellm", "openai", "ollama"]) {
@@ -51,6 +44,7 @@ try {
     assert.equal(await page.locator("#vision-model").isVisible(), true);
     assert.equal(await page.locator("#model-feature-fields").isVisible(), provider !== "ollama");
     assert.equal(await page.locator("#ollama-planner-model").isVisible(), provider === "ollama");
+    await page.locator("#litellm-context-window").fill("8192");
     if (provider !== "ollama") {
       const checks = page.locator("[data-model-capability]");
       assert.equal(await checks.count(), 8);
@@ -61,6 +55,7 @@ try {
       await page.locator('[data-model-capability="functionCalling"]').check();
       await page.locator("#litellm-model").fill("gpt-5.4");
       await page.locator("#litellm-model").blur();
+      await page.locator("#litellm-context-window").fill("8192");
       for (const input of await checks.all()) assert.equal(await input.isChecked(), true);
       assert.doesNotMatch(await page.locator("#model-compatibility").innerText(), /Not compatible with this agent/);
       if (provider !== "openai") {
@@ -72,6 +67,7 @@ try {
       const message = await page.evaluate(() => globalThis.__hostMessages.filter(message => message.type === "testLiteLlm").at(-1));
       assert.ok(parseIncomingMessage(message));
       assert.equal(message.model, "gpt-5.4");
+      assert.equal(message.contextWindow,"8192");
       assert.equal(message.capabilities.pdfInput, true);
       assert.equal(message.capabilityDeclarations["Corporate-EXACT/Other"].vision, false);
       const testId = randomUUID();
@@ -83,20 +79,28 @@ try {
       await page.locator("#litellm-save").click();
       const saved = await page.evaluate(() => globalThis.__hostMessages.filter(message => message.type === "saveLiteLlm").at(-1));
       assert.ok(parseIncomingMessage(saved));
-      const reopened = { ...snapshot, modelProfiles: { "gpt-5.4": { api: saved.modelApi, capabilities: saved.capabilities } } };
+      const reopened = { ...snapshot, modelProfiles: { "gpt-5.4": { api: saved.modelApi, capabilities: saved.capabilities,contextWindow:Number(saved.contextWindow) } } };
       await page.evaluate(liteLlm => window.dispatchEvent(new MessageEvent("message", { data: { type: "liteLlmSaved", liteLlm, message: "Saved in fixture host" } })), reopened);
       await page.evaluate(liteLlm => window.dispatchEvent(new MessageEvent("message", { data: { type: "openConnectionSettings", liteLlm } })), reopened);
       await page.locator('[data-setup-step-target="2"]').click();
       for (const input of await checks.all()) assert.equal(await input.isChecked(), true);
+      assert.equal(await page.locator("#litellm-context-window").inputValue(),"8192");
       await page.locator('[data-model-capability="reasoning"]').uncheck();
       assert.equal(await page.locator("#litellm-reasoning-effort").isDisabled(), true);
       assert.equal(await page.locator("#litellm-reasoning-effort").inputValue(), "omit");
-      if (provider === "litellm") await page.screenshot({ path: path.join(directory, "litellm-declarations.png") });
+      if (provider === "litellm") {
+        await page.screenshot({ path: path.join(directory, "litellm-declarations.png") });
+        await page.locator('#litellm-context-window').scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(directory, "litellm-context-window.png") });
+      }
+    }
+    if(provider==="ollama"){
+      await page.locator('[data-setup-step-target="3"]').click();await page.locator("#litellm-save").click();const saved=await page.evaluate(()=>globalThis.__hostMessages.filter(m=>m.type==="saveLiteLlm").at(-1));assert.ok(parseIncomingMessage(saved));assert.equal(saved.contextWindow,"8192");
     }
     assert.deepEqual(errors, []);
-    results.push({ provider, visible: true, checked: provider === "ollama" ? "legacy controls preserved" : "eight features, alias isolation, transport payload, reopen and diagnostic log action" });
+    results.push({ provider, visible: true, contextWindowSaved:true, checked: provider === "ollama" ? "legacy controls and context window payload preserved" : "eight features, alias isolation, context window payload/reopen and diagnostic log action" });
     await page.close();
   }
-  await writeFile(path.join(directory, "evidence.json"), JSON.stringify({ environment: "Actual Chromium renderer with simulated VS Code bridge, not an installed Windows client", browser: await browser.version(), results }, null, 2));
+  await writeFile(path.join(directory, "evidence.json"), JSON.stringify({ environment: "Actual Chromium renderer with simulated VS Code bridge, not an installed Windows client", browser: qualified.version, results }, null, 2));
   console.log("CONNECTION_SETTINGS_SMOKE_OK", directory);
 } finally { await browser.close(); }

@@ -1269,6 +1269,12 @@ export class DevelopmentAgent implements vscode.Disposable {
     };
   }
 
+  public async gameStudioConnection(){
+    const workspace=vscode.workspace.workspaceFolders?.[0];if(!workspace)throw new Error("Abra um workspace para acessar os jogos deste produto.");
+    const root=await realpath(workspace.uri.fsPath),{thread}=await this.activeConversation(),client=await this.serviceRuntime.connect(root),session=await this.serviceRuntime.session(client,thread);
+    return {client,session,title:thread.title,reconnect:()=>this.serviceRuntime.connect(root)};
+  }
+
   public async externalRunActive(): Promise<boolean> {
     const workspace = vscode.workspace.workspaceFolders?.[0];
     if (!workspace) return false;

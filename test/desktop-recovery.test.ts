@@ -37,4 +37,7 @@ test("only missing or streaming desktop projections need service replay", () => 
   assert.equal(needsDesktopRecovery({ ...message, status: "complete" }), false);
   assert.equal(needsDesktopRecovery({ ...message, status: "failed" }), false);
   assert.equal(needsDesktopRecovery(message), false);
+  assert.equal(needsDesktopRecovery({ ...message, status: "failed" }, "awaiting_host"), true);
+  assert.equal(needsDesktopRecovery({ ...message, status: "failed" }, "awaiting_credentials"), true);
+  assert.equal(needsDesktopRecovery({ ...message, status: "failed" }, "completed"), false);
 });

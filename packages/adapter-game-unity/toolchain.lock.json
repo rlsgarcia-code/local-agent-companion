@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "version": "6000.3.28f1",
+  "revision": "8f082d2fe476",
+  "stream": "LTS",
+  "platform": "darwin-arm64",
+  "publisher": {
+    "teamIdentifier": "9QW8UQUTAA",
+    "installerCertificateSha256": "b562c970c25e3f5354f7d3b548498f864399d302e39f0b036f0dfd220488e525"
+  },
+  "inputs": [
+    {
+      "file": "Unity.pkg",
+      "url": "https://download.unity3d.com/download_unity/8f082d2fe476/MacEditorInstallerArm64/Unity-6000.3.28f1.pkg",
+      "size": 5187686889,
+      "sha256": "d71a6b4a420c099a82302fc7a8c84f6030c7755082c5a863560b90976b429167"
+    },
+    {
+      "file": "WebGL.pkg",
+      "url": "https://download.unity3d.com/download_unity/8f082d2fe476/MacEditorTargetInstaller/UnitySetup-WebGL-Support-for-Editor-Arm64-6000.3.28f1.pkg",
+      "size": 1611025039,
+      "sha256": "5283eb68fc445ccece0e1e2ec078d40a92e25e8a237678c9a1965d66e14bf4d0"
+    }
+  ]
+}

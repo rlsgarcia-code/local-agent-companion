@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import test from "node:test";
+import {createHash} from "node:crypto";
+import {copyGameRasterizer,inspectGameRasterizer} from "../scripts/copy-game-rasterizer.mjs";
 import * as esbuild from "esbuild";
 import {
   APPROVED_LICENSE_EXPRESSIONS,
@@ -11,6 +13,22 @@ import {
 } from "../scripts/generate-third-party-notices.mjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
+
+test("the exact rasterizer exception requires verified published bytes and source, preserves MPL text, and does not allow other MPL packages",async(context)=>{
+  const temporary=await mkdtemp(path.join(tmpdir(),"raster-source-notices-"));context.after(()=>rm(temporary,{recursive:true,force:true}));
+  const {lock}=await inspectGameRasterizer(projectRoot);
+  await copyGameRasterizer(path.join(temporary,"game-codecs"),projectRoot);
+  const sha=bytes=>createHash("sha256").update(bytes).digest("hex");
+  assert.equal(sha(await readFile(path.join(temporary,"game-codecs/resvg.wasm"))),lock.wasm.sha256);
+  assert.equal(sha(await readFile(path.join(temporary,"game-codecs/resvg-source/source.tar.gz"))),lock.source.sha256);
+  assert.match(await readFile(path.join(temporary,"game-codecs/resvg-source/LICENSE"),"utf8"),/Mozilla Public License Version 2.0/);
+  const manifest=await generateThirdPartyNotices({metafile:{inputs:{}},additionalPackages:["@resvg/resvg-wasm"],projectRoot,outputDirectory:path.join(temporary,"licenses")});
+  assert.equal(manifest.packages[0].version,"2.6.2");assert.equal(manifest.packages[0].license,"MPL-2.0");assert.ok(manifest.packages[0].warnings.some(warning=>warning.includes("source-backed")));
+  assert.equal(APPROVED_LICENSE_EXPRESSIONS.includes("MPL-2.0"),false);
+  const fake=path.join(temporary,"node_modules/unreviewed");await mkdir(fake,{recursive:true});await writeFile(path.join(fake,"package.json"),JSON.stringify({name:"unreviewed",version:"1.0.0",license:"MPL-2.0"}));
+  await assert.rejects(generateThirdPartyNotices({metafile:{inputs:{}},additionalPackages:["unreviewed"],projectRoot:temporary,outputDirectory:path.join(temporary,"rejected")}),/unreviewed license/);
+  await assert.rejects(copyGameRasterizer(path.join(temporary,"missing-source-output"),temporary));
+});
 
 test("extracts scoped, nested, and Windows-style package roots from an esbuild metafile", () => {
   const packages = packagesFromMetafile({

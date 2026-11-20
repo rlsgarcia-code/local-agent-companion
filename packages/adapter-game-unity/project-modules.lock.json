@@ -1,0 +1,313 @@
+{
+  "schemaVersion": 1,
+  "editorVersion": "6000.3.28f1",
+  "editorRevision": "8f082d2fe476",
+  "modules": {
+    "com.unity.modules.accessibility": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.accessibility/package.json",
+      "metadataSha256": "c0c8791f49118e509ddefa94202d7d2eb2aaeab3b11180fc1d6c0012683b050a"
+    },
+    "com.unity.modules.adaptiveperformance": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.subsystems": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.adaptiveperformance/package.json",
+      "metadataSha256": "590e65522014a0ee555edff316d8e6455ace0dcd24bee5d1cd2380be76a4dfe9"
+    },
+    "com.unity.modules.ai": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.ai/package.json",
+      "metadataSha256": "bc91b30468cd41b7fe11788510cb3388bd66ab30c4244f1a9f8136ede50c5fdc"
+    },
+    "com.unity.modules.amd": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.amd/package.json",
+      "metadataSha256": "b5b620b8d1aba99c463c3fbf2d6216f2f0f95c52697fde63098d7c9720d7c223"
+    },
+    "com.unity.modules.androidjni": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.androidjni/package.json",
+      "metadataSha256": "abc16e14a906381eead65f0efb5ca8b99464e1ba775a9350b1973fb049fb7ee8"
+    },
+    "com.unity.modules.animation": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.animation/package.json",
+      "metadataSha256": "41c7ea8b9a6cdd3a5fdc34a845610e889f02d914a6929ad0cd4119a9649f9042"
+    },
+    "com.unity.modules.assetbundle": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.assetbundle/package.json",
+      "metadataSha256": "ebd091c022c34316fa17029dafbcb391a37284196ba07e12b369e332fd135271"
+    },
+    "com.unity.modules.audio": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.audio/package.json",
+      "metadataSha256": "589b9ce350762e1f9b9845ecee6bb9458747f7cddc9c4e86e55adc0f1c7f2851"
+    },
+    "com.unity.modules.cloth": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.physics": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.cloth/package.json",
+      "metadataSha256": "b11dcdbbb3b4e243a954b44a2c611873c38588c95c21f7a0102fda9d4357af71"
+    },
+    "com.unity.modules.director": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.audio": "1.0.0",
+        "com.unity.modules.animation": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.director/package.json",
+      "metadataSha256": "164c85f3380f7996e6df9b425df33fc582964acdeb3e02f31171395f08ea0745"
+    },
+    "com.unity.modules.hierarchy": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.hierarchycore": "1.0.0",
+        "com.unity.modules.uielements": "1.0.0",
+        "com.unity.modules.imgui": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.hierarchy/package.json",
+      "metadataSha256": "30ec721684adbeb389572dc690080d0da99531dded6ab0ca5119164341815b51"
+    },
+    "com.unity.modules.hierarchycore": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.hierarchycore/package.json",
+      "metadataSha256": "1faecbcfb9d2e31fc3e276006f1518082c4c0ad40f454d68d7b7cc4ab39e65b3"
+    },
+    "com.unity.modules.imageconversion": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.imageconversion/package.json",
+      "metadataSha256": "78a89cbe9a94a05f40517600c98294ff8d364bb0c0f61e007a00424f1459f355"
+    },
+    "com.unity.modules.imgui": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.imgui/package.json",
+      "metadataSha256": "f4d650067a47bc09a07e7d8236cb1f601888d7fe551ae543e154f34d7d57b732"
+    },
+    "com.unity.modules.jsonserialize": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.jsonserialize/package.json",
+      "metadataSha256": "2a2972340575d91f1c612f50742d636fd82fc40c5ff9a5cc6db8c547878009df"
+    },
+    "com.unity.modules.nvidia": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.nvidia/package.json",
+      "metadataSha256": "2bd675f372b61a500bb7989a85323ba5e8801ec929557c33147d6babb8e68929"
+    },
+    "com.unity.modules.particlesystem": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.particlesystem/package.json",
+      "metadataSha256": "dd0b7d986884ef5555f4ee551702135d4199d21454ded0fb9329047730db38e9"
+    },
+    "com.unity.modules.physics": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.physics/package.json",
+      "metadataSha256": "2549cf8ef0bde35665e30f9b8056d97ccd7ae89cb6d4bfc59e5a15b6ff0b10d9"
+    },
+    "com.unity.modules.physics2d": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.physics2d/package.json",
+      "metadataSha256": "d2f58250317de524e33a0761aa7e3d9b44a6e1591bee2ffa01d95030b90ebb87"
+    },
+    "com.unity.modules.screencapture": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.imageconversion": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.screencapture/package.json",
+      "metadataSha256": "dd853defb5345760bb71b1c7153c0505a0b24344caa0a5c56e1df3eb6e385de1"
+    },
+    "com.unity.modules.subsystems": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.jsonserialize": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.subsystems/package.json",
+      "metadataSha256": "1a6d42a952be8eff2fd1b0b03c4fea86504764a22ba557b89116ec12dd99f2a1"
+    },
+    "com.unity.modules.terrain": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.terrain/package.json",
+      "metadataSha256": "044a6979bd5a871b170f0366fa88b0453646b4b17ffb7de7dd3d590a1b07a08c"
+    },
+    "com.unity.modules.terrainphysics": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.physics": "1.0.0",
+        "com.unity.modules.terrain": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.terrainphysics/package.json",
+      "metadataSha256": "dc3754cf0c9b6e35d267d6669fd7a3125153bfe06961d47b444b5f353b2bc109"
+    },
+    "com.unity.modules.tilemap": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.physics2d": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.tilemap/package.json",
+      "metadataSha256": "4c8cd089511cce3f504b3d0271a206a75856c96060ea2d879ec37119f73401e4"
+    },
+    "com.unity.modules.ui": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.ui/package.json",
+      "metadataSha256": "a19d255d5764dae625cc288000792c3d3b30e1846f37457d6c1999f55eeaded6"
+    },
+    "com.unity.modules.uielements": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.ui": "1.0.0",
+        "com.unity.modules.imgui": "1.0.0",
+        "com.unity.modules.jsonserialize": "1.0.0",
+        "com.unity.modules.hierarchycore": "1.0.0",
+        "com.unity.modules.physics": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.uielements/package.json",
+      "metadataSha256": "19db149aaa89eac68b2f3518f8613f746c98928840450d8a59f7c148d32c1250"
+    },
+    "com.unity.modules.uielementsnative": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.uielementsnative/package.json",
+      "metadataSha256": "c763021251bc5977fb087740ec97bb1ab93ed41604ad45c4ec88cc6c2b53380f"
+    },
+    "com.unity.modules.umbra": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.umbra/package.json",
+      "metadataSha256": "d142df1cd2a785e6ce87c65a600dc3887731eb065b4bb02d6de60b835d5bc2ac"
+    },
+    "com.unity.modules.unityanalytics": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.unitywebrequest": "1.0.0",
+        "com.unity.modules.jsonserialize": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.unityanalytics/package.json",
+      "metadataSha256": "7969806ed5dbb36f387d3da5cecc49fe4109fa2506095d6b7255f1a834e5f56b"
+    },
+    "com.unity.modules.unitywebrequest": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.unitywebrequest/package.json",
+      "metadataSha256": "0c5fba195e656cb141b63f9c6647c6d7e34cc90a4ec09e4e70f89e4019e274b7"
+    },
+    "com.unity.modules.unitywebrequestassetbundle": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.assetbundle": "1.0.0",
+        "com.unity.modules.unitywebrequest": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.unitywebrequestassetbundle/package.json",
+      "metadataSha256": "164e8d98ef2b0f95c539a4f2582e2e244deff31cc7b47b7723c9892f266b6f8e"
+    },
+    "com.unity.modules.unitywebrequestaudio": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.unitywebrequest": "1.0.0",
+        "com.unity.modules.audio": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.unitywebrequestaudio/package.json",
+      "metadataSha256": "81b561579c68d52f05f7bbd5d26a46b633c6bf0107d3914b8fc520e8e108c69a"
+    },
+    "com.unity.modules.unitywebrequesttexture": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.unitywebrequest": "1.0.0",
+        "com.unity.modules.imageconversion": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.unitywebrequesttexture/package.json",
+      "metadataSha256": "f9c65b5ccd86cc5a28d1b1894f8563e57b60e47e05e9c003211c7e4b8580dbd7"
+    },
+    "com.unity.modules.unitywebrequestwww": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.unitywebrequest": "1.0.0",
+        "com.unity.modules.unitywebrequestassetbundle": "1.0.0",
+        "com.unity.modules.unitywebrequestaudio": "1.0.0",
+        "com.unity.modules.audio": "1.0.0",
+        "com.unity.modules.assetbundle": "1.0.0",
+        "com.unity.modules.imageconversion": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.unitywebrequestwww/package.json",
+      "metadataSha256": "04c55449a42cd925124036f768c2bf0892a50dc2a3672b5833b9b9be32e528d7"
+    },
+    "com.unity.modules.vectorgraphics": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.uielements": "1.0.0",
+        "com.unity.modules.imageconversion": "1.0.0",
+        "com.unity.modules.imgui": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.vectorgraphics/package.json",
+      "metadataSha256": "a252f0f249505d4621de263b2e9844087d9469800f7ae599c45f46c652fa3351"
+    },
+    "com.unity.modules.vehicles": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.physics": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.vehicles/package.json",
+      "metadataSha256": "9f7338ef8867802cb381c700fe64750eaf0dd2c9e7d9c829d3ab0c66facc1dd3"
+    },
+    "com.unity.modules.video": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.audio": "1.0.0",
+        "com.unity.modules.ui": "1.0.0",
+        "com.unity.modules.unitywebrequest": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.video/package.json",
+      "metadataSha256": "aa08c5f409c149d85be0543221734c0f70aba4ca4d744cc70b6a771ed50136cb"
+    },
+    "com.unity.modules.vr": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.jsonserialize": "1.0.0",
+        "com.unity.modules.physics": "1.0.0",
+        "com.unity.modules.xr": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.vr/package.json",
+      "metadataSha256": "e678a33db5b969c716df82ab1a1569be79a3dd2703d6fa73dab1c6c296bf04a1"
+    },
+    "com.unity.modules.wind": {
+      "version": "1.0.0",
+      "dependencies": {},
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.wind/package.json",
+      "metadataSha256": "3ccd92b4915222739178120eaa7749fd6754a2c4c79c29e206ddd36f718ab281"
+    },
+    "com.unity.modules.xr": {
+      "version": "1.0.0",
+      "dependencies": {
+        "com.unity.modules.physics": "1.0.0",
+        "com.unity.modules.jsonserialize": "1.0.0",
+        "com.unity.modules.subsystems": "1.0.0"
+      },
+      "metadataPath": "Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.modules.xr/package.json",
+      "metadataSha256": "818653eff785cc6fdeadfda1f392d9732ca989d50f54b861973ba03b066e1ded"
+    }
+  },
+  "excludedModules": {
+    "com.unity.modules.unityanalytics": "Companion does not add telemetry."
+  }
+}

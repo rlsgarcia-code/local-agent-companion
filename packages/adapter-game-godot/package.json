@@ -1,0 +1,6 @@
+{
+  "name": "@companion/adapter-game-godot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Explicitly provisioned, offline isolated Godot web build adapter. No agent loop or KidOS Docker authority."
+}

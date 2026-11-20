@@ -87,10 +87,12 @@ test("routes every LangChain model client through the exact-route gateway transp
   assert.doesNotMatch(agent, /@langchain\/openai|new ChatOpenAI|new OpenAIEmbeddings/,
     "editor model calls belong to the shared service");
   assert.match(agent, /client\.assistModel/);
-  assert.equal(count(providers, /new ChatOpenAICompletions\s*\(/g),1);
-  assert.equal(count(providers, /new ChatOpenAIResponses\s*\(/g),1);
+  assert.equal(count(providers, /new ContextualChatCompletions\s*\(/g),1);
+  assert.equal(count(providers, /new ContextualChatResponses\s*\(/g),1);
   assert.equal(count(semanticMemory, /new OpenAIEmbeddings\s*\(/g),1);
   assert.equal(count(assistance, /new OpenAIEmbeddings\s*\(/g),1);
+  const contextual=readFileSync("packages/agent-core/src/model-context.ts","utf8");
+  assert.match(contextual,/extends ChatOpenAICompletions/);assert.match(contextual,/extends ChatOpenAIResponses/);assert.doesNotMatch(contextual,/fetch\(|new (?:Agent|OpenAI|ChatOpenAI)/);
   assert.match(providers, /fetch:gatewayFetch\(responses\?responsesUrl/);
   assert.match(providers, /fetch: gatewayFetch\(embeddingsUrl/);
   assert.match(assistance, /fetch: options\.fetch/);

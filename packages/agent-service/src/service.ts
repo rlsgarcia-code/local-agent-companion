@@ -1,5 +1,6 @@
+import {contextWorkingBudget,type ModelContextWindows} from '../../contracts/src/model-context';
 import { createHash, randomUUID } from "node:crypto";
-import type { InstalledAdapter } from "../../agent-core/src/installed-adapter";
+import type { InstalledAdapter, InstalledToolInvocation, InstalledToolReconciliation } from "../../agent-core/src/installed-adapter";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { contentHash, canonical } from "../../contracts/src/identity";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
@@ -17,6 +18,7 @@ import {
   engineCapabilities,
   errors,
   identifier,
+  installedToolInspection,
   NODE_VERSION,
   PROTOCOL_VERSION,
   negotiate,
@@ -39,6 +41,7 @@ import { workspaceToolResult } from "../../contracts/src/workspace-receipts";
 import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
 import { assistModel } from "../../agent-core/src/model-assistance";
 import { ProviderModels } from "../../agent-core/src/provider-models";
+import { ModelTransportError } from "../../agent-core/src/model-failure";
 import { message } from "../../contracts/src/index";
 import { WorkspaceProcesses } from "./workspace-processes";
 import { CredentialVault } from "./credentials";
@@ -50,6 +53,23 @@ import { goalCreate, goalEdit, goalRecord, goalEvaluation } from "../../contract
 import { transferBegin, transferAppend, sessionImport, TRANSFER_CHUNK_BYTES } from "../../contracts/src/transfers";
 import { OllamaDesktopRuntime } from "../../agent-core/src/desktop-runtime";
 import { desktopRunSpec } from "../../contracts/src/desktop";
+import { GameProjects } from "./game-projects";
+import { gameProjectCreate, gameProjectRead, gameProjectList, gameRevisionRead, gameRevisionsList,
+  gameRevisionCommit, gameMutationInspect, gameEventsRead, gameFileRead, gameProjectImport } from "../../contracts/src/games";
+import { convertLegacyGameDesign } from "../../game-design/src/project";
+import { GameProduction } from "./game-production";
+import { GamePlaytests } from "./game-playtests";
+import { gamePlaytestCreate, gamePlaytestRecord, gamePlaytestWithdraw,gamePlaytestCorrect } from "../../contracts/src/game-playtests";
+import { GameWorkflows } from "./game-workflows";
+import { gameWorkflowRead, gameWorkflowAdvance, gameWorkflowContinue, gameWorkflowReopen, gameWorkflowEvents, type GameWorkflowPolicy } from "../../contracts/src/game-workflow";
+import type { GameProductionAdapter, GameValidationCollector, GameBlobAccess, GameAssetProcessor } from "../../game-production/src/index";
+import { gameAssetProcessRequest, gameAssetApplyRequest } from "../../contracts/src/game-assets";
+import { GameAgentTools, GAME_AGENT_TOOLS, gameAgentDefinition } from "./game-agent-tools";
+import type { GameAgentPort } from "../../agent-core/src/game-production-profile";
+import { InferenceBudgets } from "./inference-budgets";
+import type { InferenceBudgetPort } from "../../agent-core/src/inference-budget";
+import type { InferenceBudgetPolicy, InferenceBudgetScope } from "../../contracts/src/inference-budget";
+import { gameBuildRequest, gameValidationRequest, gameProductionRead, gameProductionList, gameProductionEvents, gameArtifactFileRead, type GameProductionBudget } from "../../contracts/src/game-production";
 
 type DesktopSpec = { profile: "desktop"; spec: z.infer<typeof desktopRunSpec> };
 type DurableSpec = RunSpec | DesktopSpec;
@@ -84,9 +104,17 @@ export class AgentService {
   private readonly goals: Goals;
   private readonly memory: ProductMemory;
   private readonly models: Models;
+  private readonly games: GameProjects;
+  private readonly gameProduction: GameProduction;
+  private readonly gamePlaytests: GamePlaytests;
+  private readonly gameWorkflows: GameWorkflows;
+  private readonly gameAgent: GameAgentTools;
+  private readonly inferenceBudgets: InferenceBudgets;
+  private readonly contextWorkingBudget?:import('../../contracts/src/model-context').ContextWorkingBudget;
   private readonly desktopRuntimes = new Map<string, OllamaDesktopRuntime>();
   private readonly semanticMemory = new Map<string, SemanticProjectMemory>();
   private readonly modelTasks = new Map<string, {controller:AbortController;promise:Promise<unknown>}>();
+  private readonly toolInspections = new Map<string, {controller:AbortController;promise:Promise<InstalledToolReconciliation>}>();
   private readonly advisors = new Map<string, AbortController>();
   constructor(
     readonly store: Store,
@@ -97,12 +125,45 @@ export class AgentService {
       target?: string;
       manifestSha256?: string;
     } = {},
-    private readonly options: { deferRecovery?: boolean; adapter?: InstalledAdapter; resourceDirectory?: string } = {},
+    private readonly options: { deferRecovery?: boolean; adapter?: InstalledAdapter; resourceDirectory?: string;
+      gameAdapters?: readonly GameProductionAdapter[]; gameCollectors?: readonly GameValidationCollector[]; gameAssetProcessors?: readonly GameAssetProcessor[];
+      gameResourceBudget?: GameProductionBudget; gameWorkflowPolicy?: GameWorkflowPolicy; inferenceBudgetPolicy?: InferenceBudgetPolicy;
+      contextWorkingBudget?:import('../../contracts/src/model-context').ContextWorkingBudget } = {},
   ) {
     this.transfers = new Transfers(store);
     this.goals = new Goals(store);
     this.memory = new ProductMemory(store);
     this.models = new Models(store, directory);
+    this.games = new GameProjects(store, (reg, file) => {
+      const transfer = this.transfers.get(reg, file.transferId);
+      if (!transfer.committed || transfer.sha256 !== file.sha256 || transfer.size !== file.size ||
+          (transfer.mime !== "application/octet-stream" && transfer.mime !== file.mime))
+        throw new AgentError(errors.invalid, "Game file requires a verified blob with matching size, SHA-256 and media type.");
+    });
+    const gameBlobs: GameBlobAccess = {
+      read: (reg, file) => {
+        const transfer = this.transfers.get(reg, file.transferId);
+        if (transfer.sha256 !== file.sha256 || transfer.size !== file.size) throw new AgentError(errors.invalid, "Game blob differs from the pinned file reference.");
+        return this.transfers.bytes(reg, file.transferId);
+      },
+      store: (reg, files) => files.map((file) => {
+        const data = Buffer.from(file.data);
+        if (this.secrets(reg).some((secret) => data.includes(Buffer.from(secret)) || data.includes(Buffer.from(JSON.stringify(secret).slice(1, -1)))))
+          throw new AgentError(errors.forbidden, "Provider credentials cannot be embedded in game artifacts.");
+        const sha256 = createHash("sha256").update(data).digest("hex");
+        const transfer = this.transfers.begin(reg, transferBegin.parse({ key: `game-artifact:${sha256}`, size: data.length, sha256, mime: "application/octet-stream" }));
+        for (let offset = transfer.received; offset < data.length; offset += TRANSFER_CHUNK_BYTES)
+          this.transfers.append(reg, transfer.id, offset, data.subarray(offset, offset + TRANSFER_CHUNK_BYTES));
+        this.transfers.commit(reg, transfer.id);
+        return { path: file.path, mime: file.mime, sha256, size: data.length, transferId: transfer.id };
+      }),
+    };
+    this.gameWorkflows = new GameWorkflows(store, this.games, (reg, id) => this.gameProduction.quality(reg, id), options.gameWorkflowPolicy);
+    this.gameProduction = new GameProduction(store, this.games, gameBlobs, [...(options.gameAdapters ?? []),...(options.adapter?.gameAdapters ?? [])], [...(options.gameCollectors ?? []),...(options.adapter?.gameValidationCollectors ?? [])], (reg, value) => this.protect(reg, value), [...(options.gameAssetProcessors ?? []),...(options.adapter?.gameAssetProcessors ?? [])], options.gameResourceBudget, (reg, job) => { if (reg.product !== "kidos") this.gameWorkflows.reserve(reg, job); });
+    this.gamePlaytests = new GamePlaytests(store, this.games, this.gameProduction);
+    this.gameAgent = new GameAgentTools(store, this.games, this.gameProduction, gameBlobs, this.gameWorkflows);
+    this.inferenceBudgets = new InferenceBudgets(store, options.inferenceBudgetPolicy);
+    this.contextWorkingBudget=options.contextWorkingBudget===undefined?undefined:contextWorkingBudget.parse(options.contextWorkingBudget);
     store.encodeEvent = (reg, data) => {
       const safe = this.protect(reg, data);
       return Buffer.byteLength(JSON.stringify(safe)) <= 512 * 1024 ? safe
@@ -114,6 +175,8 @@ export class AgentService {
     if (this.recovered) return;
     this.store.recover();
     this.models.recover();
+    this.gameProduction.recover();
+    this.inferenceBudgets.recover();
     this.recovered = true;
   }
   private checkpoint(reg: Registration): SqliteSaver {
@@ -186,6 +249,12 @@ export class AgentService {
     ) as T;
   }
   private secrets(reg: Registration): string[] { return this.credentials.secrets(reg); }
+  private gameInput<T>(reg: Registration, input: unknown, schema: z.ZodType<T>): T {
+    const envelope = z.object({ requestTransferId: identifier }).strict().safeParse(input);
+    const request = envelope.success ? this.transfers.json(reg, envelope.data.requestTransferId) : input;
+    this.assertToolArguments(reg, request);
+    return schema.parse(request);
+  }
   private assertToolArguments(reg: Registration, input: unknown): void {
     const encoded = JSON.stringify(input ?? null);
     if (this.secrets(reg).some((secret) => encoded.includes(JSON.stringify(secret).slice(1, -1))))
@@ -201,6 +270,8 @@ export class AgentService {
     validateProvider(reg, spec.provider);
     if (reg.product === "kidos") this.options.adapter?.validate(reg, spec);
     for (const definition of spec.tools) {
+      if (gameAgentDefinition(definition.name) || definition.host === "service-game")
+        throw new AgentError(errors.forbidden, "Game tools come from the installed service catalog, not client declarations.");
       const installed = reg.toolCatalog?.find((tool) => tool.name === definition.name);
       if (!installed || canonical(installed) !== canonical(definition))
         throw new AgentError(errors.forbidden, "Tool definition must match the installed adapter catalog.");
@@ -211,7 +282,9 @@ export class AgentService {
       "SELECT COUNT(*) AS count FROM runs WHERE state NOT IN ('completed','failed','cancelled')",
     ).get() as { count: number };
     return {
-      activeRuns: Number(row.count) || 0,
+      activeRuns: Math.max(Number(row.count) || 0, this.running.size),
+      ...(this.gameProduction.busy ? { gameOperations: 1 } : {}),
+      ...(this.toolInspections.size ? { toolInspections: this.toolInspections.size } : {}),
       managedProcesses: this.workspaceProcesses.runningCount,
       modelOperations: this.advisors.size + this.modelTasks.size + (this.models.busy ? 1 : 0),
       desktopResources: [...this.desktopRuntimes.values()].filter((runtime) => runtime.hasActiveResources).length,
@@ -219,6 +292,8 @@ export class AgentService {
   }
   private readRun(reg: Registration, id: string): Run {
     const run = this.store.run(reg, id);
+    if(!this.running.has(id)&&!terminalStates.has(run.state)&&this.hasPendingInference(reg,run))
+      return {...run,state:"awaiting_reconciliation",waitingFor:"protected-inference",error:"Uma chamada de IA anterior ainda precisa de confirmação pela autoridade."};
     if (run.state === "running" && !this.running.has(id)) {
       const unknown = this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(id);
       return { ...run, state: unknown ? "awaiting_reconciliation" : "awaiting_host",
@@ -236,14 +311,187 @@ export class AgentService {
     params: unknown,
     connection: string,
   ): Promise<unknown> {
+    if (this.closed) throw new AgentError(errors.unavailable, "The local engine is stopping; reconnect before continuing.");
     if (this.quiescing && !["engine.info","engine.updateStatus","engine.resumeAfterUpdate","engine.shutdownIfIdle","engine.quiesceIfIdle","engine.stopManagedResourcesForUpdate","workspace.status","sessions.list","sessions.export","transfers.get","transfers.read"].includes(method))
       throw new AgentError(errors.unavailable, "Engine is activating a prepared update. Reconnect with the updated client.");
     if(process.platform === "linux" && existsSync("/usr/share/kidos/engine-activation.json") &&
-      ["runs.start","desktop.start","runs.resume","engine.resumeAfterUpdate"].includes(method))
+      ["runs.start","desktop.start","runs.resume","engine.resumeAfterUpdate","games.builds.start","games.validation.start","games.production.reconcile"].includes(method))
       throw new AgentError(errors.unavailable,"A verified machine update is activating. Existing work was preserved; reconnect after it completes.");
     // Scope comes exclusively from the authenticated immutable registration.
+    if (method.startsWith("games.workflows.") && reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS production stages and budgets require their protected Core integration.");
     const p = params ?? {};
     switch (method) {
+      case "inference.budgets.get": {
+        if (reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS inference policy requires its protected adapter integration.");
+        const { sessionId } = z.object({ sessionId: identifier }).strict().parse(p);
+        return this.inferenceBudgets.snapshot(reg, this.inferenceScopes(reg, sessionId));
+      }
+      case "inference.inspect": {
+        const {runId}=z.object({runId:identifier}).strict().parse(p);
+        if(reg.product!=="kidos"||!this.options.adapter?.reconcileInference)
+          throw new AgentError(errors.forbidden,"Protected inference requires its installed inspection adapter.");
+        const run=this.store.run(reg,runId);
+        if(this.running.has(runId)||!["awaiting_reconciliation","awaiting_host"].includes(run.state))
+          throw new AgentError(errors.conflict,"Wait until this provider execution has stopped before inspecting it.");
+        const key=`inference:${namespace(reg)}:${runId}`;let inspection=this.toolInspections.get(key);
+        if(!inspection){
+          const controller=new AbortController();
+          const promise=Promise.resolve().then(()=>this.options.adapter!.reconcileInference!(reg,this.installedInferenceContext(reg,run),controller.signal))
+            .then(value=>z.union([z.object({state:z.literal("known"),result:z.unknown()}).strict(),z.object({state:z.literal("unknown")}).strict(),z.object({state:z.literal("unsupported")}).strict()]).parse(value))
+            .finally(()=>this.toolInspections.delete(key));
+          inspection={controller,promise};this.toolInspections.set(key,inspection);
+        }
+        const result=await inspection.promise;
+        if(this.closed)throw new AgentError(errors.reconciliation,"The service stopped; preserve the original provider receipt.");
+        const unknown=result.state!=="known"||this.hasPendingInference(reg,run)||Boolean(this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(runId));
+        const cancelled=this.store.receipt(reg,`private:${runId}:protected-inference-cancel`)?.value===true;
+        this.store.updateRun(reg,runId,unknown?"awaiting_reconciliation":cancelled?"cancelled":"awaiting_host");
+        return this.readRun(reg,runId);
+      }
+      case "games.workflows.get": {
+        const request = gameWorkflowRead.parse(p);
+        return this.persistTransfer(reg, "game-workflow", this.gameWorkflows.snapshot(reg, request.projectId));
+      }
+      case "games.workflows.advance": return this.gameWorkflows.advance(reg, this.gameInput(reg, p, gameWorkflowAdvance));
+      case "games.workflows.continue": return this.gameWorkflows.continue(reg, this.gameInput(reg, p, gameWorkflowContinue));
+      case "games.workflows.reopen": return this.gameWorkflows.reopen(reg, this.gameInput(reg, p, gameWorkflowReopen));
+      case "games.workflows.events": {
+        const request = gameWorkflowEvents.parse(p);
+        return this.persistTransfer(reg, "game-workflow-events", this.gameWorkflows.events(reg, request.projectId, request.cursor, request.limit, request.until));
+      }
+      case "games.production.capabilities":
+        z.object({}).strict().parse(p);
+        return this.gameProduction.capabilities(reg);
+      case "games.projects.linked": {
+        const { sessionId } = z.object({ sessionId: identifier }).strict().parse(p);
+        return this.gameAgent.linked(reg, sessionId);
+      }
+      case "games.projects.select": {
+        const { sessionId, projectId } = z.object({ sessionId: identifier, projectId: identifier }).strict().parse(p);
+        if (this.store.runs(reg, sessionId).some((run) => !terminalStates.has(run.state)))
+          throw new AgentError(errors.conflict, "Wait for the active conversation run before changing its game project.");
+        return this.gameAgent.select(reg, sessionId, projectId);
+      }
+      case "games.builds.start":
+        return this.gameProduction.startBuild(reg, this.gameInput(reg, p, gameBuildRequest));
+      case "games.assets.process":
+        return this.gameProduction.startAssets(reg, this.gameInput(reg,p,gameAssetProcessRequest));
+      case 'games.assets.inspect':
+        if(reg.product==='kidos')throw new AgentError(errors.forbidden,'Asset request inspection requires its protected KidOS integration.');
+        return this.gameProduction.inspectAssetRequest(reg,this.gameInput(reg,p,gameAssetProcessRequest));
+      case "games.assets.libraries":
+        return this.gameProduction.libraries(reg,p);
+      case "games.assets.apply":
+        return this.gameProduction.applyAssets(reg,this.gameInput(reg,p,gameAssetApplyRequest));
+      case "games.assets.result":
+        return this.persistTransfer(reg,"game-asset-result",this.gameProduction.assetResults.get(reg,gameProductionRead.parse(p).id));
+      case "games.assets.file": {
+        const request=z.object({jobId:identifier,path:gameFileRead.shape.path}).strict().parse(p),result=this.gameProduction.assetResults.get(reg,request.jobId);
+        const file=result.files.find((item)=>item.path===request.path);if(!file)throw new AgentError(errors.missing,"File does not belong to this processed asset result.");
+        return this.transfers.get(reg,file.transferId);
+      }
+      case "games.validation.start":
+        return this.gameProduction.startValidation(reg, this.gameInput(reg, p, gameValidationRequest));
+      case "games.production.get":
+        return this.gameProduction.job(reg, gameProductionRead.parse(p).id);
+      case "games.production.cancel":
+        return this.gameProduction.cancel(reg, gameProductionRead.parse(p).id);
+      case "games.production.reconcile":
+        return this.gameProduction.reconcile(reg, gameProductionRead.parse(p).id);
+      case "games.production.list": {
+        const request = gameProductionList.parse(p);
+        return this.gameProduction.list(reg, request.projectId, request.cursor, request.limit,request.order);
+      }
+      case "games.production.events": {
+        const request = gameProductionEvents.parse(p);
+        return this.gameProduction.events(reg, request.projectId, request.cursor, request.limit);
+      }
+      case "games.builds.artifact": {
+        const { id } = gameProductionRead.parse(p);
+        return this.persistTransfer(reg, `game-artifact:${id}`, this.gameProduction.artifact(reg, id));
+      }
+      case "games.builds.file": {
+        const request = gameArtifactFileRead.parse(p);
+        const artifact = this.gameProduction.artifact(reg, request.buildId);
+        const file = artifact.files.find((file) => file.path === request.path);
+        if (!file) throw new AgentError(errors.missing, "File does not belong to this build artifact.");
+        return this.transfers.get(reg, file.transferId);
+      }
+      case "games.validation.reports": {
+        const { id } = gameProductionRead.parse(p);
+        return this.persistTransfer(reg, `game-reports:${id}`, this.gameProduction.reports(reg, id));
+      }
+      case "games.validation.file": {
+        const { reportId, path } = z.object({ reportId: identifier, path: gameFileRead.shape.path }).strict().parse(p);
+        const file = this.gameProduction.reportFile(reg, reportId, path);
+        return this.transfers.get(reg, file.transferId);
+      }
+      case "games.quality.get": {
+        const request = gameRevisionRead.parse(p);
+        return this.persistTransfer(reg, `game-quality:${request.projectId}`, this.gameProduction.quality(reg, request.projectId, request.revision));
+      }
+      case "games.playtests.create": return this.gamePlaytests.create(reg, this.gameInput(reg, p, gamePlaytestCreate));
+      case "games.playtests.record": return this.gamePlaytests.record(reg, this.gameInput(reg, p, gamePlaytestRecord));
+      case "games.playtests.withdraw": return this.gamePlaytests.withdraw(reg, this.gameInput(reg, p, gamePlaytestWithdraw));
+      case "games.playtests.correct": return this.gamePlaytests.correct(reg,this.gameInput(reg,p,gamePlaytestCorrect));
+      case "games.playtests.corrections": return this.gamePlaytests.corrections(reg,p);
+      case "games.playtests.read": return this.gamePlaytests.read(reg, p);
+      case "games.playtests.list": return this.gamePlaytests.list(reg, p);
+      case "games.playtests.inspect": return this.gamePlaytests.inspect(reg, p);
+      case "games.playtests.export": return this.persistTransfer(reg, "operator-playtest-study", this.gamePlaytests.export(reg, p));
+      case "games.projects.create": return this.store.db.transaction(() => {
+        const project = this.games.create(reg, this.gameInput(reg, p, gameProjectCreate));
+        if (reg.product !== "kidos") this.gameWorkflows.ensure(reg, project.id); return project;
+      })();
+      case "games.projects.list": {
+        const request = gameProjectList.parse(p);
+        return this.games.list(reg, request.cursor, request.limit);
+      }
+      case "games.projects.get":
+        return this.games.get(reg, gameProjectRead.parse(p).id);
+      case "games.projects.snapshot": {
+        const { id } = gameProjectRead.parse(p);
+        return this.persistTransfer(reg, `game-snapshot:${id}`, this.games.snapshot(reg, id));
+      }
+      case "games.revisions.get": {
+        const request = gameRevisionRead.parse(p);
+        return this.persistTransfer(reg, `game-revision:${request.projectId}`, this.games.revision(reg, request.projectId, request.revision));
+      }
+      case "games.revisions.list": {
+        const request = gameRevisionsList.parse(p);
+        return this.games.revisions(reg, request.projectId, request.cursor, request.limit,request.order);
+      }
+      case "games.revisions.compare": return this.games.compare(reg,p);
+      case "games.revisions.compareFile": return this.games.compareFile(reg,p,file=>this.transfers.bytes(reg,file.transferId));
+      case "games.revisions.commit":
+        return this.games.commit(reg, this.gameInput(reg, p, gameRevisionCommit));
+      case "games.mutations.inspect":
+        return this.games.inspectMutation(reg, gameMutationInspect.parse(p));
+      case "games.events.read": {
+        const request = gameEventsRead.parse(p);
+        return this.games.events(reg, request.projectId, request.cursor, request.limit);
+      }
+      case "games.files.get": {
+        const request = gameFileRead.parse(p);
+        const revision = this.games.revision(reg, request.projectId, request.revision);
+        const file = revision.document.files.find((file) => file.path === request.path);
+        if (!file) throw new AgentError(errors.missing, "Game file not found in the selected revision.");
+        return this.transfers.get(reg, file.transferId);
+      }
+      case "games.projects.export": {
+        const { id } = gameProjectRead.parse(p);
+        return this.persistTransfer(reg, `game-export:${id}`, this.games.export(reg, id));
+      }
+      case "games.projects.import": {
+        const request = this.gameInput(reg, p, gameProjectImport);
+        const archive = this.transfers.json(reg, request.transferId);
+        this.assertToolArguments(reg, archive);
+        return this.games.import(reg, request.requestId, archive, request.blobs);
+      }
+      case "games.design.convertLegacy": {
+        const request = this.gameInput(reg, p, z.object({ design: z.unknown() }).strict());
+        return this.persistTransfer(reg, "game-legacy-design", convertLegacyGameDesign(request.design));
+      }
       case "models.assist": {
         if (reg.product === "kidos") throw new AgentError(errors.forbidden,"KidOS inference requires its protected adapter.");
         const envelope = z.union([modelAssistance,z.object({transferId:identifier}).strict()]).parse(p);
@@ -409,7 +657,11 @@ export class AgentService {
           );
         this.desktop(reg);
         const spec: DesktopSpec = { profile: "desktop", spec: this.protect(reg, desktopSpec) };
-        const created = this.store.start(reg, v.sessionId, v.key, spec);
+        const created = this.store.db.transaction(()=>{
+          const admitted=this.store.start(reg,v.sessionId,v.key,spec);
+          if(admitted.created){const windows=this.models.configuration(reg)?.contextWindows;if(windows&&Object.keys(windows).length)this.store.saveReceipt(reg,admitted.run.id,`private:${admitted.run.id}:model-context-windows`,"configuration",windows);this.captureContextWorkingBudget(reg,admitted.run);}
+          return admitted;
+        })();
         if (created.created) this.start(reg, created.run, spec);
         return this.store.run(reg, created.run.id);
       }
@@ -419,10 +671,48 @@ export class AgentService {
           protocol: PROTOCOL_VERSION,
           node: process.versions.node,
           requiredNode: NODE_VERSION,
+          ...(reg.product!=="kidos"?{contextWorkingBudget:this.contextWorkingBudget??null}:{}),
           product: reg.product,
           quiescing:this.quiescing,
           build: this.buildInfo,
-          capabilities: [...engineCapabilities],
+          capabilities: [
+            ...engineCapabilities,
+            "sessions",
+            "runs",
+            "events",
+            "approvals",
+            "goals",
+            "sqlite-checkpoints",
+            "model-context-window-v1",
+            "chunked-transfers",
+            "durable-approvals",
+            "bound-tool-receipts",
+            "installed-tool-invocation-v1",
+            "installed-tool-inspection-v1",
+            ...(reg.product==="kidos"&&this.options.adapter?.reconcileInference?["installed-inference-inspection-v1"]:[]),
+            "ollama-model-jobs",
+            "model-assistance",
+            "public-session-snapshots",
+            "game-projects-v2",
+            "game-mutation-inspection-v1",
+            "game-revision-comparison-v1",
+            "game-file-comparison-v1",
+            ...(reg.product!=="kidos"?["game-visual-opinion-v1"]:[]),
+            ...(reg.product!=="kidos"?["game-png-lossless-v1","game-audio-analysis-v1","game-asset-request-inspection-v1","game-web-delivery-v1"]:[]),
+            ...(reg.product !== "kidos" ? ["game-file-text-edits-v1"] : []),
+            ...(reg.product !== "kidos" ? ["game-source-text-pages-v1"] : []),
+            ...(reg.product !== "kidos" ? ["game-validation-reports-v1"] : []),
+            ...(reg.product !== "kidos" ? ["game-playtest-studies-v1"] : []),
+            ...(reg.product !== "kidos" ? ["game-playtest-studio-v1"] : []),
+            ...(reg.product !== "kidos" ? ["game-playtest-corrections-v1"] : []),
+            "game-production-jobs",
+            "game-asset-libraries",
+            "game-production-resource-queue",
+            "game-production-workflows",
+            "shared-inference-budgets",
+            ...(reg.product!=="kidos"?["request-sized-inference-reservations-v1"]:[]),
+            ...(reg.product !== "kidos" ? ["owner-inference-limits-v1","context-working-budget-v1"] : []),
+          ],
         };
       case "engine.resumeAfterUpdate":
         z.object({}).strict().parse(p);this.quiescing=false;return {accepted:true};
@@ -437,7 +727,7 @@ export class AgentService {
         z.object({}).strict().parse(p);
         if (reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS updates remain under system authority.");
         const blockers = this.engineUpdateBlockers();
-        if (blockers.activeRuns || blockers.modelOperations || blockers.desktopResources)
+        if (blockers.activeRuns || blockers.modelOperations || blockers.desktopResources || blockers.gameOperations || blockers.toolInspections)
           return { accepted: false, blockers, reason: "Finish active runs, model operations and desktop work before activating the update." };
         await this.workspaceProcesses.close();
         const remaining = this.engineUpdateBlockers();
@@ -606,6 +896,8 @@ export class AgentService {
         this.validateRun(reg, spec);
         const created = this.store.db.transaction(() => {
           const admitted = this.store.start(reg, v.sessionId, v.key, spec);
+          if(admitted.created)this.captureContextWorkingBudget(reg,admitted.run);
+          if(admitted.created&&reg.product==="kidos")this.store.saveReceipt(reg,admitted.run.id,`private:${admitted.run.id}:inference-project-id`,"configuration",this.gameAgent.linked(reg,v.sessionId)?.id??null);
           if (admitted.created && spec.goalId) this.goals.begin(reg, spec.goalId, v.sessionId, admitted.run.id);
           if (admitted.created) this.store.append(reg, v.sessionId, "message.user",
             [...spec.messages].reverse().find((message) => message.role === "user") ?? null, admitted.run.id);
@@ -646,6 +938,8 @@ export class AgentService {
         const { id } = z.object({ id: identifier }).strict().parse(p);
         const run = this.store.run(reg, id);
         if (terminalStates.has(run.state)) return run;
+        if(reg.product==="kidos"&&this.options.adapter?.hasPendingInference)
+          this.installedInferenceContext(reg,run).memo.put("protected-inference-cancel",true);
         if (this.running.has(id)) this.store.updateRun(reg, id, "cancelling");
         this.running.get(id)?.abort(new Error("Cancelled by user."));
         for (const [key, wait] of this.pending)
@@ -659,10 +953,25 @@ export class AgentService {
             this.pending.delete(key);
           }
         if (!this.running.has(id)) {
-          const unknown = this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(id);
+          const unknown = this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(id)||this.hasPendingInference(reg,run);
           this.store.updateRun(reg, id, unknown ? "awaiting_reconciliation" : "cancelled");
         }
         return this.store.run(reg, id);
+      }
+      case "runs.cancelUnknown": {
+        const { id } = z.object({ id: identifier }).strict().parse(p);
+        if (reg.product === "kidos")
+          throw new AgentError(errors.forbidden, "Protected unknown effects must be reconciled by the installed KidOS authority.");
+        const current = this.store.run(reg, id);
+        if (current.state === "cancelled") return current;
+        if (current.state !== "awaiting_reconciliation")
+          throw new AgentError(errors.conflict, "The run is not awaiting reconciliation.");
+        const controller = this.running.get(id);
+        if (controller) {
+          controller.abort(new Error("Cancelled by user with an unconfirmed operation result."));
+          await this.runningTasks.get(id);
+        }
+        return this.store.cancelUnknownRun(reg, id);
       }
       case "runs.resume": {
         const { id } = z.object({ id: identifier }).strict().parse(p);
@@ -720,7 +1029,7 @@ export class AgentService {
         return [...this.pending.entries()]
           .filter(
             ([, w]) =>
-              w.reg.id === reg.id &&
+              w.reg.id === reg.id && namespace(w.reg) === namespace(reg) &&
               (!w.delivered || w.delivered === connection),
           )
           .map(([id, w]) => {
@@ -743,7 +1052,7 @@ export class AgentService {
             return { accepted: true };
           }
         }
-        if (!wait || wait.reg.id !== reg.id || wait.delivered !== connection)
+        if (!wait || wait.reg.id !== reg.id || namespace(wait.reg) !== namespace(reg) || wait.delivered !== connection)
           throw new AgentError(
             errors.forbidden,
             "Request does not belong to this client connection.",
@@ -774,8 +1083,10 @@ export class AgentService {
         else wait.reject(new AgentError(errors.reconciliation, "Host tool failed without an acknowledged result."));
         return { accepted: true };
       }
+      case "tools.inspect":
       case "tools.reconcile": {
-        const v = z
+        const inspectionOnly = method === "tools.inspect";
+        const v = inspectionOnly ? { ...installedToolInspection.parse(p), result: undefined } : z
           .object({
             runId: identifier,
             callId: identifier,
@@ -793,12 +1104,29 @@ export class AgentService {
             errors.conflict,
             "No unknown result to reconcile.",
           );
+        if (inspectionOnly && (reg.product !== "kidos" || !this.options.adapter?.reconcileTool))
+          throw new AgentError(errors.forbidden, "No installed authority can inspect this operation.");
+        let result = v.result;
+        if (reg.product === "kidos" && this.options.adapter?.reconcileTool) {
+          const identity = this.store.db.prepare("SELECT tool FROM operation_identities WHERE id=?").get(`${v.runId}:${v.callId}`) as {tool:string} | undefined;
+          const definition = reg.toolCatalog?.find(tool => tool.name === identity?.tool);
+          if (!definition) throw new AgentError(errors.forbidden, "The original installed tool is not in this registration.");
+          const inspected = await this.inspectInstalledTool(reg, run, definition, v.callId);
+          if (this.closed) throw new AgentError(errors.reconciliation, "Service stopping; the unknown operation remains reserved.");
+          if (this.store.receipt(reg, `${v.runId}:${v.callId}`)?.status !== "started")
+            throw new AgentError(errors.conflict, "The original operation was already reconciled.");
+          if (inspected.state === "unknown") throw new AgentError(errors.reconciliation, "The protected Core has not confirmed the original operation.");
+          if (inspectionOnly && inspected.state === "unsupported") throw new AgentError(errors.reconciliation, "The installed authority does not support inspection of this tool.");
+          if (inspected.state === "known") result = inspected.result;
+          // Older tools keep their explicit manual-intervention path only
+          // when the signed adapter declares inspection unsupported.
+        }
         this.store.saveReceipt(
           reg,
           v.runId,
           `${v.runId}:${v.callId}`,
           "reconciled",
-          this.protect(reg, v.result),
+          this.protect(reg, result),
           this.store.receipt(reg, `${v.runId}:${v.callId}`)?.binding,
         );
         const remaining = this.store.db
@@ -884,14 +1212,18 @@ export class AgentService {
     try { execute = "profile" in spec
       ? this.desktop(reg).run({
           ...spec.spec,
+          modelContextWindows:(this.store.receipt(reg,`private:${run.id}:model-context-windows`)?.value as ModelContextWindows|undefined)??{},
+          contextWorkingBudget:this.runContextWorkingBudget(reg,run),
           ...(provider ? { provider, credential } : {}),
           execution: {
             threadId: run.id,
             signal: controller.signal,
             reconciliations,
             requireCheckpoint,
-            operation: (id, tool, args, perform) => this.operation(reg, run, id, tool, args, perform),
+            operation: (id, tool, args, perform) => gameAgentDefinition(tool) ? perform() : this.operation(reg, run, id, tool, args, perform),
           },
+          gameProduction: this.gamePort(reg, run, spec.spec.mode),
+          inferenceBudget: this.inferencePort(reg, run, controller.signal),
           openPreview: async (url) => { await this.wait(reg, run, "tool", { operation: "preview", url }); },
           callbacks: {
             approval: async (request) => (await this.wait(reg, run, "approval", request)) === true,
@@ -903,6 +1235,10 @@ export class AgentService {
         })
       : (reg.product === "kidos" && this.options.adapter ? this.options.adapter.execute.bind(this.options.adapter) : this.executor)(spec, {
           registration: reg,
+          contextWorkingBudget:this.runContextWorkingBudget(reg,run),
+          gameProduction: reg.product === "kidos" ? undefined : this.gamePort(reg, run, spec.mode),
+          inferenceBudget: reg.product === "kidos" ? undefined : this.inferencePort(reg, run, controller.signal),
+          inferenceProjectId:reg.product==="kidos"?(this.store.receipt(reg,`private:${run.id}:inference-project-id`)?.value as string|null|undefined)??undefined:undefined,
           threadId: run.id,
           checkpointer: this.checkpoint(reg),
           signal: controller.signal,
@@ -978,20 +1314,26 @@ export class AgentService {
         if (state === "awaiting_host" && error instanceof AgentError && error.code === errors.reconciliation &&
           !this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(run.id))
           return; // A host reconciled the receipt while the interrupted graph was settling.
+        if (error instanceof ModelTransportError)
+          this.emit(reg, run.sessionId, run.id, "model.failure", error.failure);
         this.store.updateRun(
           reg,
           run.id,
           state === "awaiting_reconciliation" || (error instanceof AgentError && error.code === errors.reconciliation)
             ? "awaiting_reconciliation"
+            : reg.product==="kidos"&&this.options.adapter?.reconcileInference&&error instanceof AgentError&&
+              (error.data as {kind?:string}|undefined)?.kind==="protected-inference-wait"
+              ? "awaiting_host"
             : authenticationFailed
               ? "awaiting_credentials"
               : "failed",
-          { error: message, ...(partial ? { result: { kind: "agent-result-transfer", ...this.persistTransfer(reg, `partial:${run.id}`, partial) } } : {}) },
+          { error: message, ...(reg.product==="kidos"&&error instanceof AgentError&&(error.data as {kind?:string}|undefined)?.kind==="protected-inference-wait"?{waitingFor:"protected-inference" as const}:{}),
+            ...(partial ? { result: { kind: "agent-result-transfer", ...this.persistTransfer(reg, `partial:${run.id}`, partial) } } : {}) },
         );
       })
       .finally(() => {
         if (!this.closed && controller.signal.aborted) {
-          const unknown = this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(run.id);
+          const unknown = this.store.db.prepare("SELECT id FROM receipts WHERE run=? AND status='started' LIMIT 1").get(run.id)||this.hasPendingInference(reg,run);
           this.store.updateRun(reg, run.id, unknown ? "awaiting_reconciliation" : "cancelled");
         }
         this.running.delete(run.id);
@@ -1002,6 +1344,115 @@ export class AgentService {
     // A failed metadata write must never become an unhandled promise or start
     // another model/tool loop. readRun exposes the recoverable stopped state.
     void task.catch(() => {});
+  }
+  private captureContextWorkingBudget(reg:Registration,run:Run):void{
+    if(reg.product!=="kidos"&&this.contextWorkingBudget)this.store.saveReceipt(reg,run.id,`private:${run.id}:context-working-budget`,"configuration",this.contextWorkingBudget);
+  }
+  private runContextWorkingBudget(reg:Registration,run:Run){
+    if(reg.product==="kidos")return undefined;
+    const value=this.store.receipt(reg,`private:${run.id}:context-working-budget`)?.value;
+    return value===undefined?undefined:contextWorkingBudget.parse(value);
+  }
+  private inferenceScopes(reg: Registration, sessionId: string): InferenceBudgetScope[] {
+    const project = this.gameAgent.linked(reg, sessionId), workflow = project ? this.gameWorkflows.get(reg, project.id) : null;
+    return [{ kind: "namespace" }, ...(project && workflow?.state === "active" ? [{ kind: "game-stage" as const, projectId: project.id, workflowId: workflow.id, stage: workflow.stage }] : [])];
+  }
+  private installedInferenceContext(reg:Registration,run:Run){
+    return {threadId:run.id,memo:{get:(key:string)=>this.store.receipt(reg,`private:${run.id}:${key}`)?.value,
+      put:(key:string,value:unknown)=>this.store.saveReceipt(reg,run.id,`private:${run.id}:${key}`,"configuration",this.protect(reg,value))}};
+  }
+  private hasPendingInference(reg:Registration,run:Run):boolean{
+    if(reg.product!=="kidos"||!this.options.adapter?.hasPendingInference)return false;
+    try{return this.options.adapter.hasPendingInference(reg,this.installedInferenceContext(reg,run))!==false;}catch{return true;}
+  }
+  private inferencePort(reg: Registration, run: Run, signal: AbortSignal): InferenceBudgetPort {
+    const starts = new Map<string, {minimum:number;pending:Promise<void>}>();
+    const decisions = new Map<string, Promise<unknown>>();
+    const begin = async (callId: string,minimumReservationTokens?:number) => {
+        for (;;) {
+          signal.throwIfAborted();
+          const state = this.inferenceBudgets.begin(reg, run.id, callId, this.inferenceScopes(reg, run.sessionId),minimumReservationTokens);
+          if (!state) return;
+          const blocked = state.budgets.filter((value) => value.exhausted);
+          if (blocked.some((value) => !value.canContinue)) throw new AgentError(errors.forbidden, minimumReservationTokens===undefined?"The installed inference budget is exhausted. Progress is saved; administrative policy review is required.":
+            'The installed inference budget is exhausted for this model request. Its estimated reservation exceeds the remaining allocation. Progress is saved; administrative policy review is required.');
+          const decision = { budgets: blocked }, key = contentHash(blocked.map((value) => ({ scope: value.scope, blocks: value.blocks, version: value.version, policy: value.policy,...(value.nextReservationTokens===undefined?{}:{nextReservationTokens:value.nextReservationTokens}) })));
+          const allocation = blocked.map((value) => `${value.scope.kind === "namespace" ? "Ambiente compartilhado" : "Etapa do jogo"}: mais ${value.policy.callsPerBlock} chamadas aos modelos e ${value.policy.tokensPerBlock} tokens de alocação.`).join("\n");
+          const requestEstimate=minimumReservationTokens===undefined?'':`\nReserva estimada desta chamada: ${Math.max(...blocked.map(value=>value.nextReservationTokens??value.reservedTokensPerCall))} tokens. É uma estimativa local; o uso real é informado pelo provedor.`;
+          let decisionPromise = decisions.get(key);
+          if (!decisionPromise) {
+            decisionPromise = this.wait(reg, run, "approval", { kind: "command", tool: "inference_budget", callId: `inference-budget:${key}`,
+            title: "Autorizar continuação do uso da IA?", detail: `O limite compartilhado foi atingido. O progresso está salvo.\n${allocation}${requestEstimate}`,
+            confirmLabel: "Autorizar continuação", prompt: "Autorizar mais um bloco de uso da IA?", action: "Autorizar continuação", target: "Produção compartilhada",
+              explanation: `Ferramentas e permissões continuam com os mesmos limites.\n${allocation}${requestEstimate}`, risk: "standard", budget: decision });
+            decisions.set(key, decisionPromise);
+          }
+          const approved = await decisionPromise;
+          signal.throwIfAborted();
+          if (approved !== true) throw new AgentError(errors.forbidden, "Inference continuation was declined. Saved projects and checkpoints were preserved.");
+          this.inferenceBudgets.grant(reg, `inference:${run.id}:${key}`, decision);
+        }
+    };
+    return {
+      begin: (callId,minimumReservationTokens) => {
+        const minimum=minimumReservationTokens??0,old = starts.get(callId);
+        if (old){if(old.minimum!==minimum)return Promise.reject(new AgentError(errors.conflict,'Model invocation identity changed its request reservation.'));return old.pending;}
+        const pending = begin(callId,minimumReservationTokens); starts.set(callId, {minimum,pending}); return pending;
+      },
+      finish: (callId, usage) => { this.inferenceBudgets.finish(reg, run.id, callId, usage); starts.delete(callId); },
+    };
+  }
+  private gamePort(reg: Registration, run: Run, mode: "plan" | "review" | "execute"): GameAgentPort {
+    if (reg.product === "kidos") throw new AgentError(errors.forbidden, "KidOS cannot use workspace game tools.");
+    return { catalog: GAME_AGENT_TOOLS, evidence: () => this.gameAgent.evidence(reg, run.id, run.sessionId),
+      currentProject: () => {
+        const project = this.gameAgent.linked(reg, run.sessionId);
+        if (!project) return null;
+        const revision = this.games.revision(reg, project.id, project.revision);
+        return { projectId: project.id, engine: revision.document.engine, revision: revision.revision,
+          sourceHash: revision.contentHash, fileCount: revision.document.files.length,
+          assetCount: revision.document.assets.length, hasDesign: revision.document.design !== null };
+      },
+      reportInputRejection: value => this.emit(reg, run.sessionId, run.id, "game.tool_rejected", value), invoke: async (name, input, callId, reviewer) => {
+      const definition = gameAgentDefinition(name);
+      if (!definition) throw new AgentError(errors.forbidden, "Unknown installed game tool.");
+      if (mode === "plan" && definition.effect !== "read") throw new AgentError(errors.forbidden, "Plan mode cannot mutate games.");
+      const prepared = this.gameAgent.prepare(name, input);
+      this.assertToolArguments(reg, prepared);
+      return this.operation(reg, run, callId, name, prepared, async () => {
+        try { this.gameAgent.preflight(reg, name, prepared); }
+        catch (error) {
+          if (error instanceof AgentError) return { ok: false, rejectedBeforeExternalDispatch: true,
+            error: { code: error.code, message: this.protect(reg, error.message) } };
+          throw error;
+        }
+        if (definition.effect !== "read" && (mode === "review" || definition.effect === "external")) {
+          const approved = await this.wait(reg, run, "approval", { tool: name, input: prepared, callId,
+            kind: definition.effect === "external" ? "command" : "file", title: `Autorizar ${name}?`,
+            detail: JSON.stringify(prepared).slice(0, 3000), confirmLabel: "Autorizar",
+            prompt: `Autorizar ${name} neste projeto de jogo?`, action: "Autorizar", target: reg.workspace || "Projeto de jogo",
+            explanation: JSON.stringify(prepared).slice(0, 3000), risk: "standard" });
+          if (approved !== true) return { denied: true };
+        }
+        try {
+          const key = `game-agent:${contentHash({ run: run.id, callId })}`;
+          const result = name==="game_review_image"
+            ? reviewer ? await reviewer(this.gameAgent.reviewImage(reg,run.sessionId,prepared))
+              : {ok:false,error:{code:errors.unavailable,message:"The private engine vision reviewer is unavailable."}}
+            : await this.gameAgent.invoke(reg, run.sessionId, key, name, prepared);
+          const safe = this.protect(reg, this.gameAgent.bounded(result));
+          this.emit(reg, run.sessionId, run.id, "game.activity", { tool: name, effect: definition.effect,
+            project: this.gameAgent.linked(reg, run.sessionId), result: safe });
+          return safe;
+        } catch (error) {
+          // Domain/schema failures acknowledge that the atomic mutation was rejected.
+          // Unknown tool/SQLite failures still require the ordinary receipt reconciliation.
+          if (error instanceof AgentError || error instanceof z.ZodError) return { ok: false,
+            error: { code: error instanceof AgentError ? error.code : errors.invalid, message: this.protect(reg, error.message) } };
+          throw error;
+        }
+      }, definition.evidenceKind);
+    } };
   }
   private async invokeTool(
     reg: Registration,
@@ -1019,7 +1470,7 @@ export class AgentService {
       this.assertToolArguments(reg, prepared);
       if (spec.mode === "plan" && definition.effect !== "read") throw new AgentError(errors.forbidden, "Mutation denied in plan mode.");
       return this.operation(reg, run, callId, definition.name, prepared, () =>
-        adapter.invokeTool(reg, definition, prepared, this.running.get(run.id)!.signal), definition.evidenceKind);
+        adapter.invokeTool(reg, definition, prepared, this.running.get(run.id)!.signal, this.installedInvocation(reg, run, callId)), definition.evidenceKind);
     }
     if(definition.host === "service-process") {
       const prepared=await this.workspaceProcesses.prepare(reg,definition,input);
@@ -1050,6 +1501,27 @@ export class AgentService {
       this.wait(reg, run, "tool", { tool: definition.name, input, callId }),
       definition.evidenceKind,
     );
+  }
+  private installedInvocation(reg: Registration, run: Run, callId: string): InstalledToolInvocation {
+    return Object.freeze({ id: `engine-${contentHash({ namespace: namespace(reg), runId: run.id, callId })}`,
+      runId: run.id, sessionId: run.sessionId });
+  }
+  private inspectInstalledTool(reg: Registration, run: Run, definition: ToolSpec, callId: string): Promise<InstalledToolReconciliation> {
+    const invocation = this.installedInvocation(reg, run, callId), old = this.toolInspections.get(invocation.id);
+    if (old) return old.promise;
+    const controller = new AbortController();
+    const promise = Promise.resolve().then(() => {
+      controller.signal.throwIfAborted();
+      return this.options.adapter!.reconcileTool!(reg, definition, invocation, controller.signal);
+    })
+      .then(value => z.union([
+        z.object({state:z.literal("known"),result:z.unknown().refine(value => value !== undefined, "Missing installed-tool observation")}).strict(),
+        z.object({state:z.literal("unknown")}).strict(),
+        z.object({state:z.literal("unsupported")}).strict(),
+      ]).parse(value) as InstalledToolReconciliation)
+      .finally(() => { this.toolInspections.delete(invocation.id); });
+    this.toolInspections.set(invocation.id, {controller, promise});
+    return promise;
   }
   private async operation(
     reg: Registration, run: Run, callId: string, tool: string, input: unknown,
@@ -1131,7 +1603,8 @@ export class AgentService {
             const effect = this.store.receipt(reg, operation);
             if (effect) this.store.saveReceipt(reg, run.id, operation, "started", effect.value, effect.binding);
           }
-          this.store.updateRun(reg, run.id, "running");
+          const other = [...this.pending.values()].find((wait) => wait.run === run.id);
+          this.store.updateRun(reg, run.id, other ? other.kind === "approval" ? "awaiting_approval" : "awaiting_host" : "running");
           resolve(value);
         },
         reject,
@@ -1168,6 +1641,7 @@ export class AgentService {
     if (this.closing) return this.closing;
     this.closed = true;
     for (const task of this.modelTasks.values()) task.controller.abort();
+    for (const task of this.toolInspections.values()) task.controller.abort();
     this.credentials.clear();
     for (const memory of this.semanticMemory.values()) memory.dispose();
     this.semanticMemory.clear();
@@ -1176,11 +1650,14 @@ export class AgentService {
       wait.reject(new Error("Service stopping."));
     this.pending.clear();
     const resources = [...this.desktopRuntimes.values()].map((runtime) => runtime.shutdown());
-    resources.push(this.models.close(),this.workspaceProcesses.close(),...[...this.modelTasks.values()].map(task=>task.promise.then(()=>{},()=>{})));
+    resources.push(this.models.close(),this.workspaceProcesses.close(),this.gameProduction.close(),
+      ...this.runningTasks.values(), ...[...this.modelTasks.values()].map(task=>task.promise.then(()=>{},()=>{})),
+      ...[...this.toolInspections.values()].map(task=>task.promise.then(()=>{},()=>{})));
     for (const controller of this.advisors.values()) controller.abort();
-    for (const saver of this.checkpointers.values()) saver.db.close();
-    this.store.close();
-    this.closing = Promise.allSettled(resources).then(() => {});
+    this.closing = Promise.allSettled(resources).then(() => {
+      for (const saver of this.checkpointers.values()) saver.db.close();
+      this.store.close();
+    });
     return this.closing;
   }
 }

@@ -33,7 +33,8 @@ async function verifiedSdk(directory,key){
 }
 const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
 const digest=value=>createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
-(async()=>{
+module.exports = {verifiedSdk};
+if (require.main === module) (async()=>{
   const current=required('--engine'),previous=required('--previous-engine');
   const model=option('--ollama-model');
   if(!model||!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model))throw Error('Pass the exact configured Ollama model.');

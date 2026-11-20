@@ -18,6 +18,8 @@ const options = {
   },
   launchArgs: [
     path.join(projectRoot, "test", "fixtures", "extension-host-workspace"),
+    "--use-inmemory-secretstorage", "--disable-telemetry", "--disable-experiments",
+    "--disable-updates", "--skip-welcome", "--skip-release-notes",
     "--disable-extensions",
     `--user-data-dir=${path.join(profileRoot, "user")}`,
     `--extensions-dir=${path.join(profileRoot, "extensions")}`

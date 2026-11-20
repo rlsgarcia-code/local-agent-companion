@@ -17,6 +17,7 @@
           <button class="sidebar-collapse" id="sidebar-collapse" aria-label="Recolher navegação" title="Recolher navegação">‹</button>
         </header>
         <button class="new-thread" id="new-thread"><span>＋</span><b>Nova conversa</b></button>
+        <button class="workspace-button" id="open-game-studio" title="Abrir projetos de jogos"><span class="workspace-icon">▷</span><span><strong>Game Studio</strong></span></button>
         <label class="thread-search"><span>⌕</span><input id="thread-search" type="search" autocomplete="off" placeholder="Buscar conversas" aria-label="Buscar conversas"></label>
         <nav class="thread-list" id="thread-list" aria-label="Conversas"></nav>
         <footer class="sidebar-footer">
@@ -63,6 +64,17 @@
         </div>
 
         <section class="composer-wrap">
+          <div class="workspace-run-recovery hidden" id="workspace-run-recovery" role="status" aria-live="polite">
+            <div>
+              <strong id="workspace-run-title">Execução preservada</strong>
+              <p id="workspace-run-message"></p>
+            </div>
+            <div class="workspace-run-actions">
+              <button id="open-workspace-run">Abrir conversa</button>
+              <button id="resume-workspace-run">Retomar</button>
+              <button class="danger-action" id="cancel-workspace-run">Cancelar</button>
+            </div>
+          </div>
           <div class="composer">
             <textarea id="prompt" rows="1" placeholder="Peça uma análise, alteração ou investigação…"></textarea>
             <div class="composer-footer">
@@ -198,6 +210,7 @@
         <div><span class="section-label">CONFIGURAÇÃO ATIVA</span><strong>Modelos usados nas próximas execuções</strong></div>
         <div class="active-model-roles" id="active-model-roles"></div>
         <p id="active-model-status"></p>
+        <form id="model-context-form"><label for="model-context-alias">Janela de contexto nas próximas execuções</label><select id="model-context-alias" aria-label="Modelo da janela de contexto"></select><label for="model-context-tokens">Entrada efetiva em tokens</label><input id="model-context-tokens" type="number" min="2048" max="2000000" step="1" placeholder="Padrão do motor"><button id="model-context-save" type="submit">Salvar janela</button><small>Informe a janela configurada no servidor de IA. Isso orienta a compactação; não muda o servidor. Vazio restaura o padrão do motor.</small><p id="model-context-status" role="status"></p></form>
       </section>
       <section class="model-advisor" id="model-advisor">
         <div class="advisor-heading"><span><small>CONFIGURAÇÃO ADAPTATIVA</small><strong>Recomendação para esta máquina</strong></span><button id="recommend-models">Analisar</button></div>

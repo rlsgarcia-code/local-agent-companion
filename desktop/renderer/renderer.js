@@ -24,7 +24,8 @@ const el = Object.fromEntries([
   "thread-title", "refresh-button", "model-button", "model-label", "settings-button", "conversation", "welcome", "prompt",
   "runtime-button", "runtime-label", "runtime-popover", "close-runtimes", "context-button",
   "jump-latest",
-  "mode-control", "cancel-button", "send-button", "run-state", "run-pulse", "setup-panel", "setup-copy",
+  "mode-control", "cancel-button", "send-button", "composer-hint", "run-state", "run-pulse", "setup-panel", "setup-copy",
+  "workspace-run-recovery", "workspace-run-title", "workspace-run-message", "open-workspace-run", "resume-workspace-run", "cancel-workspace-run",
   "setup-action", "activity-count", "activity-list",
   "activity-view", "context-view", "context-count", "context-close", "inspector-resizer", "context-open-form", "context-input",
   "preview-mode-button", "preview-count", "changes-mode-button", "surface-changes-count", "commands-mode-button", "commands-count", "surface-changes-view", "surface-change-list", "commands-view", "command-list",
@@ -34,7 +35,9 @@ const el = Object.fromEntries([
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "manual-pull", "theme-control",
   "active-model-roles", "active-model-status", "engine-status", "engine-detail", "restart-engine",
   "model-provider", "model-selection-mode", "model-optimization-profile", "openai-key-row", "openai-key", "clear-openai-key",
+  "web-research-enabled", "web-research-context", "web-research-domains", "web-research-connector",
   "refresh-model-catalog", "provider-catalog-status", "provider-model-picker", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
+  "active-model-roles", "active-model-status", "model-context-form", "model-context-alias", "model-context-tokens", "model-context-save", "model-context-status",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
   "advisor-progress-title", "advisor-progress-detail", "recommendation", "recommendation-machine",
   "recommendation-roles", "recommendation-downloads", "recommendation-installed", "recommendation-installed-roles", "recommendation-installed-downloads", "recommendation-warnings", "recommendation-candidates",
@@ -44,6 +47,7 @@ const el = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 initialize().catch(showError);
+document.getElementById("open-game-studio").addEventListener("click",async(event)=>{const button=event.currentTarget;button.disabled=true;try{await window.companion.openGameStudio();}catch(error){showError(error);}finally{button.disabled=false;}});
 
 async function initialize() {
   applyUiPreferences();
@@ -166,14 +170,15 @@ function render(conversationEffect = null) {
   el["thread-title"].textContent = active?.title || "Nova conversa";
   renderThreadList(snapshot.threads, active?.id);
   renderConversation(active, conversationEffect);
+  el["cancel-button"].classList.toggle("hidden", !snapshot.running);
+  el["send-button"].disabled = snapshot.running || Boolean(snapshot.workspaceRun?.busy);
+  renderWorkspaceRunRecovery(snapshot);
   renderModels();
   renderRecommendation();
   renderInspector();
   renderContext();
   document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === snapshot.mode));
   document.querySelectorAll("[data-runtime]").forEach((button) => button.classList.toggle("active", button.dataset.runtime === snapshot.agentRuntime));
-  el["cancel-button"].classList.toggle("hidden", !snapshot.running);
-  el["send-button"].disabled = snapshot.running || Boolean(snapshot.workspaceRun?.busy);
   const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
   const inspectorTitles = {
     activity: ({
@@ -188,6 +193,32 @@ function render(conversationEffect = null) {
   };
   el["run-state"].textContent = inspectorTitles[appState.inspectorMode] || "Bancada";
   el["run-pulse"].classList.toggle("active", (snapshot.running && (!snapshot.runState || snapshot.runState === "running")) || (["context", "preview"].includes(appState.inspectorMode) && activeContext?.status === "loading"));
+}
+
+function renderWorkspaceRunRecovery(snapshot) {
+  const blocker = snapshot.workspaceRun;
+  const visible = Boolean(blocker?.busy && !snapshot.running);
+  el["workspace-run-recovery"].classList.toggle("hidden", !visible);
+  if (!visible) {
+    el["composer-hint"].textContent = "Enter para enviar · Shift+Enter para nova linha";
+    return;
+  }
+  const owned = blocker.owned === true;
+  const uncertain = blocker.state === "awaiting_reconciliation";
+  el["workspace-run-title"].textContent = !owned
+    ? "Projeto em uso por outro cliente"
+    : uncertain
+    ? "Execução com resultado incerto"
+    : "Execução preservada";
+  el["workspace-run-message"].textContent = !owned
+    ? "Finalize ou recupere a execução no aplicativo que a iniciou antes de continuar aqui."
+    : uncertain
+    ? "Uma operação pode ter sido executada, mas o recibo final não chegou. Abra a conversa ou cancele conscientemente; o Companion não repetirá a operação."
+    : "A conversa anterior ainda pode continuar do checkpoint salvo. Abra-a, retome-a ou cancele-a antes de iniciar outra solicitação neste projeto.";
+  el["open-workspace-run"].classList.toggle("hidden", !owned || !blocker.threadId);
+  el["resume-workspace-run"].classList.toggle("hidden", !owned || uncertain);
+  el["cancel-workspace-run"].classList.toggle("hidden", !owned);
+  el["composer-hint"].textContent = owned ? "Resolva a execução preservada para enviar" : "Projeto ocupado em outro cliente";
 }
 
 function renderThreadList(threads, activeThreadId) {
@@ -548,6 +579,7 @@ function renderInspector() {
   }) : [paragraph(commandCount ? "O resumo foi preservado, mas esta execução antiga não possui detalhes dos comandos." : "Nenhum comando foi executado.", "surface-empty")]));
 }
 
+let contextWindowEditing=false,contextWindowSaving=false;
 function renderRecommendation() {
   const snapshot = appState.snapshot;
   renderModelSettings(snapshot);
@@ -566,6 +598,16 @@ function renderRecommendation() {
     row.append(label, value);
     return row;
   }));
+  if(!contextWindowEditing&&!contextWindowSaving){
+    const alias=el["model-context-alias"].value||snapshot.modelRoles?.executor||"";
+    const aliases=[...new Set([...(snapshot.ollama.models||[]).map(m=>m.name),...Object.values(snapshot.modelRoles||{}),...Object.keys(snapshot.modelContextWindows||{})].filter(Boolean))];
+    el["model-context-alias"].replaceChildren(...aliases.map(name=>{const option=document.createElement("option");option.value=name;option.textContent=name;return option;}));
+    el["model-context-alias"].value=aliases.includes(alias)?alias:aliases[0]||"";
+    el["model-context-tokens"].value=snapshot.modelContextWindows?.[el["model-context-alias"].value]??"";
+  }
+  const contextAvailable=snapshot.modelContextWindows!==undefined&&Boolean(el["model-context-alias"].value);
+  for(const id of ["model-context-save","model-context-alias","model-context-tokens"])el[id].disabled=contextWindowSaving||!contextAvailable;
+  if(!contextAvailable)el["model-context-status"].textContent="Esta configuração exige motor compatível e um modelo selecionado.";
   const activeCatalog = snapshot.providerCatalog?.provider === snapshot.modelProvider ? snapshot.providerCatalog.models : [];
   const activeCatalogModels = new Set(activeCatalog.map((model) => model.toLowerCase()));
   const incompatibleActiveRoles = snapshot.modelProvider === "openai" && activeCatalog.length
@@ -883,12 +925,16 @@ function syncContextBounds() {
 
 async function send() {
   const text = el.prompt.value.trim();
-  if (!text || appState.snapshot.running) return;
+  if (!text || appState.snapshot.running || appState.snapshot.workspaceRun?.busy) return;
   el.prompt.value = "";
   resizePrompt();
   try {
     await window.companion.send({ text, threadId: appState.snapshot.activeThreadId });
   } catch (error) {
+    if (!el.prompt.value.trim()) {
+      el.prompt.value = text;
+      resizePrompt();
+    }
     showError(error.message || String(error));
   }
 }
@@ -912,7 +958,8 @@ async function answerApproval(approved) {
 }
 
 function showError(error) {
-  el.toast.textContent = error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  el.toast.textContent = message.replace(/^Error invoking remote method '[^']+': Error:\s*/i, "");
   el.toast.classList.remove("hidden");
   clearTimeout(showError.timer);
   showError.timer = setTimeout(() => el.toast.classList.add("hidden"), 5500);
@@ -969,6 +1016,12 @@ el["thread-search"].addEventListener("input", () => { appState.threadQuery = el[
 el["sidebar-collapse"].addEventListener("click", () => setSidebarCollapsed(true));
 el["sidebar-reveal"].addEventListener("click", () => setSidebarCollapsed(false));
 el["workspace-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.chooseWorkspace(); render(); });
+el["model-context-tokens"].addEventListener("input",()=>{contextWindowEditing=true;el["model-context-status"].textContent="";});
+el["model-context-alias"].addEventListener("change",()=>{contextWindowEditing=true;el["model-context-tokens"].value=appState.snapshot.modelContextWindows?.[el["model-context-alias"].value]??"";el["model-context-status"].textContent="";});
+el["model-context-form"].addEventListener("submit",async event=>{
+ event.preventDefault();if(contextWindowSaving)return;const alias=el["model-context-alias"].value,text=el["model-context-tokens"].value;contextWindowSaving=true;for(const id of ["model-context-save","model-context-alias","model-context-tokens"])el[id].disabled=true;
+ try{appState.snapshot=await window.companion.setModelContextWindow(alias,text===""?null:Number(text));if(el["model-context-alias"].value===alias)contextWindowEditing=false;el["model-context-status"].textContent="Janela salva para as próximas execuções. A execução atual conserva sua configuração.";}catch(error){el["model-context-status"].textContent=String(error.message||error);}finally{contextWindowSaving=false;render();}
+});
 el["refresh-button"].addEventListener("click", async () => { appState.snapshot = await window.companion.refreshOllama(); render(); });
 el["restart-engine"].addEventListener("click", async () => {
   el["restart-engine"].disabled = true;
@@ -1199,6 +1252,22 @@ el.prompt.addEventListener("input", resizePrompt);
 el.prompt.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } });
 el["send-button"].addEventListener("click", send);
 el["cancel-button"].addEventListener("click", () => window.companion.cancel());
+el["open-workspace-run"].addEventListener("click", async () => {
+  try { appState.snapshot = await window.companion.openWorkspaceRun(); render({ type: "reset" }); }
+  catch (error) { showError(error); }
+});
+el["resume-workspace-run"].addEventListener("click", async () => {
+  el["resume-workspace-run"].disabled = true;
+  try { appState.snapshot = await window.companion.resumeWorkspaceRun(); render({ type: "reset" }); }
+  catch (error) { showError(error); }
+  finally { el["resume-workspace-run"].disabled = false; }
+});
+el["cancel-workspace-run"].addEventListener("click", async () => {
+  el["cancel-workspace-run"].disabled = true;
+  try { appState.snapshot = await window.companion.cancelWorkspaceRun(); render(); }
+  catch (error) { showError(error); }
+  finally { el["cancel-workspace-run"].disabled = false; }
+});
 el["deny-approval"].addEventListener("click", () => answerApproval(false));
 el["allow-approval"].addEventListener("click", () => answerApproval(true));
 document.querySelectorAll("[data-prompt]").forEach((button) => button.addEventListener("click", () => { el.prompt.value = button.dataset.prompt; resizePrompt(); el.prompt.focus(); }));

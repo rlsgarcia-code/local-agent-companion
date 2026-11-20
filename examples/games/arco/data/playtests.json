@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "viewport": {
+    "width": 960,
+    "height": 840
+  },
+  "scenarios": [
+    {
+      "id": "launch-pause",
+      "designScenarioId": "launch-response",
+      "steps": [
+        {
+          "action": "expect-visible",
+          "selector": "#begin"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "aim"
+        },
+        {
+          "action": "press",
+          "key": "Space"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "aim",
+          "comparison": "changed",
+          "threshold": 0.0001
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#resume"
+        },
+        {
+          "action": "capture",
+          "selector": "canvas",
+          "name": "paused"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "expect-image",
+          "selector": "canvas",
+          "baseline": "paused",
+          "comparison": "unchanged",
+          "threshold": 0.0001
+        },
+        {
+          "action": "press",
+          "key": "Escape"
+        },
+        {
+          "action": "expect-visible",
+          "selector": "#launch"
+        }
+      ]
+    }
+  ]
+}

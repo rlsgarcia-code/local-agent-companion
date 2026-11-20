@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.13.7
+
+- Engine/SDK 1.1.7 adds a conservative answer-delivery review when a visible preview is available, so a request to open an existing game cannot be anchored to an earlier assistant's mistaken source-dump interpretation.
+- Explicit source-code requests remain read-only answers; runnable HTML pages and games require verified live-preview evidence before completion.
+
+## 0.13.6
+
+- Engine/SDK 1.1.6 distinguishes read-only inspection, persisted workspace changes and visible execution after short contextual follow-ups, so requests to open an existing game no longer become source-dump edits.
+- A conservative workspace-scope review corrects false mutation classifications while preserving real edit requests, and the Deep Agent planner now receives the bounded recent conversation needed to resolve follow-up referents.
+
+## 0.13.5
+
+- Engine/SDK 1.1.5 treats facts discoverable in the selected workspace as execution work rather than missing user intent, so explicit architecture and review questions reach the agent instead of ending as `uncertain`.
+- A second conservative semantic review only runs after an uncertain classification; genuinely missing actions or referents still require clarification, and review failure preserves the safe uncertain result.
+
+## 0.13.4
+
+- Engine/SDK 1.1.4 coordinates prepared-update deferral across concurrent Mac startup connections, so protected work opens directly in the recovery UI instead of racing a modal update prompt.
+- The signed update remains prepared and activates only after the preserved work no longer blocks the engine lifecycle.
+
+## 0.13.3
+
+- Engine/SDK 1.1.3 lets the Mac client defer a prepared engine update and continue on the authenticated compatible engine while protected work is still active.
+- Choosing “Agora não” no longer creates a startup loop; the pending update remains prepared and can activate after the preserved execution is resolved.
+
+## 0.13.2
+
+- Engine/SDK 1.1.2 preserves and exposes unreconciled workspace runs instead of allowing a new Mac conversation to fail with a raw IPC conflict.
+- Adds explicit open, resume and conscious-cancel recovery controls; uncertain cancellation preserves the audit receipt and never claims to undo a possible effect.
+- Fixes the macOS renderer registry so the recovery banner is painted before optional model settings, and adds regression coverage for every indexed UI control.
+
+## 0.13.1
+
+- Engine/SDK 1.1.1 keeps host adapter tools distinct from DeepAgents filesystem names in supervisors and delegated game specialists. Original adapter validation, schemas, call identity, runtime and permissions remain in force.
+- Adds regression coverage for the actual delegated `read_file` collision, checkpoint replay and conflicting host aliases.
+- Records installed 0.13.0 acceptance and its unresolved operation; a source fix does not reset that run or authorize cancelling it for activation/rollback.
+
+## 0.13.0
+
+- Candidate integration of Game Design and the shared Game Studio for Mac and VS Code on engine 1.1.0.
+- Retains the packaged public SDK, shared model settings, explicit provider policy and safe engine activation from the current Companion.
+- Game production workers and tool reconciliation block engine replacement until their work has stopped.
+- Candidate validation is separate from installed-client, game-quality and full-suite acceptance.
+
 ## 0.12.12 - 2026-11-12
 
 ### Added

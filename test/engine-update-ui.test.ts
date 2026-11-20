@@ -15,7 +15,8 @@ test("engine updates expose blockers and require an explicit local-resource acti
   assert.match(service, /activeRuns/);
   assert.match(service, /managedProcesses/);
   assert.match(bootstrap, /PreparedEngineUpdateError/);
-  assert.match(bootstrap, /activation\?: "idle" \| "stop-managed"/);
+  assert.match(bootstrap, /activation\?: "idle" \| "stop-managed" \| "defer"/);
+  assert.match(bootstrap, /options\.activation === "defer"/);
   assert.match(vscodeRuntime, /Stop local resources and update/);
   assert.match(vscodeRuntime, /Restart the Companion engine/);
 });
@@ -23,9 +24,10 @@ test("engine updates expose blockers and require an explicit local-resource acti
 test("desktop settings expose engine state and a controlled restart", () => {
   assert.match(desktopHtml, /id="engine-status"/);
   assert.match(desktopHtml, /id="restart-engine"/);
-  assert.match(desktopMain, /Atualização do motor pronta/);
+  assert.match(desktopMain, /runtime\.engineStatus/);
   assert.match(desktopMain, /companion:restart-engine/);
-  assert.match(desktopMain, /Encerrar recursos e atualizar/);
+  assert.match(desktopMain, /Encerrar recursos e reiniciar/);
+  assert.match(desktopMain, /deferPreparedUpdate/);
 });
 
 test("legacy activation uses exact per-user service controls without a shell", () => {
@@ -38,7 +40,26 @@ test("legacy activation uses exact per-user service controls without a shell", (
 
 test("desktop also guards new conversations with the authoritative workspace lease", () => {
   assert.match(desktopMain, /runtime\.workspaceStatus\(state\.workspacePath\)/);
-  assert.match(desktopMain, /Retome ou cancele essa execução/);
+  assert.match(desktopMain, /Abra a execução preservada/);
   assert.match(desktopRenderer, /snapshot\.workspaceRun\?\.busy/);
   assert.match(desktopRenderer, /Execução preservada em outra conversa/);
+  assert.match(desktopHtml, /id="workspace-run-recovery"/);
+  assert.match(desktopHtml, /id="cancel-workspace-run"/);
+  assert.match(desktopRenderer, /appState\.snapshot\.workspaceRun\?\.busy/);
+  assert.match(desktopRenderer, /cancelWorkspaceRun\(\)/);
+  assert.match(desktopMain, /runs\.cancelUnknown|cancelWorkspaceRun/);
+});
+
+test("desktop registers every indexed renderer control before painting recovery state", () => {
+  const registry = desktopRenderer.slice(
+    desktopRenderer.indexOf("Object.fromEntries(["),
+    desktopRenderer.indexOf("].map((id)"),
+  );
+  const registered = new Set([...registry.matchAll(/"([^"]+)"/g)].map((match) => match[1]));
+  const referenced = new Set([...desktopRenderer.matchAll(/el\["([^"]+)"\]/g)].map((match) => match[1]));
+  assert.deepEqual([...referenced].filter((id) => !registered.has(id)).sort(), []);
+
+  const recoveryIndex = desktopRenderer.indexOf("renderWorkspaceRunRecovery(snapshot)");
+  const modelIndex = desktopRenderer.indexOf("renderModels();");
+  assert.ok(recoveryIndex >= 0 && recoveryIndex < modelIndex, "workspace recovery must render before optional settings");
 });

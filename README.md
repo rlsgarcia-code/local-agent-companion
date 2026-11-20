@@ -1,6 +1,42 @@
 # Local Agent Companion
 
-Atualização de conexão: clientes **0.12.12**, motor **1.0.9**, protocolo **1.0**,
+Esta branch prepara o **candidato de integração 0.13.0 / motor 1.1.0**, conciliado
+com a base `main` de 12/11 (`a6f3977`, clientes 0.12.12 / motor 1.0.9).
+O build local não atualiza as instalações. A primeira entrega em andamento é
+Mac + VS Code usando o mesmo motor, com Studio, preview, retomada e exportação;
+a distribuição assinada e o percurso visual instalado ainda precisam passar.
+
+O módulo compartilhado de [Game Design](docs/GAME_DESIGN.md) fica no mesmo
+repositório, em `packages/game-design`. A extração está no código-fonte; ativação
+nas interfaces e adaptadores Unity/Godot ainda não foram distribuídos.
+O [plano Game Design 1.0](docs/GAME_DESIGN_IMPLEMENTATION_PLAN.md) especifica a
+produção completa, os quatro adaptadores e o aceite de qualidade pretendido.
+O desenvolvimento atual de [projetos e produção](docs/GAME_PRODUCTION_API.md)
+inclui jobs recuperáveis, compiladores web offline e o
+[caminho Godot isolado](docs/GAME_GODOT_ADAPTER.md) em desenvolvimento; o
+[acompanhamento](docs/GAME_DESIGN_IMPLEMENTATION_STATUS.md) registra o que ainda
+falta antes da entrega integral.
+
+O [Game Studio](docs/GAME_STUDIO_UI.md) acrescenta superfícies de projeto Mac/VS Code
+em desenvolvimento, usando o SDK para design, mídia, builds, testes, revisões e
+exportações. Os ensaios de renderer, Electron e VS Code real em perfil temporário
+não substituem o aceite das instalações distribuídas.
+
+A [arquitetura da suíte](docs/SUITE_ARCHITECTURE.md) é a referência canônica para
+motor, contratos, SDKs, adaptadores e interfaces. Agentes devem começar pelo
+[guia de desenvolvimento](AGENTS.md).
+
+Referência histórica: motor **1.0.2**, clientes Mac/VSIX **0.12.4**, Node
+**22.23.4**, protocolo **1.0**. O [PR #15](https://github.com/rlsgarcia-code/local-agent-companion/pull/15)
+foi integrado e registra a publicação final aprovada em 2026-11-09. O
+[relatório de aceite](docs/desktop-final-acceptance.json) e o
+[relato anterior](docs/history/COMPANION_ACCEPTANCE_1_0_2.md) são fotografias datadas;
+a indicação de revisão pendente nesses registros antecede a publicação.
+
+KidOS/Navi consome o motor em seu repositório separado. Sua integração foi
+retomada e sua revisão/distribuição são independentes desta release Companion.
+Não presumir estado instalado a partir de alterações no checkout.
+Base de conexão incorporada: clientes **0.12.12**, motor **1.0.9**, protocolo **1.0**,
 Node **22.23.4** empacotado. Veja [capacidades e diagnóstico](docs/MODEL_CAPABILITIES.md).
 A validação automatizada por plataforma não substitui o teste no gateway corporativo.
 As evidências de instalação da versão anterior permanecem datadas em `docs/`.
@@ -29,7 +65,7 @@ Os SDKs transferem anexos em partes e enviam apenas referências de credenciais.
 O diagnóstico de tools publica o schema, sem executar chamadas devolvidas pelo
 modelo. O KidOS não pode usar essa rota para contornar seu gateway protegido.
 
-Candidate recovery behavior: cancellation remains `cancelling` until execution
+Service recovery behavior: cancellation remains `cancelling` until execution
 settles; disconnected UI tools wait, while unknown dispatched effects require
 explicit reconciliation. Provider call IDs are bound to persisted graph
 invocations and exact arguments. Missing checkpoints with recorded effects never
@@ -71,13 +107,13 @@ payloads are also redacted.
 
 Aplicações externas integram o motor pelo SDK publicado e por um adaptador mantido no próprio repositório consumidor. O contrato canônico, o exemplo executável e o checklist de conformidade estão em [Integração de novas aplicações](docs/APPLICATION_ADAPTERS.md). O Companion não recebe código de domínio da aplicação e a aplicação não copia o runtime, planner, memória ou loop de ferramentas do Companion.
 
-Uma extensão de Visual Studio Code com dois runtimes de agente construídos exclusivamente sobre primitivas do **LangChain**, executados localmente. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
+Uma suíte com motor local independente e interfaces macOS/VS Code. Os dois modos de agente, construídos sobre primitivas do **LangChain**, executam no serviço comum, e a extensão é um cliente desse serviço. O VSIX padrão conecta somente ao LiteLLM; variantes instaladas explicitamente podem acrescentar Ollama local ou OpenAI direta. MCPs corporativos HTTPS ou `stdio` continuam sendo importados e aprovados pelo usuário.
 
 ### Objetivos persistentes
 
 Use o botão **Goal** no compositor para transformar uma solicitação em um objetivo de longo prazo. O objetivo fica ligado à sessão do produto no serviço. O arquivo `.local-agent/goals/<goal-id>.json` permanece como projeção local legível e fonte de importação legada, com backup antes da migração. O registro mantém critérios, marcos, evidências, próximo passo e um histórico resumido. Depois de ativar o rascunho, objetivos ativos com retomada automática podem continuar após reiniciar o VS Code; cada iteração usa o runtime e o modo de autonomia salvos e passa por uma avaliação estruturada antes de marcar critérios como concluídos. Sem evidência suficiente, o objetivo continua; após duas iterações sem progresso ou 20 iterações, ele é pausado com diagnóstico.
 
-O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), checkpoints (saver SQLite oficial no serviço), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As únicas chamadas externas feitas pela extensão são:
+O usuário escolhe entre **LangChain Agent** (`createAgent`), mais enxuto e previsível, e **Deep Agent** (`createDeepAgent`), preparado para tarefas longas com planejamento, compactação de contexto e subagentes locais. Modelo (`ChatOpenAICompletions`), ferramentas (`tool` + Zod), checkpoints (saver SQLite oficial no serviço), callbacks, vector store e middleware continuam sendo do ecossistema LangChain. Contexto, histórico, ChromaDB, memória e ferramentas rodam na máquina do usuário. As rotas externas permitidas para o produto VS Code, realizadas pelo serviço ou pelos adaptadores autorizados conforme a operação, são:
 
 ```text
 POST <LITELLM_BASE_URL>/chat/completions
@@ -676,6 +712,9 @@ No painel **Memory**, a opção **Memory layers and storage** mostra esse mapa. 
 O prefixo `localAgentCompanion` foi mantido para que configurações e segredos de instalações anteriores continuem válidos.
 
 ## Arquitetura
+
+Consulte a [referência canônica](docs/SUITE_ARCHITECTURE.md) para responsabilidades,
+caminhos ativos, compatibilidade legada e regras de evolução.
 
 ```text
 macOS Companion / VS Code / Navi

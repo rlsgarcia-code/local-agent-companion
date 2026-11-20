@@ -1,3 +1,5 @@
+import {modelContextWindows,modelContextWindow,type ModelContextWindows} from "@companion/client-sdk/contracts";
+import {modelConfiguration} from "@companion/client-sdk/contracts";
 import * as path from "node:path";
 import type { AgentClient, HostResponses } from "@companion/client-sdk";
 import { COMPANION_RELEASE_PUBLIC_KEY, ensureEngine } from "@companion/client-sdk/bootstrap";
@@ -6,6 +8,7 @@ import {
   DEFAULT_WEB_RESEARCH_CONFIGURATION,
   engineCapabilities,
   errors,
+  terminalStates,
   type EngineInfo,
   type EngineUpdateStatus,
   type ModelCatalog,
@@ -38,6 +41,13 @@ export type RecoverableDesktopRun = {
   threadId: string;
   assistantMessageId: string;
   request: string;
+};
+export type DesktopWorkspaceRunStatus = {
+  busy: boolean;
+  runId?: string;
+  state?: RunState;
+  owned?: boolean;
+  threadId?: string;
 };
 export type DesktopRecoveryHandler = {
   callbacks: RuntimeOptions["callbacks"];
@@ -73,6 +83,7 @@ export class OllamaDesktopRuntime {
   private currentState?: RunState;
   private downloadJob?: string;
   private recommendationJob?: string;
+  private updateDeferred = false;
   get state(): RunState | undefined { return this.currentState; }
   private setState(state: RunState | undefined): void {
     if (this.currentState === state) return;
@@ -82,22 +93,28 @@ export class OllamaDesktopRuntime {
   get running(): boolean {
     return this.preparing || Boolean(this.active);
   }
-  private async connect(workspace = "", activation: "idle" | "stop-managed" = "idle"): Promise<AgentClient> {
-    if (activation === "stop-managed") this.clients.delete(workspace);
+  async gameStudioConnection(thread:{id:string;title:string;messages:unknown[]},workspace:string){
+    const client=await this.connect(workspace),key=`desktop:${thread.id}`;
+    const session=(await client.call<Session[]>("sessions.list")).find((session)=>session.importedFrom===key)??await client.importSession(key,{thread});
+    return {client,session,reconnect:()=>this.connect(workspace)};
+  }
+  private async connect(workspace = "", activation: "idle" | "stop-managed" | "defer" = "idle"): Promise<AgentClient> {
+    const requestedActivation = activation === "idle" && this.updateDeferred ? "defer" : activation;
+    if (activation !== "idle") this.clients.delete(workspace);
     let pending = this.clients.get(workspace);
     if (!pending) {
-      pending = this.connectRegisteredClient(workspace, activation);
+      pending = this.connectRegisteredClient(workspace, requestedActivation);
       this.clients.set(workspace, pending);
       pending.catch(() => this.clients.delete(workspace));
     }
     this.client = await pending;
     if (!this.client.connected) {
       this.clients.delete(workspace);
-      return this.connect(workspace, activation);
+      return this.connect(workspace, requestedActivation);
     }
     return this.client;
   }
-  private async connectRegisteredClient(workspace: string, activation: "idle" | "stop-managed"): Promise<AgentClient> {
+  private async connectRegisteredClient(workspace: string, activation: "idle" | "stop-managed" | "defer"): Promise<AgentClient> {
     try {
       const client = await this.provision(workspace, activation, ["ollama", "openai"]);
       await this.assertSdkCompatibility(client);
@@ -126,7 +143,7 @@ export class OllamaDesktopRuntime {
   }
   private provision(
     workspace: string,
-    activation: "idle" | "stop-managed",
+    activation: "idle" | "stop-managed" | "defer",
     providers: Array<"ollama" | "openai">,
   ): Promise<AgentClient> {
     const { ensureClient, ...installation } = this.installation;
@@ -142,8 +159,19 @@ export class OllamaDesktopRuntime {
     });
   }
   async activatePreparedUpdate(workspace = ""): Promise<void> {
+    this.updateDeferred = false;
     const client = await this.connect(workspace, "stop-managed");
     if (!client.connected) throw new Error("The updated Companion engine did not reconnect.");
+  }
+  async deferPreparedUpdate(workspace = ""): Promise<void> {
+    this.updateDeferred = true;
+    try {
+      const client = await this.connect(workspace, "defer");
+      if (!client.connected) throw new Error("The active Companion engine did not reconnect.");
+    } catch (error) {
+      this.updateDeferred = false;
+      throw error;
+    }
   }
   async engineStatus(): Promise<EngineUpdateStatus & { version: string }> {
     const client = await this.connect();
@@ -153,13 +181,43 @@ export class OllamaDesktopRuntime {
     ]);
     return { ...status, version: info.version };
   }
-  async workspaceStatus(workspace = ""): Promise<{ busy: boolean; runId?: string; state?: RunState }> {
-    return (await this.connect(workspace)).call("workspace.status");
+  async workspaceStatus(workspace = ""): Promise<DesktopWorkspaceRunStatus> {
+    const client = await this.connect(workspace);
+    const status = await client.call<DesktopWorkspaceRunStatus>("workspace.status");
+    if (!status.busy || !status.runId) return status;
+    try {
+      const description = await client.call<RecoverableDesktopRun | { profile: "generic" }>("runs.describe", { id: status.runId });
+      return description.profile === "desktop"
+        ? { ...status, owned: true, threadId: description.threadId }
+        : { ...status, owned: false };
+    } catch (error) {
+      if (error instanceof AgentError && error.code === errors.missing)
+        return { ...status, owned: false };
+      throw error;
+    }
+  }
+  async cancelWorkspaceRun(workspace = ""): Promise<Run | undefined> {
+    const status = await this.workspaceStatus(workspace);
+    if (!status.busy) return undefined;
+    if (!status.owned || !status.runId)
+      throw new Error("A execução pertence a outro cliente. Finalize-a no aplicativo que a iniciou.");
+    const client = await this.connect(workspace);
+    if (status.state === "awaiting_reconciliation")
+      return client.call("runs.cancelUnknown", { id: status.runId });
+    await client.call("runs.cancel", { id: status.runId });
+    let current = await client.call<Run>("runs.get", { id: status.runId });
+    for (let attempt = 0; attempt < 100 && !terminalStates.has(current.state); attempt++) {
+      if (current.state === "awaiting_reconciliation")
+        return client.call("runs.cancelUnknown", { id: status.runId });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      current = await client.call("runs.get", { id: status.runId });
+    }
+    return current;
   }
   async restartEngine(workspace = ""): Promise<void> {
     const client = await this.connect(workspace);
     const status = await client.call<EngineUpdateStatus>("engine.updateStatus");
-    if (status.blockers.activeRuns || status.blockers.modelOperations || status.blockers.desktopResources)
+    if (status.blockers.activeRuns || status.blockers.modelOperations || status.blockers.desktopResources || status.blockers.gameOperations || status.blockers.toolInspections)
       throw new Error("Finalize execuções, operações de modelo e trabalhos do aplicativo antes de reiniciar o motor.");
     const result = await client.call<{ accepted: boolean; reason?: string }>("engine.stopManagedResourcesForUpdate");
     if (!result.accepted) throw new Error(result.reason ?? "O motor ainda possui trabalho protegido.");
@@ -190,6 +248,15 @@ export class OllamaDesktopRuntime {
   }
   async modelRoles(initial?: OllamaRoleConfiguration): Promise<OllamaRoleConfiguration | undefined> {
     return (await this.modelConfiguration(initial))?.roles;
+  }
+  async modelContextWindows():Promise<ModelContextWindows|undefined>{
+    const client=await this.connect();const info=await client.call<{capabilities:string[]}>("engine.info");if(!info.capabilities.includes("model-context-window-v1"))return undefined;
+    const saved=await client.call("models.configuration");return modelContextWindows.parse(saved?modelConfiguration.parse(saved).contextWindows??{}:{});
+  }
+  async configureModelContextWindow(alias:string,tokens:number|null):Promise<void>{
+    const client=await this.connect();const info=await client.call<{capabilities:string[]}>("engine.info");if(!info.capabilities.includes("model-context-window-v1"))throw Error("Atualize o motor para configurar a janela de contexto.");
+    const saved=modelConfiguration.parse(await client.call("models.configuration"));const windows={...(saved.contextWindows??{})};if(tokens===null)delete windows[alias];else windows[alias]=modelContextWindow.parse(tokens);
+    await client.call("models.configure",{...saved,contextWindows:modelContextWindows.parse(windows)});
   }
   async configureModelRoles(roles: OllamaRoleConfiguration): Promise<void> {
     const client = await this.connect();
@@ -411,12 +478,16 @@ export class OllamaDesktopRuntime {
         const runs = await client.call<Run[]>("runs.list", { sessionId: session.id });
         for (const run of [...runs].reverse()) {
           if (this.detached) return;
+          // An unknown effect requires an explicit user decision. Merely
+          // reopening the app must not invent a result or overwrite the local
+          // projection with another generic failure.
+          if (run.state === "awaiting_reconciliation") continue;
           const description = await client.call<RecoverableDesktopRun | { profile: "generic" }>("runs.describe", { id: run.id });
           if (description.profile !== "desktop") continue;
           const projection = handler(description);
           if (!projection) continue;
           this.active = { id: run.id, client };
-          if (run.state === "awaiting_host" || run.state === "awaiting_approval")
+          if (run.state === "awaiting_host" || run.state === "awaiting_approval" || run.state === "awaiting_credentials")
             await client.call("runs.resume", { id: run.id });
           const result = await this.observe(client, run, session.id, projection.callbacks, projection.openPreview);
           if (result.state === "completed")

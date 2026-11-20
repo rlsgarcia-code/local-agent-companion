@@ -1,0 +1,27 @@
+{
+  "package": "@resvg/resvg-wasm",
+  "version": "2.6.2",
+  "integrity": "sha512-FqALmHI8D4o6lk/LRWDnhw95z5eO+eAa6ORjVg09YRR7BkcM6oPHU9uyC0gtQG5vpFLvgpeU4+zEAz2H8APHNw==",
+  "license": "MPL-2.0",
+  "wasm": {
+    "sha256": "22bf6e9f9a100d972da0411a69c5ba504367fc1fa87b3b64e3f35e53926d2d70",
+    "size": 2478606
+  },
+  "source": {
+    "url": "https://codeload.github.com/thx/resvg-js/tar.gz/9ca058462ac529120c8cc84ddcd6fef644cc5406",
+    "commit": "9ca058462ac529120c8cc84ddcd6fef644cc5406",
+    "path": "vendor/resvg-wasm-2.6.2/source.tar.gz",
+    "sha256": "7ce8697451237577d473361aa688917a48cba00c4a8f3302a833455c9c2013fa",
+    "size": 17926847
+  },
+  "packageFiles": {
+    "index.js": "0c1cd17c478a10ad891b147808c4f27b1023216f7726c49528c22c310c83ee6c",
+    "index.mjs": "10170d02d816f02ec76f9bc095b01d9becf536e7b1e12e5aa616652c84b237a1",
+    "index.d.ts": "bc8ed21a5bde7f8ab289969c11fbd6dd4d708f4ff36dd9c374aee3cc1b6b63c8",
+    "package.json": "4a9efcb54b2670726ccf9b91086413676c3de0fae607cce3b8a5a0d25abaff48"
+  },
+  "licenseFile": {
+    "path": "vendor/resvg-wasm-2.6.2/LICENSE",
+    "sha256": "4b89d4518bd135ab4ee154a7bce722246b57a98c3d7efc1a09409898160c2bd1"
+  }
+}

@@ -1,7 +1,9 @@
+import {parseOptionalModelContextWindow} from '../packages/contracts/src/model-context';
 import { ConnectionTestLog, connectionFailure } from "./connection-test-log";
 import type { ModelCapabilityDeclaration } from "../packages/contracts/src/model-capabilities";
 import * as vscode from "vscode";
 import { DevelopmentAgent } from "./agent";
+import { openEditorGameStudio } from "./game-studio";
 import { ChangeReviewManager } from "./change-review";
 import {
   clearImportedGatewayCa,
@@ -140,6 +142,7 @@ type LiteLlmFormFields = {
   capabilityDeclarations?: Record<string, ModelCapabilityDeclaration>;
   preset: string;
   reasoningEffort: string;
+  contextWindow?: string;
   temperature: string;
   topP: string;
   semanticMemoryEnabled: boolean;
@@ -427,6 +430,9 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private async handleMessage(message: IncomingMessage): Promise<void> {
     switch (message.type) {
+      case "openGameStudio":
+        await this.openGameStudio();
+        break;
       case "ready":
         await this.migrateLegacyHistory();
         const [payload, context, liteLlm, mcpConnections] = await Promise.all([
@@ -2148,12 +2154,13 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (message.reasoningEffort !== "omit" && !reasoningEffort) {
       throw new Error("Choose a supported reasoning effort or omit the parameter.");
     }
+    const contextWindow=parseOptionalModelContextWindow(message.contextWindow);
     const temperature = parseOptionalTemperature(message.temperature);
     const topP = parseOptionalTopP(message.topP);
     const profileModel = message.profileModel.trim() || connection.model;
     const effectiveProfile: LiteLlmModelProfile = provider === 'ollama'
-      ? { api: 'chat_completions', preset: 'custom', reasoningEffort: undefined, temperature, topP }
-      : { api: modelApi, preset, reasoningEffort, temperature, topP, ...(message.capabilities ? { capabilities: message.capabilities } : {}) };
+      ? { api: 'chat_completions', preset: 'custom', reasoningEffort: undefined, temperature, topP,contextWindow }
+      : { api: modelApi, preset, reasoningEffort, temperature, topP,contextWindow, ...(message.capabilities ? { capabilities: message.capabilities } : {}) };
     if (provider === 'ollama' && modelApi === 'responses') {
       throw new Error('Ollama local uses Chat Completions through its OpenAI-compatible /v1 route.');
     }
@@ -2930,6 +2937,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
   private post(message: unknown): void {
     void this.view?.webview.postMessage(message);
   }
+  public async openGameStudio():Promise<void>{await openEditorGameStudio(this.extensionContext,this.agent);}
 
   private html(webview: vscode.Webview): string {
     const nonce = crypto.randomUUID().replaceAll("-", "");
@@ -2949,6 +2957,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
         <h1>Companion</h1>
       </div>
       <div class="topbar-actions">
+        <button class="icon-button" id="game-studio-toggle" type="button" title="Game Studio" aria-label="Abrir Game Studio">▷</button>
         <button class="icon-button mcp-control" id="mcp-connections" type="button" title="Corporate MCP connections" aria-label="Manage corporate MCP connections" aria-pressed="false">
           <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M7 3.25v4M13 3.25v4M5.25 7.25h9.5v1.25A4.75 4.75 0 0 1 10 13.25v3.5M7.25 16.75h5.5"></path></svg>
         </button>
@@ -3248,6 +3257,7 @@ export class AgentViewProvider implements vscode.WebviewViewProvider, vscode.Dis
           </div>
           <p class="settings-note" id="litellm-capabilities"></p>
         </details>
+          <label class="field"><span>Effective context window · tokens <small>optional, exact alias</small></span><input id="litellm-context-window" type="number" min="2048" max="2000000" step="1" inputmode="numeric" placeholder="Engine default" /><small>Use the input window configured on the inference server, not the model family maximum. This guides compaction; it does not reconfigure the provider.</small></label>
         <div class="section-label settings-subheading">SEMANTIC MEMORY · LOCAL CHROMADB</div>
         <label class="toggle-field">
           <input id="semantic-memory-enabled" type="checkbox" />
@@ -4008,6 +4018,7 @@ const liteLlmReasoningEffort = document.getElementById('litellm-reasoning-effort
 const liteLlmModelApi = document.getElementById('litellm-model-api');
 const liteLlmModelPreset = document.getElementById('litellm-model-preset');
 const advancedSettingsSummary = document.getElementById('advanced-settings-summary');
+const liteLlmContextWindow = document.getElementById('litellm-context-window');
 const liteLlmTemperature = document.getElementById('litellm-temperature');
 const liteLlmTopP = document.getElementById('litellm-top-p');
 const liteLlmCapabilities = document.getElementById('litellm-capabilities');
@@ -5811,6 +5822,7 @@ function fillModelProfile(model, fallback, recommendDefaults = false) {
   liteLlmModelApi.value = profile.api || 'auto';
   liteLlmModelPreset.value = profile.preset || 'auto';
   liteLlmReasoningEffort.value = profile.reasoningEffort || 'omit';
+  liteLlmContextWindow.value = profile.contextWindow === undefined ? '' : String(profile.contextWindow);
   liteLlmTemperature.value = profile.temperature === undefined ? '' : String(profile.temperature);
   liteLlmTopP.value = profile.topP === undefined ? '' : String(profile.topP);
   applyModelCapabilities(recommendDefaults);
@@ -6027,6 +6039,7 @@ function liteLlmFormMessage(type) {
     ...(modelProvider.value !== 'ollama' ? { capabilities: currentDeclaredCapabilities(), capabilityDeclarations: capabilityDrafts } : {}),
     preset: liteLlmModelPreset.value,
     reasoningEffort: liteLlmReasoningEffort.value,
+    contextWindow: liteLlmContextWindow.value,
     temperature: liteLlmTemperature.value,
     topP: liteLlmTopP.value,
     semanticMemoryEnabled: semanticMemoryEnabled.checked,
@@ -6331,6 +6344,7 @@ mcpCatalog.addEventListener('click', () => {
   announce('MCP catalog mode enabled. Paste instructions or an image, then send.');
 });
 memoryToggle.addEventListener('click', () => memoryPanel.classList.contains('hidden') ? openMemoryCenter() : closeTopPanels());
+document.getElementById('game-studio-toggle').addEventListener('click',()=>vscode.postMessage({type:'openGameStudio'}));
 briefToggle.addEventListener('click', () => briefPanel.classList.contains('hidden') ? openTaskBrief() : closeTopPanels());
 liteLlmToggle.addEventListener('click', () => liteLlmSettings.classList.contains('hidden') ? openLiteLlmSettings() : closeTopPanels());
 document.getElementById('litellm-close').addEventListener('click', () => closeTopPanels());

@@ -1,0 +1,75 @@
+ private snapshotJourney():VoyageSave{return {format:2,best:this.best,muted:this.soundscape.isMuted,journey:this.journeyStarted?{x:this.x,y:this.y,angle:this.angle,speed:this.speed,sail:this.sail,wind:this.wind,nextWind:this.nextWind,windClock:this.windClock,elapsed:this.elapsed,leg:this.leg,score:this.score,streak:this.streak,hits:this.hits,lastHit:this.lastHit,phase:this.leg===5?'finished':'active'}:null}}
+ private queueSave(){if(this.recoveryReady)void this.recovery.checkpoint(()=>this.snapshotJourney())}
+ private clearJourney(){
+  this.pausePulseTimer?.remove(false);this.pausePulseTimer=undefined;this.overlay.setAlpha(1);this.x=97;this.y=352;this.angle=-.55;this.speed=0;this.sail=true;this.wind=0;this.nextWind=0;this.windClock=0;this.elapsed=0;this.leg=0;this.score=0;this.streak=0;this.hits=0;this.lastHit=0;this.journeyStarted=false;this.touch.left=this.touch.right=this.touch.drive=false;this.marker.setVisible(true).setPosition(islands[0].dock.x,islands[0].dock.y);this.boat.setPosition(this.x,this.y).setRotation(this.angle+Math.PI/2);
+ }
+ private saveNotice(notice:SaveNotice){
+  if(notice.phase==='loading')this.recoveryUi.message('Carregando sua viagem…');
+  if(notice.phase==='saving')this.recoveryUi.message('Salvando viagem…',true);
+  if(notice.phase==='saved')this.recoveryUi.message(`Viagem salva · ${notice.data?.journey?.leg??0}/5 cartas · ${notice.data?.journey?.score??0} pontos`);
+  if(notice.phase==='volatile')this.recoveryUi.message('Esta viagem não será salva.');
+  if(notice.phase==='error'){
+   this.recoveryUi.message('A viagem ainda não foi salva.');
+   if(this.recoveryReady){if(this.mode==='sailing')this.pause();this.saveFailure(notice.result??{status:'unavailable'},true);}
+  }
+ }
+ private async loadJourney(){
+  this.mode='loading';this.recoveryReady=false;this.recoveryUi.show('Preparando sua viagem','Aguarde um instante.',[]);
+  let result:RecordResult;try{result=await this.recovery.load()}catch{result={status:'unavailable',code:'load-response-missing'}}
+  if(result.status==='empty'){
+   this.clearJourney();this.recoveryReady=true;this.recoveryUi.message('Sua viagem será salva neste navegador.');this.welcome();
+  }else if(result.status==='loaded'&&validVoyageSave(result.data)){
+   const data=result.data;this.best=Math.max(this.best,data.best);this.soundscape.setMuted(data.muted);if(!data.journey)this.clearJourney();
+   if(data.journey){const j=data.journey;this.x=j.x;this.y=j.y;this.angle=j.angle;this.speed=j.speed;this.sail=j.sail;this.wind=j.wind;this.nextWind=j.nextWind;this.windClock=j.windClock;this.elapsed=j.elapsed;this.leg=j.leg;this.score=j.score;this.streak=j.streak;this.hits=j.hits;this.lastHit=j.lastHit;this.journeyStarted=true;}
+   this.boat.setPosition(this.x,this.y).setRotation(this.angle+Math.PI/2);this.marker.setVisible(this.leg<5);if(this.leg<5)this.marker.setPosition(islands[this.leg].dock.x,islands[this.leg].dock.y);
+   this.recoveryReady=true;this.recoveryUi.message(`Viagem recuperada · ${this.leg}/5 cartas · ${this.score} pontos`);this.welcome();
+  }else this.saveFailure(result,false);
+  this.refresh();
+ }
+ private welcome(){
+  this.mode='intro';this.overlay.setVisible(false);
+  const saved=this.journeyStarted;
+  this.recoveryUi.show(saved?'Sua viagem está aqui':'Correio das Correntes',saved?`${this.leg} de 5 cartas entregues · ${this.score} pontos. Continue de onde parou.`:'Leve as cartas aos cinco portos. Use as setas para navegar, Espaço para ajustar a vela e P para pausar.',[
+   {label:saved?(this.leg===5?'Ver resultado':'Continuar viagem'):'Iniciar viagem',run:()=>{this.recoveryUi.hide();this.start()}},
+   ...(saved?[{label:'Nova viagem',secondary:true,run:()=>this.restart()}]:[])
+  ]);
+ }
+ private saveFailure(result:RecordResult,duringJourney:boolean){
+  const conflict=result.status==='conflict';
+  this.overlay.setVisible(false);
+  this.recoveryUi.show(conflict?'A viagem mudou em outra janela':'Não foi possível salvar sua viagem',conflict?'Recarregue para recuperar a versão atual, ou continue nesta janela sem salvar.':'Você pode tentar novamente ou jogar sem salvar. A viagem salva não será apagada.',[
+   {label:conflict?'Recarregar viagem':'Tentar novamente',run:()=>{
+    if(conflict){location.reload();return}
+    if(!duringJourney){void this.loadJourney();return}
+    this.recoveryUi.show('Tentando salvar','Aguarde um instante.',[]);
+    void this.recovery.retry().then(reply=>{if(reply.status==='ready'){this.recoveryUi.hide();this.overlay.setVisible(this.mode==='paused');this.recoveryUi.message('Viagem salva.')}else this.saveFailure(reply,true)});
+   }},
+   {label:'Jogar sem salvar',secondary:true,run:()=>{this.recovery.withoutSaving();this.recoveryReady=true;this.recoveryUi.hide();if(!this.journeyStarted)this.start();else if(this.mode==='paused')this.resume()}},
+   ...(!duringJourney&&typeof result.stamp==='string'?[{label:'Apagar viagem salva',secondary:true,run:()=>this.confirmDiscard()}]:[])
+  ]);
+ }
+ private confirmDiscard(){
+  this.recoveryUi.show('Apagar a viagem salva?','Esta ação remove o progresso salvo e não pode ser desfeita.',[
+   {label:'Apagar viagem',run:()=>{this.recoveryUi.show('Apagando viagem','Aguarde um instante.',[]);void this.recovery.discard().then(result=>{if(result.status==='discarded'){this.recoveryReady=true;this.recoveryUi.hide();this.restartConfirmed()}else this.saveFailure(result,false)})}},
+   {label:'Voltar',secondary:true,run:()=>{void this.loadJourney()}}
+  ]);
+ }
+ private start(){
+  if(!this.recoveryReady)return;
+  if(this.leg===5){this.showFinish();return}
+  this.journeyStarted=true;this.mode='sailing';this.overlay.setVisible(false);this.soundscape.unlock();this.banner.setText('Próxima entrega: '+islands[this.leg].name);this.queueSave();
+ }
+ private restart(){
+  if(!this.recoveryReady)return;
+  const wasIntro=this.mode==='intro';if(this.mode==='sailing')this.pause();const overlayWasVisible=this.overlay.visible;this.overlay.setVisible(false);
+  this.recoveryUi.show('Começar uma nova viagem?','O progresso desta viagem será substituído. Seu recorde será mantido.',[
+   {label:'Começar nova viagem',run:()=>{this.recoveryUi.hide();this.restartConfirmed()}},
+   {label:'Voltar',secondary:true,run:()=>{if(wasIntro)this.welcome();else{this.recoveryUi.hide();this.overlay.setVisible(overlayWasVisible)}}}
+  ]);
+ }
+ private restartConfirmed(){
+  this.clearJourney();this.mode='sailing';this.journeyStarted=true;this.overlay.setVisible(false);this.soundscape.unlock();this.banner.setText('Nova viagem: '+islands[0].name);this.refresh();this.queueSave();
+ }
+ private showFinish(){
+  this.mode='finished';this.marker.setVisible(false);this.showOverlay('VIAGEM CONCLUÍDA',`Cinco cartas entregues! Pontos: ${this.score} • Melhor: ${this.best}\nTempo: ${Math.round(this.elapsed)}s • Toques em arrecifes: ${this.hits}\nBônus de sequência até ${this.streak} entregas.`,'JOGAR DE NOVO',()=>this.restart());
+ }

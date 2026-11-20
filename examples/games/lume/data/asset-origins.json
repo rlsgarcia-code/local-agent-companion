@@ -1,0 +1,34 @@
+[
+  {
+    "id": "garden-art",
+    "kind": "other",
+    "role": "Direção de arte e desenho vetorial original",
+    "files": [
+      "src/art.js"
+    ],
+    "placeholder": false,
+    "origin": {
+      "kind": "procedural",
+      "source": "Código de desenho original desta referência; sem fontes externas.",
+      "author": "Local Agent Companion contributors",
+      "license": "MIT; ver data/LICENSE.txt. Declaração sujeita à revisão de proveniência.",
+      "referenceIds": []
+    }
+  },
+  {
+    "id": "garden-score",
+    "kind": "other",
+    "role": "Partitura original e síntese de áudio",
+    "files": [
+      "src/audio.js"
+    ],
+    "placeholder": false,
+    "origin": {
+      "kind": "procedural",
+      "source": "Composição e síntese procedural original desta referência; sem samples externos.",
+      "author": "Local Agent Companion contributors",
+      "license": "MIT; ver data/LICENSE.txt. Declaração sujeita à revisão de proveniência.",
+      "referenceIds": []
+    }
+  }
+]

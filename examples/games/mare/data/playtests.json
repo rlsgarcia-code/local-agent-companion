@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "viewport": {
+    "width": 1060,
+    "height": 820
+  },
+  "scenarios": [
+    {
+      "id": "home-pause",
+      "designScenarioId": "save-pause",
+      "steps": [
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "capture",
+          "name": "home"
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "expect-image",
+          "baseline": "home",
+          "comparison": "changed",
+          "threshold": 0.01
+        },
+        {
+          "action": "press",
+          "key": "P"
+        },
+        {
+          "action": "wait",
+          "ms": 100
+        },
+        {
+          "action": "capture",
+          "name": "paused"
+        },
+        {
+          "action": "wait",
+          "ms": 400
+        },
+        {
+          "action": "expect-image",
+          "baseline": "paused",
+          "comparison": "unchanged",
+          "threshold": 0.001
+        },
+        {
+          "action": "press",
+          "key": "P"
+        }
+      ]
+    },
+    {
+      "id": "two-oars-and-reload",
+      "designScenarioId": "two-inputs",
+      "steps": [
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "capture",
+          "name": "before"
+        },
+        {
+          "action": "key-down",
+          "key": "W"
+        },
+        {
+          "action": "key-down",
+          "key": "ArrowUp"
+        },
+        {
+          "action": "wait",
+          "ms": 1000
+        },
+        {
+          "action": "key-up",
+          "key": "W"
+        },
+        {
+          "action": "key-up",
+          "key": "ArrowUp"
+        },
+        {
+          "action": "expect-image",
+          "baseline": "before",
+          "comparison": "changed",
+          "threshold": 0.001
+        },
+        {
+          "action": "press",
+          "key": "P"
+        },
+        {
+          "action": "reload"
+        },
+        {
+          "action": "wait",
+          "ms": 2000
+        },
+        {
+          "action": "press",
+          "key": "Enter"
+        },
+        {
+          "action": "wait",
+          "ms": 300
+        },
+        {
+          "action": "capture",
+          "name": "restored"
+        }
+      ]
+    }
+  ]
+}

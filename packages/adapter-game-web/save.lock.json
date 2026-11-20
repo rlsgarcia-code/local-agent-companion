@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "module": "@companion/game-save",
+  "version": "1.0.0",
+  "entry": "game-save-1.0.0.mjs",
+  "files": {
+    "game-save-1.0.0.mjs": "f113a43d5a3ae486f26e2c5c02b36718eafc7e78998d04c7d2b242babe8487b9",
+    "GAME-SAVE-LICENSE.txt": "1126322e2cc8d165adc4c792eeb195717de2bcc7b39be1ce77959d78e87ef685"
+  }
+}

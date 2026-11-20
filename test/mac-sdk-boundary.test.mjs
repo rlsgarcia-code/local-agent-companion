@@ -19,6 +19,11 @@ test("the Mac application consumes only the published Companion SDK boundary", a
   for (const [name, source] of [["runtime-client", runtime], ["main", main], ["contracts", contracts]]) {
     assert.doesNotMatch(source, /from\s+["']\.\.\/packages\//, `${name} bypasses the public SDK`);
   }
+  for (const file of ["desktop/game-studio.ts", "desktop/game-studio-drafts.ts"]) {
+    const source = await readFile(file, "utf8");
+    assert.doesNotMatch(source, /from\s+["']\.\.\/packages\/(?:client-ts|contracts)\//, `${file} bypasses the published SDK`);
+    assert.match(source, /@companion\/client-sdk/);
+  }
   assert.match(runtime, /from "@companion\/client-sdk"/);
   assert.match(runtime, /from "@companion\/client-sdk\/bootstrap"/);
   assert.match(runtime, /from "@companion\/client-sdk\/contracts"/);

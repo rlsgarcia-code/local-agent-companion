@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Unseen-at-first-invocation development requests. No source, design fixture, asset or reference game is supplied to the model. This corpus is not human acceptance or a guarantee against training contamination.",
+  "cases": [
+    {
+      "id": "windmail",
+      "engine": "phaser",
+      "request": "Crie Correio das Correntes, um jogo 2D completo para navegador no qual piloto um pequeno barco a vela para entregar correspondências entre ilhas. Quero um ciclo de viagens com destinos distintos, vento que muda de direção de forma legível, arrecifes e correntes que criem escolhas, entregas em sequência que rendam bônus e uma forma clara de encerrar a viagem e jogar de novo. Deve ter profundidade e variedade para continuar interessante depois da primeira entrega, com dificuldade gradual, controles agradáveis por teclado e toque, arte original coerente, animação, música/efeitos com mute, pausa, reinício, perda de foco e melhores resultados salvos. Use Phaser, mantenha os recursos locais, construa e teste o jogo. Não quero uma explicação de como programar nem um protótipo com conteúdo apenas anunciado. Registre honestamente os testes de qualidade que ainda dependem de pessoas ou dispositivos."
+    },
+    {
+      "id": "echo-garden",
+      "engine": "babylon",
+      "request": "Produza Estação de Ecos, aventura 3D web em Babylon.js numa estação botânica abandonada. Explorar, descobrir pistas visuais e redirecionar mecanismos deve restaurar três zonas com desafios diferentes e levar a um desfecho. Quero locomoção, câmera e colisão confortáveis, teclado/mouse e toque, materiais e iluminação com identidade, animações e som ligados às ações, save, pausa e recuperação. Faça um jogo completo, construa, abra e teste; não substitua zonas por textos ou modelos finais por placeholders ocultos. Recursos devem estar empacotados e o jogo deve funcionar sem IA."
+    },
+    {
+      "id": "duet-reactor",
+      "engine": "phaser",
+      "request": "Crie Dueto Reator, jogo cooperativo local para duas pessoas na mesma tela, em Phaser. Cada pessoa controla um pequeno robô com teclas diferentes; os dois precisam transportar cargas e alternar polaridades para manter o reator funcionando em rodadas com obstáculos e combinações novas. Ninguém deve ficar sem uma função importante. Quero início compreensível, estados e pontuação de ambos, desafios progressivos, recuperação após falha, rematch, áudio com mute, pausa, entrada simultânea e apresentação acabada. Sem servidor, contas ou rede. Construa e teste as ações dos dois jogadores e indique os aceites humanos/físicos restantes."
+    },
+    {
+      "id": "gear-orchard",
+      "engine": "godot",
+      "request": "Em Godot, produza Pomar de Engrenagens, puzzle 2D de irrigação por rodas e comportas. O jogador deve construir o ritmo correto para regar árvores sem desperdiçar água. Quero doze desafios com combinações novas, aprendizado durante o jogo, solução completa verificável, undo, dicas que não joguem sozinhas, seleção por teclado e toque, campanha salva, arte/áudio próprios, pausa e replay. Exporte o projeto editável e um build web e teste. Não troque a engine silenciosamente e não apresente ausência de uma ferramenta como entrega concluída."
+    },
+    {
+      "id": "dune-circuit",
+      "engine": "unity",
+      "request": "Produza em Unity um jogo 3D web de corrida chamado Circuito das Dunas, com veículo leve, curvas e saltos controláveis, três pistas realmente distintas, voltas, rivais locais de IA e melhor tempo salvo. Quero direção agradável, câmera, colisões, materiais, animação, áudio, pausa/restart e controles para desktop e toque, com fonte editável, build e testes. Use somente uma instalação Unity qualificada e licenciada: se faltar, preserve o planejamento e informe o impedimento, sem anunciar um jogo executado nem escolher outra engine por conta própria."
+    }
+  ]
+}

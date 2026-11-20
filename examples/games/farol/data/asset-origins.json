@@ -1,0 +1,20 @@
+[
+  {
+    "id": "farol-art-score",
+    "kind": "other",
+    "role": "Arte vetorial, partitura e síntese sonora originais",
+    "files": [
+      "main.gd",
+      "icon.svg",
+      "icon.png"
+    ],
+    "placeholder": false,
+    "origin": {
+      "kind": "procedural",
+      "source": "Desenho e síntese originais em GDScript; sem imagens, samples, fontes ou plugins externos. Fonte padrão pertence ao runtime Godot.",
+      "author": "Local Agent Companion contributors",
+      "license": "MIT; ver data/LICENSE.txt. Declaração sujeita à revisão de proveniência.",
+      "referenceIds": []
+    }
+  }
+]

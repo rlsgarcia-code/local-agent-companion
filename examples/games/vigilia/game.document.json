@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 2,
+  "title": "Vigília — Arquipélago das Marés",
+  "engine": "babylon",
+  "brief": {
+    "request": "Uma viagem de exploração 3D por três ilhas, com doze memórias, três puzzles de afinação, caminhos que se abrem e um desfecho.",
+    "audience": "Jogadores casuais a partir de 7 anos; adequação deve ser avaliada nos playtests.",
+    "genre": "exploration-puzzle",
+    "dimension": "3d",
+    "playMode": "single-player",
+    "players": {
+      "min": 1,
+      "max": 1
+    },
+    "devices": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "inputs": [
+      "keyboard",
+      "pointer",
+      "touch"
+    ]
+  },
+  "design": {
+    "schemaVersion": 2,
+    "structure": "campaign",
+    "premise": "Uma guardiã devolve a canção a três faróis e reencontra as histórias de quem cuidou das ilhas.",
+    "coreLoop": {
+      "actions": [
+        "caminhar",
+        "encontrar inscrições",
+        "afinar ressonadores",
+        "abrir caminhos",
+        "enviar a luz"
+      ],
+      "feedback": "Mudança física dos ressonadores, luz dos faróis, pontes abertas, caderno, música e contagem de memórias.",
+      "mastery": "Relacionar inscrições, objetos e notas; navegar entre marcos e revisitar as ilhas para completar o caderno."
+    },
+    "mechanics": [
+      {
+        "id": "explore",
+        "name": "Caminhar pelo arquipélago",
+        "description": "Movimento contínuo normalizado em três dimensões, costa e pedras sólidas, caminhos estreitos entre ilhas."
+      },
+      {
+        "id": "remember",
+        "name": "Memórias no cobre",
+        "description": "Doze inscrições descobertas pela proximidade e interação, com dicas e pequenas histórias preservadas no caderno."
+      },
+      {
+        "id": "tune",
+        "name": "Canção dos faróis",
+        "description": "Três ressonadores por ilha, quatro posições por ressonador e combinações diferentes ensinadas pelas inscrições."
+      },
+      {
+        "id": "return",
+        "name": "O caminho de volta",
+        "description": "Acender cada farol abre uma ponte; os três acesos permitem enviar a luz do cais inicial e concluir a viagem."
+      }
+    ],
+    "rules": [
+      "Nenhuma vida ou limite de tempo.",
+      "O caderno mostra somente inscrições já encontradas.",
+      "As pontes fechadas impedem acesso às ilhas futuras.",
+      "Memórias continuam disponíveis após o desfecho.",
+      "Sem IA, rede externa, anúncios ou compras durante a partida."
+    ],
+    "controls": [
+      {
+        "action": "Caminhar",
+        "input": "WASD, setas ou botões de toque simultâneos",
+        "feedback": "Animação dos pés, orientação da guardiã e acompanhamento de câmera."
+      },
+      {
+        "action": "Interagir",
+        "input": "E ou botão contextual",
+        "feedback": "Inscrição, nota atual ou farol aceso."
+      },
+      {
+        "action": "Pausar",
+        "input": "P, Escape ou Pausa; automático na perda de foco",
+        "feedback": "Simulação e áudio interrompidos; retorno explícito."
+      },
+      {
+        "action": "Ler memórias",
+        "input": "Caderno",
+        "feedback": "Histórias encontradas, agrupadas por ilha; o jogo fica em pausa."
+      }
+    ],
+    "camera": "Terceira pessoa oblíqua, sem captura do mouse; norte para cima, acompanhamento amortecido e distância adaptada ao retrato. Movimento reduzido opcional.",
+    "progression": {
+      "description": "Jardim → Bosque → Observatório → retorno ao cais. Cada ilha apresenta novas memórias e uma combinação própria.",
+      "stages": [
+        {
+          "id": "0",
+          "objective": "Jardim das conchas",
+          "challenge": "Encontrar as três inscrições e relacionar Pedra, Folha e Concha.",
+          "mechanicIds": [
+            "explore",
+            "remember",
+            "tune",
+            "return"
+          ],
+          "completion": "Acender o farol para abrir a ponte ou completar a canção."
+        },
+        {
+          "id": "1",
+          "objective": "Bosque dos sinos",
+          "challenge": "Encontrar as três inscrições e relacionar Pedra, Folha e Concha.",
+          "mechanicIds": [
+            "explore",
+            "remember",
+            "tune",
+            "return"
+          ],
+          "completion": "Acender o farol para abrir a ponte ou completar a canção."
+        },
+        {
+          "id": "2",
+          "objective": "Observatório da aurora",
+          "challenge": "Encontrar as três inscrições e relacionar Pedra, Folha e Concha.",
+          "mechanicIds": [
+            "explore",
+            "remember",
+            "tune",
+            "return"
+          ],
+          "completion": "Acender o farol para abrir a ponte ou completar a canção."
+        }
+      ],
+      "completion": {
+        "type": "ending",
+        "description": "Enviar a luz no cais com os três faróis acesos; exploração e memórias restantes continuam disponíveis."
+      }
+    },
+    "art": {
+      "direction": "Arquipélago costeiro estilizado, arquitetura de cobre e pedra, vegetação facetada, água verde e luz dourada; composição original por geometria local.",
+      "palette": [
+        "#163b38",
+        "#719f9c",
+        "#b8c997",
+        "#eacb8d"
+      ],
+      "animation": "Passos, lenço, inscrições suspensas, ressonadores e ondulação; reduzir movimento elimina as oscilações."
+    },
+    "audio": {
+      "music": "Partitura pentatônica original em camadas, sintetizada após gesto do jogador.",
+      "effects": "Notas de afinação, memórias e acorde de farol/desfecho.",
+      "mix": "Ganho master limitado, mute persistente e suspensão em pausa/perda de foco; qualidade física pendente."
+    },
+    "content": [
+      {
+        "id": "island-0",
+        "kind": "region",
+        "description": "Jardim das conchas"
+      },
+      {
+        "id": "island-1",
+        "kind": "region",
+        "description": "Bosque dos sinos"
+      },
+      {
+        "id": "island-2",
+        "kind": "region",
+        "description": "Observatório da aurora"
+      },
+      {
+        "id": "memories",
+        "kind": "collectible",
+        "description": "Doze inscrições com pistas e histórias."
+      }
+    ],
+    "save": {
+      "mode": "persistent",
+      "version": 1,
+      "strategy": "Posição, tempo, notas, afinações, faróis, final e preferências guardados no navegador. Formato inválido/incompatível fica preservado sem sobrescrita; sem armazenamento o jogo continua em memória."
+    },
+    "playtests": [
+      {
+        "id": "exploration-controls",
+        "category": "gameplay",
+        "description": "Exploração e interação pelas regras normais.",
+        "steps": [
+          {
+            "action": "Caminhar até uma inscrição e depois até os ressonadores.",
+            "expected": "Colisões coerentes, pistas no caderno e mudança audível/visível de nota."
+          }
+        ]
+      },
+      {
+        "id": "recovery",
+        "category": "technical",
+        "description": "Save, pausa e retomada sem IA.",
+        "steps": [
+          {
+            "action": "Afinar parcialmente, recolher memória, pausar e recarregar.",
+            "expected": "Posição, memória, afinação e preferências preservadas."
+          }
+        ]
+      },
+      {
+        "id": "human-onboarding",
+        "category": "human",
+        "description": "Dez jogadores reais consentidos e revisão conforme o plano integral.",
+        "steps": [
+          {
+            "action": "Explorar sem instruções externas.",
+            "expected": "Medir compreensão em 30 segundos e avaliação da experiência; não inferir diversão de testes automáticos."
+          }
+        ]
+      }
+    ]
+  },
+  "files": [],
+  "assets": []
+}

@@ -42,15 +42,20 @@ jobs:
       - run: npm run smoke:litellm
       - run: npm run engine:build
       - name: Sign the exact engine manifest
+        id: package
         run: npm run engine:package
         env:
           COMPANION_RELEASE_SIGNING_KEY: ${{ secrets.COMPANION_RELEASE_SIGNING_KEY }}
       - name: Exercise signed engine through real Linux editor executors and reconnection
         if: startsWith(matrix.target, 'linux-')
         run: xvfb-run -a node scripts/test-editor-service.mjs
+        env:
+          COMPANION_ENGINE_BUNDLE: ${{ steps.package.outputs.bundle }}
       - name: Exercise signed engine through real Mac and Windows editor executors
         if: ${{ !startsWith(matrix.target, 'linux-') }}
         run: node scripts/test-editor-service.mjs
+        env:
+          COMPANION_ENGINE_BUNDLE: ${{ steps.package.outputs.bundle }}
       - name: Package three VS Code provider variants with the exact signed engine
         shell: bash
         run: |
@@ -59,7 +64,7 @@ jobs:
             node scripts/package-native.mjs --provider="$provider"
           done
         env:
-          COMPANION_ENGINE_BUNDLE: ${{ github.workspace }}/engine-dist
+          COMPANION_ENGINE_BUNDLE: ${{ steps.package.outputs.bundle }}
       - name: Resolve the exact application version
         id: application
         shell: bash
@@ -86,7 +91,7 @@ jobs:
         if: startsWith(matrix.target, 'darwin-')
         run: npm run desktop:package -- --arch=${{ matrix.target == 'darwin-arm64' && 'arm64' || 'x64' }}
         env:
-          COMPANION_ENGINE_BUNDLE: ${{ github.workspace }}/engine-dist
+          COMPANION_ENGINE_BUNDLE: ${{ steps.package.outputs.bundle }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Sign Mac artifact manifest separately from Apple signing
         if: startsWith(matrix.target, 'darwin-')
@@ -98,7 +103,8 @@ jobs:
           name: signed-engine-${{ matrix.target }}
           path: |
             *.vsix
-            release/engine/*
+            release/engine/*.tar.gz
+            release/engine/*.tar.gz.sha256
             release/companion-sdks-*.tar.gz*
             release/desktop/*.zip
             release/desktop/*.dmg

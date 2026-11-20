@@ -7,11 +7,12 @@ import { completionGateResult, createTaskCompletionMiddleware } from "./task-com
 import { completionReviewAppendix, completionReviewPrompt, parseCompletionReview, shouldRunCompletionReview, type CompletionReviewChange } from "./completion-review";
 import type { RunEvidenceSnapshot } from "./run-evidence";
 import { conversationWindowMiddleware, TokenUsageHandler } from "./conversation";
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 
 const emptyEvidence=():RunEvidenceSnapshot=>({commands:[],diagnostics:[],browser:[],processes:[],diffs:[],filesRead:[],mcp:[],projectIndexInspected:false,playbooksRead:[]});
 export type WorkspaceToolState={changes:CompletionReviewChange[];omitted:number;evidence:RunEvidenceSnapshot;epoch?:string;approvalWasDenied?:boolean};
 export type WorkspaceToolResult={kind:"workspace-tool-result";result:unknown;state:WorkspaceToolState};
-export function workspaceCompletion(spec:RunSpec,context:ExecutionContext,model:BaseChatModel,usage:TokenUsageHandler,images:{mimeType:string;data:string}[]) {
+export function workspaceCompletion(spec:RunSpec,context:ExecutionContext,model:BaseChatModel,usage:TokenUsageHandler,images:{mimeType:string;data:string}[],callbacks:BaseCallbackHandler[]=[usage]) {
   if(!spec.workspace)return undefined;
   if(context.registration.product!=="companion-vscode")throw new AgentError(errors.forbidden,"Workspace intelligence belongs to the editor product.");
   const options=spec.workspace;
@@ -28,12 +29,16 @@ export function workspaceCompletion(spec:RunSpec,context:ExecutionContext,model:
     return {...latest,changes:[...changes.values()],omitted:states.reduce((sum,state)=>sum+state.omitted,0),evidence,approvalWasDenied:states.some(state=>state.approvalWasDenied)};
   };
   const middleware=createTaskCompletionMiddleware({model,structuredOutput:spec.provider.kind==="ollama",mode:spec.mode,responseLanguage:options.responseLanguage,
+    currentGameProject:context.gameProduction?.currentProject?.(),
+    workspaceAvailable:true,
+    availableTools:[...spec.tools,...(context.gameProduction?.catalog??[])].filter(tool=>spec.mode!=="plan"||tool.effect==="read").map(tool=>tool.name),
     conversation:spec.messages.filter(row=>row.role!=="system").map(row=>({role:row.role as "user"|"assistant",content:typeof row.content==="string"?row.content:row.content.filter(block=>block.type==="text").map(block=>block.text).join("\n")})),
-    currentImages:images,changes:()=>current().changes,signal:context.signal,callbacks:[usage],sensitiveValues:context.credential?[context.credential]:[],
+    currentImages:images,changes:()=>current().changes,signal:context.signal,callbacks,sensitiveValues:context.credential?[context.credential]:[],
     hasObservedRead:()=>current().evidence.filesRead.length>0,approvalWasDenied:()=>current().approvalWasDenied===true,
     executionEvidence:()=>{const evidence=current().evidence;return [
       ...evidence.commands.filter(row=>row.exitCode===0).slice(-1).map(row=>({kind:"command_success" as const,detail:`${row.command} exited with code 0.`})),
       ...evidence.browser.filter(row=>row.action==="open"&&/^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/.test(row.detail??"")).slice(-1).map(row=>({kind:"live_preview" as const,detail:`Opened verified local page ${row.detail}.`}))];},
+    gameEvidence:()=>context.gameProduction?.evidence()??{changes:[],projects:[]},
     onContract:contract=>context.emit("workspace.activity",{type:"activity",kind:"goal",title:"Interpreted task",detail:contract.objective}),
     onRetry:async attempt=>{context.emit("text.reset",{});context.emit("workspace.activity",{type:"status",label:options.responseLanguage==="en"?`Continuing after evidence check (${attempt}/2)`:`Continuando após verificar as evidências (${attempt}/2)`});},
   });
@@ -43,10 +48,11 @@ export function workspaceCompletion(spec:RunSpec,context:ExecutionContext,model:
       if(gate.completionOutcome==="incomplete")text+=options.responseLanguage==="en"?`\n\nTask incomplete: ${gate.completionReason}`:`\n\nTarefa incompleta: ${gate.completionReason}`;
       const host=current();let review;
       if(shouldRunCompletionReview(options.finalReview,spec.mode,host.changes.length,host.evidence)){
-        try{const reply=await model.invoke([new SystemMessage("Review the actual evidence conservatively. Return the requested JSON without private reasoning."),new HumanMessage(completionReviewPrompt({request:typeof spec.messages.at(-1)?.content==="string"?spec.messages.at(-1)!.content as string:"Image request",draftAnswer:text,mode:spec.mode,changes:host.changes,omittedChanges:host.omitted,evidence:host.evidence,responseLanguage:options.responseLanguage}))],{signal:context.signal,callbacks:[usage]});review=parseCompletionReview(reply.text,options.responseLanguage);text+=completionReviewAppendix(review,options.responseLanguage);context.emit("workspace.activity",{type:"verification",review});}
+        try{const reply=await model.invoke([new SystemMessage("Review the actual evidence conservatively. Return the requested JSON without private reasoning."),new HumanMessage(completionReviewPrompt({request:typeof spec.messages.at(-1)?.content==="string"?spec.messages.at(-1)!.content as string:"Image request",draftAnswer:text,mode:spec.mode,changes:host.changes,omittedChanges:host.omitted,evidence:host.evidence,responseLanguage:options.responseLanguage}))],{signal:context.signal,callbacks});review=parseCompletionReview(reply.text,options.responseLanguage);text+=completionReviewAppendix(review,options.responseLanguage);context.emit("workspace.activity",{type:"verification",review});}
         catch(error){if(context.signal.aborted)throw error;context.emit("workspace.activity",{type:"activity",kind:"verification",title:"Independent review unavailable"});}
       }
       return {text,completionOutcome:gate.completionOutcome,completionReason:gate.completionReason,evidence:host.evidence,changes:host.changes,omittedChanges:host.omitted,review,
+        ...(context.gameProduction ? { gameProduction: context.gameProduction.evidence() } : {}),
         message:{id:options.assistantMessageId,role:"assistant",text,content:text,createdAt:Date.now(),status:"complete"},usage:{input:usage.input,output:usage.output}};
     }};
 }

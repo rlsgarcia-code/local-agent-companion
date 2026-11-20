@@ -249,6 +249,38 @@ export class Store {
     }
     return { busy: true, runId: row.runId, state: row.state };
   }
+  /**
+   * Explicitly end a run whose external effect can no longer be determined.
+   *
+   * The original receipt value and binding remain intact and receive a distinct
+   * status; this never fabricates a successful result or makes the graph
+   * resumable. The transaction also releases the workspace lease, so another
+   * client cannot race a resume between acknowledging the uncertainty and the
+   * terminal cancellation.
+   */
+  cancelUnknownRun(reg: Registration, id: string): Run {
+    return this.db.transaction(() => {
+      const run = this.run(reg, id);
+      if (run.state === "cancelled") return run;
+      if (run.state !== "awaiting_reconciliation")
+        throw new AgentError(errors.conflict, "Only a run awaiting reconciliation can be cancelled with an unknown result.");
+      const unknown = this.db.prepare(
+        "SELECT id FROM receipts WHERE namespace=? AND run=? AND status='started' ORDER BY rowid",
+      ).all(namespace(reg), id) as { id: string }[];
+      if (!unknown.length)
+        throw new AgentError(errors.conflict, "No unknown tool result belongs to this run.");
+      this.db.prepare(
+        "UPDATE receipts SET status='cancelled_unknown' WHERE namespace=? AND run=? AND status='started'",
+      ).run(namespace(reg), id);
+      this.append(reg, run.sessionId, "run.unknown_cancelled", {
+        operationCount: unknown.length,
+        outcome: "unknown",
+      }, id);
+      return this.updateRun(reg, id, "cancelled", {
+        error: `Cancelled by the user with ${unknown.length} unconfirmed operation result(s) preserved.`,
+      });
+    })();
+  }
   snapshot(
     reg: Registration,
     sessionId: string,
@@ -277,7 +309,7 @@ export class Store {
     reg: Registration,
     id: string,
     state: RunState,
-    extra: { result?: unknown; error?: string } = {},
+    extra: { result?: unknown; error?: string; waitingFor?:Run["waitingFor"] } = {},
   ): Run {
     return this.db.transaction(() => {
       const run = {
@@ -287,6 +319,7 @@ export class Store {
         updatedAt: Date.now(),
       };
       if (["running", "completed", "cancelled"].includes(state) && !("error" in extra)) delete run.error;
+      if(state==="running"||terminalStates.has(state))delete run.waitingFor;
       this.db
         .prepare("UPDATE runs SET state=?,value=? WHERE id=?")
         .run(state, JSON.stringify(run), id);

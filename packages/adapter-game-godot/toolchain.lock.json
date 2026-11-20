@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "version": "4.7.2",
+  "release": "4.7.2-stable",
+  "baseImage": "node@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d",
+  "editors": {
+    "arm64": { "asset": "Godot_v4.7.2-stable_linux.arm64.zip", "entry": "Godot_v4.7.2-stable_linux.arm64", "sha256": "5dd0d86405cf7e8adf79fb6377b38ba682a2846cb378ffe5364f38c01ad29b9d" },
+    "x64": { "asset": "Godot_v4.7.2-stable_linux.x86_64.zip", "entry": "Godot_v4.7.2-stable_linux.x86_64", "sha256": "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4" }
+  },
+  "templates": { "asset": "Godot_v4.7.2-stable_export_templates.tpz", "sha256": "f298490b8d44d934be425a5a65a51bf15f422428b229a06a6e11d9ffea248011", "entry": "templates/web_nothreads_release.zip", "entrySha256": "d3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0" },
+  "runtimeFiles": {
+    "index.js": "33c94cb3175f3333b82e2a3be5e8e86f77986f0aa2042b1631f6367a4e5bb6ba",
+    "index.wasm": "fc74679e3b97f76878947fcd4fbe1268cbfa6188182a2e33bbc3f5dc9bfa57d0",
+    "index.audio.worklet.js": "5b476a9c9ce642c0ee4256436d1bc31d9c38f868aca0f9a8e2a57c18d2dec2a3",
+    "index.audio.position.worklet.js": "be33985bc7160d6bf9646f259cd86b259cd67b02ccb297ee5c44f8ac84327bc8"
+  },
+  "licenses": {
+    "LICENSE.txt": "b0435e3b3e4e55238f05f4b306f30524a1b2e20147810d436eaa554fa6855c80",
+    "COPYRIGHT.txt": "cb1980c88089573bcacd7221d777c689bb8bbd778799f24c27fca0fe5f774d6d"
+  }
+}

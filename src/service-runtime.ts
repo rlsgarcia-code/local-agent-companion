@@ -90,8 +90,8 @@ export class EditorServiceRuntime {
  }
  async restartEngine(workspace:string):Promise<void>{
   const client=await this.connect(workspace),status=await client.call<EngineUpdateStatus>("engine.updateStatus");
-  if(status.blockers.activeRuns||status.blockers.modelOperations||status.blockers.desktopResources){
-   const labels=[status.blockers.activeRuns&&`${status.blockers.activeRuns} active run(s)`,status.blockers.modelOperations&&`${status.blockers.modelOperations} model operation(s)`,status.blockers.desktopResources&&`${status.blockers.desktopResources} desktop resource(s)`].filter(Boolean).join(", ");
+  if(status.blockers.activeRuns||status.blockers.modelOperations||status.blockers.desktopResources || status.blockers.gameOperations || status.blockers.toolInspections){
+   const labels=[status.blockers.activeRuns&&`${status.blockers.activeRuns} active run(s)`,status.blockers.modelOperations&&`${status.blockers.modelOperations} model operation(s)`,status.blockers.desktopResources&&`${status.blockers.desktopResources} desktop resource(s)`,status.blockers.gameOperations&&`${status.blockers.gameOperations} game operation(s)`,status.blockers.toolInspections&&`${status.blockers.toolInspections} tool reconciliation(s)`].filter(Boolean).join(", ");
    throw new Error(`Finish protected work before restarting the engine: ${labels}.`);
   }
   const action="Stop resources and restart";
@@ -112,7 +112,7 @@ export { WORKSPACE_BACKEND_TOOLS };
 
 function engineUpdateDetail(error:PreparedEngineUpdateError):string{
  const blockers=error.blockers;
- const parts=blockers?[blockers.activeRuns&&`${blockers.activeRuns} active run(s)`,blockers.managedProcesses&&`${blockers.managedProcesses} managed server(s)`,blockers.modelOperations&&`${blockers.modelOperations} model operation(s)`,blockers.desktopResources&&`${blockers.desktopResources} desktop resource(s)`].filter(Boolean):[];
+ const parts=blockers?[blockers.activeRuns&&`${blockers.activeRuns} active run(s)`,blockers.managedProcesses&&`${blockers.managedProcesses} managed server(s)`,blockers.modelOperations&&`${blockers.modelOperations} model operation(s)`,blockers.desktopResources&&`${blockers.desktopResources} desktop resource(s)`,blockers.gameOperations&&`${blockers.gameOperations} game operation(s)`,blockers.toolInspections&&`${blockers.toolInspections} tool reconciliation(s)`].filter(Boolean):[];
  const status=parts?.length?`Blocking the update: ${parts.join(", ")}.`:`${error.reason}`;
  return `Engine ${error.installedVersion} is active; ${error.requestedVersion} is prepared. ${status}\n\nFinish important work first. Continuing stops Companion-managed local resources, restarts the engine, and preserves completed conversations.`;
 }

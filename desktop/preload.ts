@@ -13,9 +13,11 @@ import type {
 } from "./contracts";
 
 const api = {
+  openGameStudio:():Promise<void>=>ipcRenderer.invoke("companion:game-studio-open"),
   snapshot: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:snapshot"),
   restartEngine: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:restart-engine"),
   chooseWorkspace: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:choose-workspace"),
+  setModelContextWindow:(alias:string,tokens:number|null):Promise<DesktopSnapshot>=>ipcRenderer.invoke("companion:set-model-context-window",alias,tokens),
   setModel: (model: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-model", model),
   saveModelSettings: (settings: DesktopModelSettingsInput): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:save-model-settings", settings),
   clearOpenAiKey: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:clear-openai-key"),
@@ -24,6 +26,9 @@ const api = {
   setAgentRuntime: (runtime: DesktopAgentRuntime): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:set-agent-runtime", runtime),
   selectThread: (threadId: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:select-thread", threadId),
   newThread: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:new-thread"),
+  openWorkspaceRun: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:open-workspace-run"),
+  resumeWorkspaceRun: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:resume-workspace-run"),
+  cancelWorkspaceRun: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:cancel-workspace-run"),
   toggleThreadPin: (threadId: string): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:toggle-thread-pin", threadId),
   refreshOllama: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:refresh-ollama"),
   recommendModels: (): Promise<DesktopSnapshot> => ipcRenderer.invoke("companion:recommend-models"),
