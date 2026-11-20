@@ -30,6 +30,7 @@ export function workspaceCompletion(spec:RunSpec,context:ExecutionContext,model:
   };
   const middleware=createTaskCompletionMiddleware({model,structuredOutput:spec.provider.kind==="ollama",mode:spec.mode,responseLanguage:options.responseLanguage,
     currentGameProject:context.gameProduction?.currentProject?.(),
+    workspaceAvailable:true,
     availableTools:[...spec.tools,...(context.gameProduction?.catalog??[])].filter(tool=>spec.mode!=="plan"||tool.effect==="read").map(tool=>tool.name),
     conversation:spec.messages.filter(row=>row.role!=="system").map(row=>({role:row.role as "user"|"assistant",content:typeof row.content==="string"?row.content:row.content.filter(block=>block.type==="text").map(block=>block.text).join("\n")})),
     currentImages:images,changes:()=>current().changes,signal:context.signal,callbacks,sensitiveValues:context.credential?[context.credential]:[],

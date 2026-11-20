@@ -254,6 +254,7 @@ export class OllamaDesktopRuntime extends OllamaModels {
         mode: options.mode,
         responseLanguage: "pt-BR",
         currentGameProject: options.gameProduction?.currentProject?.(),
+        workspaceAvailable: true,
         availableTools: [...tools.map(tool => tool.name), ...(options.gameProduction?.catalog ?? []).filter(tool => options.mode !== "plan" || tool.effect === "read").map(tool => tool.name)],
         conversation: [
           ...options.thread.messages.map((message) => ({

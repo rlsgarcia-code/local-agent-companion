@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.5
+
+- Engine/SDK 1.1.5 treats facts discoverable in the selected workspace as execution work rather than missing user intent, so explicit architecture and review questions reach the agent instead of ending as `uncertain`.
+- A second conservative semantic review only runs after an uncertain classification; genuinely missing actions or referents still require clarification, and review failure preserves the safe uncertain result.
+
 ## 0.13.4
 
 - Engine/SDK 1.1.4 coordinates prepared-update deferral across concurrent Mac startup connections, so protected work opens directly in the recovery UI instead of racing a modal update prompt.

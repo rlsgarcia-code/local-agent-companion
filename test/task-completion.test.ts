@@ -9,7 +9,7 @@ import type { ChatResult } from "@langchain/core/outputs";
 import { CompositeBackend, createDeepAgent, StateBackend } from "deepagents";
 import { createAgent, FakeToolCallingModel } from "langchain";
 import { consumeAssistantMessageStreams } from "../src/assistant-stream";
-import { completionGateResult, createTaskCompletionMiddleware, parseTaskContract, parseTaskVerdict } from "../src/task-completion";
+import { completionGateResult, createTaskCompletionMiddleware, parseTaskContract, parseTaskVerdict, parseUncertaintyReview } from "../src/task-completion";
 import type { ChangeTracker } from "../src/change-tracker";
 import { ChangeTracker as RealChangeTracker } from "../src/change-tracker";
 import { ReviewableFilesystemBackend } from "../src/reviewable-backend";
@@ -33,13 +33,18 @@ test("saved game metadata reaches intent classification without forcing its outc
   for (const runtime of ["standard", "deep"] as const) for (const outcome of ["answer", "uncertain", "game_delivery"] as const) {
     let calls = 0;
     const classifier = { invoke: async (messages: BaseMessage[]) => {
-      if (calls++ === 0) {
+      const call = calls++;
+      if (call === 0) {
         const systems = messages.filter(message => message.getType() === "system").map(message => message.text).join("\n");
         assert.ok(systems.includes(JSON.stringify({ linkedGameProject: project })));
         assert.match(systems, /Source files need not be pasted/);
         assert.match(systems, /does not describe file contents/);
         return { text: JSON.stringify({ outcome, objective: "The user's current request", reason: "Semantic fixture", acceptanceCriteria: [] }) };
       }
+      if (outcome === "uncertain") return { text: JSON.stringify({
+        decision: "confirm_uncertain", outcome: "uncertain", objective: "The user's current request",
+        reason: "The referent is absent", missingContext: "The requested action or object", acceptanceCriteria: []
+      }) };
       return { text: JSON.stringify({ verdict: "blocked", reason: "No game quality or change has been observed." }) };
     } } as unknown as BaseChatModel;
     const executor = new FakeToolCallingModel();
@@ -48,7 +53,7 @@ test("saved game metadata reaches intent classification without forcing its outc
     const graph = runtime === "deep" ? createDeepAgent({ model: executor, tools: [], middleware: [middleware] }) : createAgent({ model: executor, tools: [], middleware: [middleware] });
     const state = await graph.invoke({ messages: [{ role: "user", content: "The user's current request" }] });
     assert.equal(completionGateResult(state).completionOutcome, outcome === "answer" ? "complete" : "incomplete");
-    assert.equal(calls, outcome === "game_delivery" ? 2 : 1, "metadata cannot cause a second classifier call");
+    assert.equal(calls, outcome === "answer" ? 1 : 2, "only uncertain intent and completion verification need a second semantic call");
     if (outcome === "uncertain") assert.equal(executor.index, 0);
     assert.ok(state.messages.every(message => !message.text.includes(project.sourceHash)), "private snapshot is not added to conversation/checkpoints");
   }
@@ -90,6 +95,7 @@ test("parses a semantic task contract, rejecting malformed model output", () => 
   assert.throws(() => parseTaskContract('{"outcome":"answer","objective":"Answer","acceptanceCriteria":42}'));
   assert.throws(() => parseTaskContract('{"outcome":"unknown","objective":"x","reason":"x","acceptanceCriteria":[]}'));
   assert.equal(parseTaskVerdict('{"verdict":"needs_work","reason":"No diff"}').verdict, "needs_work");
+  assert.equal(parseUncertaintyReview('{"decision":"reclassify","outcome":"answer","objective":"Explain the project","reason":"The workspace is the referent","missingContext":"","acceptanceCriteria":[]}').outcome, "answer");
 });
 
 test("LangGraph returns to the model for an unfulfilled edit, then marks the run incomplete", async () => {
@@ -285,16 +291,40 @@ test("the intent model sees attached images instead of classifying text alone", 
   assert.equal(completionGateResult(result).completionOutcome, "complete");
 });
 
-test("uncertain context asks for clarification before the executor can use tools", async () => {
+test("an explicit selected-workspace question is reclassified instead of asking for project facts", async () => {
+  let calls = 0;
+  const classifier = { invoke: async () => ({ text: JSON.stringify(calls++ === 0
+    ? { outcome: "uncertain", objective: "Obtain project details", reason: "The architecture is not in the prompt", acceptanceCriteria: [] }
+    : { decision: "reclassify", outcome: "answer", objective: "Inspect and explain the selected project's architecture", reason: "The selected workspace is the referent and read tools can discover its facts", missingContext: "", acceptanceCriteria: ["Describe the observed architecture"] }) }) } as unknown as BaseChatModel;
   const executor = new FakeToolCallingModel();
   const middleware = createTaskCompletionMiddleware({
-    model: contractModel("uncertain"), mode: "execute", availableTools: ["game_studio", "game_build"],
+    model: classifier, mode: "execute", workspaceAvailable: true, availableTools: ["list_files", "read_file", "search_text"],
+    conversation: [{ role: "user", content: "Explique a arquitetura deste projeto e indique por onde começar." }],
+    tracker: tracker(0), signal: new AbortController().signal,
+    onRetry: async () => undefined
+  });
+  const agent = createAgent({ model: executor, tools: [], middleware: [middleware] });
+  const result = await agent.invoke({ messages: [{ role: "user", content: "Explique a arquitetura deste projeto e indique por onde começar." }] });
+  assert.equal(calls, 2);
+  assert.equal(completionGateResult(result).completionOutcome, "complete");
+  assert.doesNotMatch(String(result.messages.at(-1)?.content), /esclarecimento/);
+});
+
+test("genuinely uncertain context asks for clarification before the executor can use tools", async () => {
+  let calls = 0;
+  const classifier = { invoke: async () => ({ text: JSON.stringify(calls++ === 0
+    ? { outcome: "uncertain", objective: "Do an unspecified prior action", reason: "The referent is absent", acceptanceCriteria: [] }
+    : { decision: "confirm_uncertain", outcome: "uncertain", objective: "Do an unspecified prior action", reason: "No earlier request identifies the action", missingContext: "Which action and object the user means by that", acceptanceCriteria: [] }) }) } as unknown as BaseChatModel;
+  const executor = new FakeToolCallingModel();
+  const middleware = createTaskCompletionMiddleware({
+    model: classifier, mode: "execute", workspaceAvailable: true, availableTools: ["game_studio", "game_build"],
     conversation: [{ role: "user", content: "Do that" }],
     tracker: tracker(0), signal: new AbortController().signal,
     onRetry: async () => undefined
   });
   const agent = createAgent({ model: executor, tools: [], middleware: [middleware] });
   const result = await agent.invoke({ messages: [{ role: "user", content: "Do that" }] });
+  assert.equal(calls, 2);
   assert.equal(executor.index, 0);
   assert.equal(completionGateResult(result).completionOutcome, "incomplete");
   assert.match(String(result.messages.at(-1)?.content), /esclarecimento/);
