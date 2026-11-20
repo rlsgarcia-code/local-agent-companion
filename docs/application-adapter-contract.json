@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "engine": "1.1.6",
+  "engine": "1.1.7",
   "protocol": "1.0",
   "applicationProduct": "companion-app",
-  "sdkArtifact": "companion-sdks-1.1.6.tar.gz",
+  "sdkArtifact": "companion-sdks-1.1.7.tar.gz",
   "publicSdkExports": [
     ".",
     "./bootstrap",

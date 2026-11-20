@@ -9,7 +9,7 @@ import type { ChatResult } from "@langchain/core/outputs";
 import { CompositeBackend, createDeepAgent, StateBackend } from "deepagents";
 import { createAgent, FakeToolCallingModel } from "langchain";
 import { consumeAssistantMessageStreams } from "../src/assistant-stream";
-import { completionGateResult, createTaskCompletionMiddleware, parseTaskContract, parseTaskVerdict, parseUncertaintyReview, parseWorkspaceScopeReview } from "../src/task-completion";
+import { completionGateResult, createTaskCompletionMiddleware, parseAnswerDeliveryReview, parseTaskContract, parseTaskVerdict, parseUncertaintyReview, parseWorkspaceScopeReview } from "../src/task-completion";
 import type { ChangeTracker } from "../src/change-tracker";
 import { ChangeTracker as RealChangeTracker } from "../src/change-tracker";
 import { ReviewableFilesystemBackend } from "../src/reviewable-backend";
@@ -97,6 +97,7 @@ test("parses a semantic task contract, rejecting malformed model output", () => 
   assert.equal(parseTaskVerdict('{"verdict":"needs_work","reason":"No diff"}').verdict, "needs_work");
   assert.equal(parseUncertaintyReview('{"decision":"reclassify","outcome":"answer","objective":"Explain the project","reason":"The workspace is the referent","missingContext":"","acceptanceCriteria":[]}').outcome, "answer");
   assert.equal(parseWorkspaceScopeReview('{"decision":"reclassify","outcome":"execution","objective":"Open the existing game","reason":"The user asked to see it running","requiredEvidence":"live_preview","acceptanceCriteria":"The game is visible"}').requiredEvidence, "live_preview");
+  assert.equal(parseAnswerDeliveryReview('{"decision":"reclassify_execution","outcome":"execution","objective":"Open the existing game","reason":"The user wants the running game","requiredEvidence":"live_preview","acceptanceCriteria":"The game is visible"}').outcome, "execution");
 });
 
 test("LangGraph returns to the model for an unfulfilled edit, then marks the run incomplete", async () => {
@@ -345,6 +346,73 @@ test("an existing game follow-up is preview execution, not a workspace edit or f
   assert.equal(interpreted?.requiredEvidence, "live_preview");
   assert.doesNotMatch(interpreted?.objective ?? "", /source|código|conteúdo completo/i);
   assert.equal(completionGateResult(result).completionOutcome, "incomplete");
+});
+
+test("an answer misclassification is reviewed as preview execution despite an earlier source-dump failure", async () => {
+  let calls = 0;
+  let interpreted: ReturnType<typeof parseTaskContract> | undefined;
+  const classifier = { invoke: async () => ({ text: JSON.stringify([
+    {
+      outcome: "answer", objective: "Show the boxe-atari.html source code",
+      reason: "The earlier assistant interpreted show as file content", requiredEvidence: "none",
+      acceptanceCriteria: ["Display the source"]
+    },
+    {
+      decision: "reclassify_execution", outcome: "execution",
+      objective: "Open the existing Boxe Atari game in a visible preview",
+      reason: "The user repeated a request to open the game, not its source",
+      requiredEvidence: "live_preview", acceptanceCriteria: ["The running game is visible in Context"]
+    },
+    { verdict: "blocked", reason: "No verified live preview was recorded in this fixture." }
+  ][calls++]) }) } as unknown as BaseChatModel;
+  const middleware = createTaskCompletionMiddleware({
+    model: classifier, mode: "execute", workspaceAvailable: true,
+    availableTools: ["read_file", "start_sandbox_application", "open_sandbox_preview"],
+    conversation: [
+      { role: "assistant", content: "Os jogos disponíveis são boxe-atari.html, pradaria.html e prince_of_persia.html." },
+      { role: "user", content: "abra e me mostre boxe" },
+      { role: "assistant", content: "A tarefa falhou porque o conteúdo completo do arquivo não foi exibido." },
+      { role: "user", content: "abra e me mostre boxe" }
+    ],
+    tracker: tracker(0), signal: new AbortController().signal,
+    executionEvidence: () => [], onContract: (contract) => { interpreted = contract; },
+    onRetry: async () => assert.fail("A concrete execution blocker must not retry as a source dump")
+  });
+  const result = await createAgent({ model: new FakeToolCallingModel(), tools: [], middleware: [middleware] })
+    .invoke({ messages: [{ role: "user", content: "abra e me mostre boxe" }] });
+  assert.equal(calls, 3);
+  assert.equal(interpreted?.outcome, "execution");
+  assert.equal(interpreted?.requiredEvidence, "live_preview");
+  assert.doesNotMatch(interpreted?.objective ?? "", /source|código|conteúdo completo/i);
+  assert.equal(completionGateResult(result).completionOutcome, "incomplete");
+});
+
+test("an explicit request for existing game source remains a read-only answer", async () => {
+  let calls = 0;
+  let interpreted: ReturnType<typeof parseTaskContract> | undefined;
+  const classifier = { invoke: async () => ({ text: JSON.stringify([
+    {
+      outcome: "answer", objective: "Show the complete source of boxe-atari.html",
+      reason: "The user explicitly requested source code", acceptanceCriteria: ["Display the source"]
+    },
+    {
+      decision: "confirm_answer", outcome: "answer", objective: "Show the complete source of boxe-atari.html",
+      reason: "The user explicitly asked for source code rather than a running preview",
+      requiredEvidence: "none", acceptanceCriteria: ["Display the source"]
+    }
+  ][calls++]) }) } as unknown as BaseChatModel;
+  const middleware = createTaskCompletionMiddleware({
+    model: classifier, mode: "execute", workspaceAvailable: true,
+    availableTools: ["read_file", "open_sandbox_preview"],
+    conversation: [{ role: "user", content: "mostre o código fonte completo do boxe-atari.html" }],
+    tracker: tracker(0), signal: new AbortController().signal,
+    onContract: (contract) => { interpreted = contract; }, onRetry: async () => assert.fail()
+  });
+  const result = await createAgent({ model: new FakeToolCallingModel(), tools: [], middleware: [middleware] })
+    .invoke({ messages: [{ role: "user", content: "mostre o código fonte completo do boxe-atari.html" }] });
+  assert.equal(calls, 2);
+  assert.equal(interpreted?.outcome, "answer");
+  assert.equal(completionGateResult(result).completionOutcome, "complete");
 });
 
 test("workspace scope review preserves a real edit request", async () => {

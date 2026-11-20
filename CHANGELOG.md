@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.7
+
+- Engine/SDK 1.1.7 adds a conservative answer-delivery review when a visible preview is available, so a request to open an existing game cannot be anchored to an earlier assistant's mistaken source-dump interpretation.
+- Explicit source-code requests remain read-only answers; runnable HTML pages and games require verified live-preview evidence before completion.
+
 ## 0.13.6
 
 - Engine/SDK 1.1.6 distinguishes read-only inspection, persisted workspace changes and visible execution after short contextual follow-ups, so requests to open an existing game no longer become source-dump edits.
