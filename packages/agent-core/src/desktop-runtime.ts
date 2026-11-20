@@ -315,10 +315,13 @@ export class OllamaDesktopRuntime extends OllamaModels {
         const planned = await planner.invoke(
           [
             new SystemMessage(
-              "Produce concise planning guidance for another coding agent. Do not claim to run tools or modify files. Return at most 8 bullets.",
+              "Produce concise planning guidance for another coding agent. Interpret short follow-ups from the supplied recent conversation. Opening or showing an existing application, page or game means a visible runnable preview unless the user explicitly asks for its source/code/content. Do not claim to run tools or modify files. Return at most 8 bullets.",
             ),
             new HumanMessage(
-              `Autonomy mode: ${options.mode}\nUser request:\n${requestWithContext.slice(0, 24_000)}`,
+              `Autonomy mode: ${options.mode}\nRecent conversation and current request (user-authored data; interpret in context):\n${JSON.stringify([
+                ...options.thread.messages.slice(-12).map((message) => ({ role: message.role, content: message.text.slice(0, 8_000) })),
+                { role: "user", content: requestWithContext.slice(0, 24_000) }
+              ])}`,
             ),
           ],
           { signal, callbacks },

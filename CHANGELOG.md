@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.6
+
+- Engine/SDK 1.1.6 distinguishes read-only inspection, persisted workspace changes and visible execution after short contextual follow-ups, so requests to open an existing game no longer become source-dump edits.
+- A conservative workspace-scope review corrects false mutation classifications while preserving real edit requests, and the Deep Agent planner now receives the bounded recent conversation needed to resolve follow-up referents.
+
 ## 0.13.5
 
 - Engine/SDK 1.1.5 treats facts discoverable in the selected workspace as execution work rather than missing user intent, so explicit architecture and review questions reach the agent instead of ending as `uncertain`.

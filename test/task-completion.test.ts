@@ -9,7 +9,7 @@ import type { ChatResult } from "@langchain/core/outputs";
 import { CompositeBackend, createDeepAgent, StateBackend } from "deepagents";
 import { createAgent, FakeToolCallingModel } from "langchain";
 import { consumeAssistantMessageStreams } from "../src/assistant-stream";
-import { completionGateResult, createTaskCompletionMiddleware, parseTaskContract, parseTaskVerdict, parseUncertaintyReview } from "../src/task-completion";
+import { completionGateResult, createTaskCompletionMiddleware, parseTaskContract, parseTaskVerdict, parseUncertaintyReview, parseWorkspaceScopeReview } from "../src/task-completion";
 import type { ChangeTracker } from "../src/change-tracker";
 import { ChangeTracker as RealChangeTracker } from "../src/change-tracker";
 import { ReviewableFilesystemBackend } from "../src/reviewable-backend";
@@ -96,6 +96,7 @@ test("parses a semantic task contract, rejecting malformed model output", () => 
   assert.throws(() => parseTaskContract('{"outcome":"unknown","objective":"x","reason":"x","acceptanceCriteria":[]}'));
   assert.equal(parseTaskVerdict('{"verdict":"needs_work","reason":"No diff"}').verdict, "needs_work");
   assert.equal(parseUncertaintyReview('{"decision":"reclassify","outcome":"answer","objective":"Explain the project","reason":"The workspace is the referent","missingContext":"","acceptanceCriteria":[]}').outcome, "answer");
+  assert.equal(parseWorkspaceScopeReview('{"decision":"reclassify","outcome":"execution","objective":"Open the existing game","reason":"The user asked to see it running","requiredEvidence":"live_preview","acceptanceCriteria":"The game is visible"}').requiredEvidence, "live_preview");
 });
 
 test("LangGraph returns to the model for an unfulfilled edit, then marks the run incomplete", async () => {
@@ -308,6 +309,63 @@ test("an explicit selected-workspace question is reclassified instead of asking 
   assert.equal(calls, 2);
   assert.equal(completionGateResult(result).completionOutcome, "complete");
   assert.doesNotMatch(String(result.messages.at(-1)?.content), /esclarecimento/);
+});
+
+test("an existing game follow-up is preview execution, not a workspace edit or full source dump", async () => {
+  let calls = 0;
+  let interpreted: ReturnType<typeof parseTaskContract> | undefined;
+  const classifier = { invoke: async () => ({ text: JSON.stringify([
+    {
+      outcome: "workspace_change", objective: "Open and show the complete boxe-atari.html source",
+      reason: "Opening a workspace file was mistaken for a mutation", requiredEvidence: "none",
+      acceptanceCriteria: ["Display the complete source"]
+    },
+    {
+      decision: "reclassify", outcome: "execution", objective: "Open the existing Boxe Atari game in a visible preview",
+      reason: "The follow-up refers to a listed game, not its source code", requiredEvidence: "live_preview",
+      acceptanceCriteria: ["The running game is visible in Context"]
+    },
+    { verdict: "blocked", reason: "No verified live preview was recorded in this fixture." }
+  ][calls++]) }) } as unknown as BaseChatModel;
+  const middleware = createTaskCompletionMiddleware({
+    model: classifier, mode: "execute", workspaceAvailable: true,
+    availableTools: ["read_file", "start_sandbox_application", "open_sandbox_preview"],
+    conversation: [
+      { role: "assistant", content: "Os jogos disponíveis são boxe-atari.html, pradaria.html e prince_of_persia.html." },
+      { role: "user", content: "abra e me mostre boxe" }
+    ],
+    tracker: tracker(0), signal: new AbortController().signal,
+    executionEvidence: () => [], onContract: (contract) => { interpreted = contract; },
+    onRetry: async () => assert.fail("A concrete execution blocker must not retry as a source-dump request")
+  });
+  const result = await createAgent({ model: new FakeToolCallingModel(), tools: [], middleware: [middleware] })
+    .invoke({ messages: [{ role: "user", content: "abra e me mostre boxe" }] });
+  assert.equal(calls, 3);
+  assert.equal(interpreted?.outcome, "execution");
+  assert.equal(interpreted?.requiredEvidence, "live_preview");
+  assert.doesNotMatch(interpreted?.objective ?? "", /source|código|conteúdo completo/i);
+  assert.equal(completionGateResult(result).completionOutcome, "incomplete");
+});
+
+test("workspace scope review preserves a real edit request", async () => {
+  let calls = 0;
+  let interpreted: ReturnType<typeof parseTaskContract> | undefined;
+  const classifier = { invoke: async () => ({ text: JSON.stringify([
+    { outcome: "workspace_change", objective: "Update the button label", reason: "The user requested an edit", acceptanceCriteria: ["The label is changed"] },
+    { decision: "confirm_workspace_change", outcome: "workspace_change", objective: "Update the button label", reason: "A persisted file edit is required", acceptanceCriteria: ["The label is changed"] },
+    { verdict: "satisfied", reason: "The relevant file change was recorded." }
+  ][calls++]) }) } as unknown as BaseChatModel;
+  const middleware = createTaskCompletionMiddleware({
+    model: classifier, mode: "execute", workspaceAvailable: true,
+    conversation: [{ role: "user", content: "Altere o texto do botão para Jogar." }],
+    tracker: tracker(1), signal: new AbortController().signal,
+    onContract: (contract) => { interpreted = contract; }, onRetry: async () => assert.fail()
+  });
+  const result = await createAgent({ model: new FakeToolCallingModel(), tools: [], middleware: [middleware] })
+    .invoke({ messages: [{ role: "user", content: "Altere o texto do botão para Jogar." }] });
+  assert.equal(calls, 3);
+  assert.equal(interpreted?.outcome, "workspace_change");
+  assert.equal(completionGateResult(result).completionOutcome, "complete");
 });
 
 test("genuinely uncertain context asks for clarification before the executor can use tools", async () => {

@@ -421,6 +421,8 @@ test("desktop wires opt-in Docker-only execution to a visible Context preview", 
   assert.match(runtime, /createRecoverableDockerToolErrors\(signal\)/);
   assert.match(runtime, /const planningActivityId = activity/);
   assert.match(runtime, /updateActivity\(\s*planningActivityId/);
+  assert.match(runtime, /Recent conversation and current request/);
+  assert.match(runtime, /Opening or showing an existing application, page or game means a visible runnable preview/);
   assert.match(runtime, /await this\.dockerSandbox\.shutdown\(\)/);
   assert.match(sandbox, /"--cap-drop",\s*"ALL"/);
   assert.match(sandbox, /"--security-opt",\s*"no-new-privileges:true"/);
