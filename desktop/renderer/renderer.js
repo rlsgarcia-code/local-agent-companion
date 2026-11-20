@@ -35,6 +35,7 @@ const el = Object.fromEntries([
   "model-popover", "model-scrim", "close-models", "model-picker", "close-model-picker", "model-list", "pull-model-input", "pull-model-button", "pull-progress", "manual-pull", "theme-control",
   "active-model-roles", "active-model-status", "engine-status", "engine-detail", "restart-engine",
   "model-provider", "model-selection-mode", "model-optimization-profile", "openai-key-row", "openai-key", "clear-openai-key",
+  "web-research-enabled", "web-research-context", "web-research-domains", "web-research-connector",
   "refresh-model-catalog", "provider-catalog-status", "provider-model-picker", "provider-role-editor", "provider-model-options", "role-executor", "role-planner", "role-evaluator", "role-vision", "role-embedding", "save-model-settings", "model-settings-status", "model-advisor",
   "active-model-roles", "active-model-status", "model-context-form", "model-context-alias", "model-context-tokens", "model-context-save", "model-context-status",
   "recommend-models", "cancel-recommendation", "docker-sandbox-toggle", "docker-sandbox-status", "public-catalog-toggle", "refresh-public-catalog", "public-catalog-status", "advisor-progress",
@@ -169,15 +170,15 @@ function render(conversationEffect = null) {
   el["thread-title"].textContent = active?.title || "Nova conversa";
   renderThreadList(snapshot.threads, active?.id);
   renderConversation(active, conversationEffect);
+  el["cancel-button"].classList.toggle("hidden", !snapshot.running);
+  el["send-button"].disabled = snapshot.running || Boolean(snapshot.workspaceRun?.busy);
+  renderWorkspaceRunRecovery(snapshot);
   renderModels();
   renderRecommendation();
   renderInspector();
   renderContext();
   document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === snapshot.mode));
   document.querySelectorAll("[data-runtime]").forEach((button) => button.classList.toggle("active", button.dataset.runtime === snapshot.agentRuntime));
-  el["cancel-button"].classList.toggle("hidden", !snapshot.running);
-  el["send-button"].disabled = snapshot.running || Boolean(snapshot.workspaceRun?.busy);
-  renderWorkspaceRunRecovery(snapshot);
   const activeContext = snapshot.context?.tabs.find((tab) => tab.id === snapshot.context.activeTabId);
   const inspectorTitles = {
     activity: ({

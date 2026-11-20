@@ -47,3 +47,17 @@ test("desktop also guards new conversations with the authoritative workspace lea
   assert.match(desktopRenderer, /cancelWorkspaceRun\(\)/);
   assert.match(desktopMain, /runs\.cancelUnknown|cancelWorkspaceRun/);
 });
+
+test("desktop registers every indexed renderer control before painting recovery state", () => {
+  const registry = desktopRenderer.slice(
+    desktopRenderer.indexOf("Object.fromEntries(["),
+    desktopRenderer.indexOf("].map((id)"),
+  );
+  const registered = new Set([...registry.matchAll(/"([^"]+)"/g)].map((match) => match[1]));
+  const referenced = new Set([...desktopRenderer.matchAll(/el\["([^"]+)"\]/g)].map((match) => match[1]));
+  assert.deepEqual([...referenced].filter((id) => !registered.has(id)).sort(), []);
+
+  const recoveryIndex = desktopRenderer.indexOf("renderWorkspaceRunRecovery(snapshot)");
+  const modelIndex = desktopRenderer.indexOf("renderModels();");
+  assert.ok(recoveryIndex >= 0 && recoveryIndex < modelIndex, "workspace recovery must render before optional settings");
+});
