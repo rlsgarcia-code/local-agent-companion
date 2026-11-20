@@ -475,8 +475,8 @@ async function promptEngineUpdate(error: PreparedEngineUpdateError): Promise<voi
     cancelId: 0,
     noLink: true,
   });
-  if (result.response !== 1) throw error;
-  await runtime.activatePreparedUpdate(store.snapshot().workspacePath);
+  if (result.response === 1) await runtime.activatePreparedUpdate(store.snapshot().workspacePath);
+  else await runtime.deferPreparedUpdate(store.snapshot().workspacePath);
 }
 
 function engineBlockerLabels(blockers: import("@companion/client-sdk/contracts").EngineUpdateBlockers): string[] {

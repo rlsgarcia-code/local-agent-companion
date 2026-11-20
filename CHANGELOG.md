@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.3
+
+- Engine/SDK 1.1.3 lets the Mac client defer a prepared engine update and continue on the authenticated compatible engine while protected work is still active.
+- Choosing “Agora não” no longer creates a startup loop; the pending update remains prepared and can activate after the preserved execution is resolved.
+
 ## 0.13.2
 
 - Engine/SDK 1.1.2 preserves and exposes unreconciled workspace runs instead of allowing a new Mac conversation to fail with a raw IPC conflict.

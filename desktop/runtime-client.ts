@@ -83,6 +83,7 @@ export class OllamaDesktopRuntime {
   private currentState?: RunState;
   private downloadJob?: string;
   private recommendationJob?: string;
+  private updateDeferred = false;
   get state(): RunState | undefined { return this.currentState; }
   private setState(state: RunState | undefined): void {
     if (this.currentState === state) return;
@@ -97,22 +98,23 @@ export class OllamaDesktopRuntime {
     const session=(await client.call<Session[]>("sessions.list")).find((session)=>session.importedFrom===key)??await client.importSession(key,{thread});
     return {client,session,reconnect:()=>this.connect(workspace)};
   }
-  private async connect(workspace = "", activation: "idle" | "stop-managed" = "idle"): Promise<AgentClient> {
-    if (activation === "stop-managed") this.clients.delete(workspace);
+  private async connect(workspace = "", activation: "idle" | "stop-managed" | "defer" = "idle"): Promise<AgentClient> {
+    const requestedActivation = activation === "idle" && this.updateDeferred ? "defer" : activation;
+    if (activation !== "idle") this.clients.delete(workspace);
     let pending = this.clients.get(workspace);
     if (!pending) {
-      pending = this.connectRegisteredClient(workspace, activation);
+      pending = this.connectRegisteredClient(workspace, requestedActivation);
       this.clients.set(workspace, pending);
       pending.catch(() => this.clients.delete(workspace));
     }
     this.client = await pending;
     if (!this.client.connected) {
       this.clients.delete(workspace);
-      return this.connect(workspace, activation);
+      return this.connect(workspace, requestedActivation);
     }
     return this.client;
   }
-  private async connectRegisteredClient(workspace: string, activation: "idle" | "stop-managed"): Promise<AgentClient> {
+  private async connectRegisteredClient(workspace: string, activation: "idle" | "stop-managed" | "defer"): Promise<AgentClient> {
     try {
       const client = await this.provision(workspace, activation, ["ollama", "openai"]);
       await this.assertSdkCompatibility(client);
@@ -141,7 +143,7 @@ export class OllamaDesktopRuntime {
   }
   private provision(
     workspace: string,
-    activation: "idle" | "stop-managed",
+    activation: "idle" | "stop-managed" | "defer",
     providers: Array<"ollama" | "openai">,
   ): Promise<AgentClient> {
     const { ensureClient, ...installation } = this.installation;
@@ -157,8 +159,19 @@ export class OllamaDesktopRuntime {
     });
   }
   async activatePreparedUpdate(workspace = ""): Promise<void> {
+    this.updateDeferred = false;
     const client = await this.connect(workspace, "stop-managed");
     if (!client.connected) throw new Error("The updated Companion engine did not reconnect.");
+  }
+  async deferPreparedUpdate(workspace = ""): Promise<void> {
+    this.updateDeferred = true;
+    try {
+      const client = await this.connect(workspace, "defer");
+      if (!client.connected) throw new Error("The active Companion engine did not reconnect.");
+    } catch (error) {
+      this.updateDeferred = false;
+      throw error;
+    }
   }
   async engineStatus(): Promise<EngineUpdateStatus & { version: string }> {
     const client = await this.connect();

@@ -15,7 +15,8 @@ test("engine updates expose blockers and require an explicit local-resource acti
   assert.match(service, /activeRuns/);
   assert.match(service, /managedProcesses/);
   assert.match(bootstrap, /PreparedEngineUpdateError/);
-  assert.match(bootstrap, /activation\?: "idle" \| "stop-managed"/);
+  assert.match(bootstrap, /activation\?: "idle" \| "stop-managed" \| "defer"/);
+  assert.match(bootstrap, /options\.activation === "defer"/);
   assert.match(vscodeRuntime, /Stop local resources and update/);
   assert.match(vscodeRuntime, /Restart the Companion engine/);
 });
@@ -26,6 +27,7 @@ test("desktop settings expose engine state and a controlled restart", () => {
   assert.match(desktopMain, /Atualização do motor pronta/);
   assert.match(desktopMain, /companion:restart-engine/);
   assert.match(desktopMain, /Encerrar recursos e atualizar/);
+  assert.match(desktopMain, /deferPreparedUpdate/);
 });
 
 test("legacy activation uses exact per-user service controls without a shell", () => {

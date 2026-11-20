@@ -65,7 +65,7 @@ type BootstrapOptions = {
   stateDirectory?: string;
   development?: boolean;
   publicKey?: string;
-  activation?: "idle" | "stop-managed";
+  activation?: "idle" | "stop-managed" | "defer";
 };
 export class PreparedEngineUpdateError extends Error {
   readonly name = "PreparedEngineUpdateError";
@@ -369,6 +369,7 @@ async function ensureEngineLocked(options: BootstrapOptions, prepared: Awaited<R
             await new Promise((resolve) => setTimeout(resolve, 50));
           if (!client.connected) return ensureEngineLocked(options, prepared);
         }
+        if (options.activation === "defer") return client;
         if (options.activation === "stop-managed") {
           try {
             const stopped = await client.call<{ accepted: boolean; reason?: string; blockers?: EngineUpdateBlockers }>("engine.stopManagedResourcesForUpdate");

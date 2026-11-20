@@ -149,6 +149,27 @@ test("a Mac provider-policy upgrade uses the enrolled Ollama identity only to ac
   assert.equal(compatibilityClosed, true);
 });
 
+test("deferring a prepared update keeps compatible active-engine connections available", async () => {
+  const activations: Array<string | undefined> = [];
+  const runtime = new OllamaDesktopRuntime({
+    bundleDirectory: "unused-fixture",
+    development: true,
+    ensureClient: async (options) => {
+      activations.push(options.activation);
+      return {
+        connected: true,
+        close: () => {},
+        engineInfo: async () => ({ version: "1.1.1", capabilities: [...engineCapabilities] }),
+        call: async (method: string) => method === "workspace.status" ? { busy: false } : {},
+      } as unknown as AgentClient;
+    },
+  });
+
+  await runtime.deferPreparedUpdate("/fixture");
+  assert.deepEqual(await runtime.workspaceStatus("/other"), { busy: false });
+  assert.deepEqual(activations, ["defer", "defer"]);
+});
+
 test("the Mac client rejects an engine that is missing a required SDK capability", async () => {
   let closed = false;
   const runtime = new OllamaDesktopRuntime({
